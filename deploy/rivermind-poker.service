@@ -1,0 +1,56 @@
+# RiverMind Poker browser table: installed as
+# /etc/systemd/system/rivermind-poker.service by deploy/update.sh.
+# Serves the git checkout in /home/sawyer/github/rivermind-poker on loopback;
+# Caddy proxies https://rivermindpoker.com to it (deploy/rivermindpoker.com.caddy).
+# The dedicated rivermind-poker user only needs traverse access to /home/sawyer
+# (ACL) and read access to the checkout, its .venv, the Python under
+# /opt/uv-python and the pinned checkpoint/tables in artifacts/.
+[Unit]
+Description=RiverMind Poker browser table (rivermindpoker.com)
+Documentation=https://github.com/dunamismax/rivermind-poker
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=rivermind-poker
+Group=rivermind-poker
+WorkingDirectory=/home/sawyer/github/rivermind-poker
+Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+ExecStart=/home/sawyer/github/rivermind-poker/.venv/bin/rivermind-poker serve \
+    --host 127.0.0.1 --port 4316 \
+    --strategy_path /home/sawyer/github/rivermind-poker/artifacts/rm06/baseline_2026_11_18_20_45_30_074222/agent.joblib \
+    --lut_path /home/sawyer/github/rivermind-poker/artifacts/rm06/tables
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+SyslogIdentifier=rivermind-poker
+
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+MemoryHigh=2G
+MemoryMax=3G
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

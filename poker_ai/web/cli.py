@@ -38,4 +38,6 @@ def serve(host: str, port: int, strategy_path: Optional[str],
         card_info_lut = joblib.load(Path(lut_path) / "card_info_lut.joblib")
     app = create_app(card_info_lut=card_info_lut, strategy=strategy,
                      max_tables=max_tables)
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    # Client messages are tiny; cap them well below Uvicorn's 16 MB default.
+    uvicorn.run(app, host=host, port=port, log_level="info",
+                ws_max_size=64 * 1024, server_header=False)

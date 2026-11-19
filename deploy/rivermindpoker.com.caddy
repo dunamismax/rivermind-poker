@@ -1,0 +1,62 @@
+# rivermindpoker.com: installed as /etc/caddy/sites/rivermindpoker.com.caddy by
+# deploy/update.sh and loaded by the host Caddyfile (`import /etc/caddy/sites/*.caddy`).
+# DNS for both names points at the host, so Caddy obtains and renews certificates.
+# Everything is proxied to rivermind-poker.service on 127.0.0.1:4316, including
+# the /ws WebSocket. The app sets Cache-Control on its own files.
+#
+# Check and reload: caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
+
+www.rivermindpoker.com {
+	redir https://rivermindpoker.com{uri} permanent
+}
+
+rivermindpoker.com {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		# The client is same-origin static files plus one WebSocket; no inline code.
+		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self' wss://rivermindpoker.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		-Server
+	}
+
+	request_body {
+		max_size 16KB
+	}
+
+	# New tables are cheap but held in memory; slow down scripted creation.
+	rate_limit {
+		zone new_tables {
+			match {
+				method POST
+				path /api/tables
+			}
+			key {remote_host}
+			events 30
+			window 1m
+		}
+	}
+
+	reverse_proxy 127.0.0.1:4316 {
+		# A config reload would otherwise close every open game socket.
+		stream_close_delay 5m
+	}
+
+	handle_errors 502 503 504 {
+		header Content-Type "text/plain; charset=utf-8"
+		header Cache-Control "no-store"
+		respond "RiverMind Poker is restarting. Try again in a minute." 503
+	}
+
+	log {
+		output file /var/log/caddy/rivermindpoker-access.log {
+			roll_size 10MiB
+			roll_keep 7
+			roll_keep_for 168h
+		}
+	}
+}
