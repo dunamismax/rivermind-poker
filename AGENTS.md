@@ -31,6 +31,8 @@ uv run --locked rivermind-poker play --agent offline \
   --lut_path "$TABLE_DIR" --strategy_path "$CHECKPOINT_FILE"
 ```
 
+Training workers are separate processes, and macOS starts them with spawn, so pytest monkeypatches do not reach them. To test server scheduling with deterministic updates, use the thread workers in [the training test helpers](test/functional/training_helpers.py). Keep a real-worker CLI run for the end-to-end check.
+
 Keep the `poker_ai` Python namespace and legacy CLI alias. Existing scripts import it, and serialized objects can refer to its module paths. Load only trusted pickle/joblib artifacts. When changing saved state, check the writer and its consumers (resume and offline play as applicable). Exercise existing-format data and document any required migration or regeneration. Keep checkpoints paired with the tables that define their buckets.
 
 ## Repository boundaries

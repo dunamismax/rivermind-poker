@@ -105,19 +105,7 @@ class Worker(mp.Process):
         #               in minutes using perhaps the time module, but here
         #               it appears to be being managed by the iterations
         #               count.
-        discount_factor = (t / self._discount_interval) / (
-            (t / self._discount_interval) + 1
-        )
-        self._locks["regret"].acquire()
-        for info_set in self._agent.regret.keys():
-            for action in self._agent.regret[info_set].keys():
-                self._agent.regret[info_set][action] *= discount_factor
-        self._locks["regret"].release()
-        self._locks["strategy"].acquire()
-        for info_set in self._agent.strategy.keys():
-            for action in self._agent.strategy[info_set].keys():
-                self._agent.strategy[info_set][action] *= discount_factor
-        self._locks["strategy"].release()
+        ai.discount(self._agent, t, self._discount_interval, self._locks)
 
     def _update_strategy(self, t, i):
         """Update the strategy."""

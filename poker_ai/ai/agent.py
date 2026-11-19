@@ -38,8 +38,15 @@ class Agent:
         self.regret = dict_constructor()
         if agent_path is not None:
             saved_agent = joblib.load(agent_path)
+            # `strategy` in a checkpoint is the accumulated regret-matched
+            # policy used for play. The trainer's own strategy (the
+            # update_strategy action counts) is saved as `pre_flop_strategy`.
+            # Older checkpoints without that key fall back to `strategy`.
+            live_strategy = saved_agent.get(
+                "pre_flop_strategy", saved_agent["strategy"]
+            )
             # Assign keys manually because I don't trust the manager proxy.
             for info_set, value in saved_agent["regret"].items():
                 self.regret[info_set] = value
-            for info_set, value in saved_agent["strategy"].items():
+            for info_set, value in live_strategy.items():
                 self.strategy[info_set] = value

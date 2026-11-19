@@ -12,8 +12,11 @@ The first browser milestone is one human completing a hand against two bots usin
 
 The browser client, hosted service and production deployment are future work. Choose their frameworks when implementing the table API. A change to full-deck or no-limit rules will also need new action representations, training data and evaluation coverage.
 
-## Training issues to resolve before benchmarking
+## Training issues resolved before benchmarking
 
-- The single-process trainer writes a checkpoint configuration with CLI options, while the resume command passes the saved configuration to the multiprocessing server constructor. Cover an interrupted run and verify that resuming preserves the strategy, iteration and settings. [Trainer](../poker_ai/ai/singleprocess/train.py) · [Resume command](../poker_ai/ai/runner.py)
-- Check the hand-strength bucket labels before generating reference tables. The evaluator assigns stronger hands lower ranks, while the clustering utility places a higher hero rank in the element documented as a win. Add known win, loss and tie cases before comparing new tables to older artifacts. [Clustering utility](../poker_ai/clustering/game_utility.py)
-- The asynchronous trainer can schedule a checkpoint while other jobs are updating the strategy. Validate repeatable checkpoint loading and coordinate concurrent writes before running long training jobs. [Worker scheduling](../poker_ai/ai/multiprocess/server.py) · [Checkpoint writer](../poker_ai/ai/ai.py)
+These issues blocked a trustworthy baseline. BUILD.md records the evidence for each fix.
+
+- RM-01 corrected the reversed win and loss rates in river hand-strength labels. [Clustering utility](../poker_ai/clustering/game_utility.py)
+- RM-02 made `train resume` keep a single-process run’s mode and continue its saved iteration, regrets and update counts. [Resume command](../poker_ai/ai/runner.py)
+- RM-03 made discounting apply at the intended iterations in both training modes. [Checkpoint writer and discounting](../poker_ai/ai/ai.py)
+- RM-04 takes multiprocess checkpoints between iterations and writes them atomically and in order. [Worker scheduling](../poker_ai/ai/multiprocess/server.py)

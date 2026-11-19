@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import copy
 import logging
 import multiprocessing as mp
 import os
+import tempfile
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import joblib
 import numpy as np
@@ -15,6 +15,9 @@ from poker_ai.games.short_deck.state import ShortDeckPokerState
 
 
 log = logging.getLogger("sync.ai")
+# Read once at import: os.umask can only be read by setting it.
+_UMASK = os.umask(0)
+os.umask(_UMASK)
 
 
 def calculate_strategy(this_info_sets_regret: Dict[str, float]) -> Dict[str, float]:
@@ -312,13 +315,139 @@ def cfrp(
         return cfrp(agent, new_state, i, t, c, locks)
 
 
+CheckpointState = Dict[str, Union[str, float, int, None]]
+
+
+def should_discount(t: int, lcfr_threshold: int, discount_interval: int) -> bool:
+    """Return whether linear-CFR discounting applies after iteration `t`.
+
+    Following Algorithm 1 of the Pluribus supplement, discounting happens
+    whenever `t` is a multiple of `discount_interval` strictly before
+    `lcfr_threshold`.
+    """
+    return t < lcfr_threshold and t % discount_interval == 0
+
+
+def discount_factor(t: int, discount_interval: int) -> float:
+    """Return the linear-CFR discount factor for iteration `t`."""
+    n_intervals = t / discount_interval
+    return n_intervals / (n_intervals + 1)
+
+
+def discount(
+    agent: Agent,
+    t: int,
+    discount_interval: int,
+    locks: Dict[str, mp.synchronize.Lock] = {},
+) -> float:
+    """
+    Multiply every stored regret and strategy value by the discount factor.
+
+    Each information set is reassigned, so the update reaches both plain
+    dicts and multiprocessing manager proxies (indexing a proxy returns a
+    copy of the inner dict). Returns the factor applied.
+    """
+    d = discount_factor(t, discount_interval)
+    for table, lock_name in ((agent.regret, "regret"), (agent.strategy, "strategy")):
+        if locks:
+            locks[lock_name].acquire()
+        try:
+            for info_set in list(table.keys()):
+                table[info_set] = {
+                    action: value * d for action, value in table[info_set].items()
+                }
+        finally:
+            if locks:
+                locks[lock_name].release()
+    return d
+
+
+def snapshot(
+    agent: Agent, locks: Dict[str, mp.synchronize.Lock] = {}
+) -> Tuple[Dict[str, Dict[str, float]], Dict[str, Dict[str, float]]]:
+    """Copy the agent's regret and strategy into plain, independent dicts."""
+    tables = []
+    for table, lock_name in ((agent.regret, "regret"), (agent.strategy, "strategy")):
+        if locks:
+            locks[lock_name].acquire()
+        try:
+            tables.append({k: dict(v) for k, v in table.items()})
+        finally:
+            if locks:
+                locks[lock_name].release()
+    return tables[0], tables[1]
+
+
+def _atomic_dump(value: Any, path: Path):
+    """Write `value` with joblib so that `path` is either old or complete."""
+    path = Path(path)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    os.close(fd)
+    try:
+        # mkstemp creates owner-only files; give the checkpoint the mode a
+        # plain open() would have.
+        os.chmod(tmp_name, 0o666 & ~_UMASK)
+        joblib.dump(value, tmp_name)
+        os.replace(tmp_name, path)
+    except BaseException:
+        if os.path.exists(tmp_name):
+            os.remove(tmp_name)
+        raise
+
+
+def write_checkpoint(
+    regret: Dict[str, Dict[str, float]],
+    strategy: Dict[str, Dict[str, float]],
+    save_path: Path,
+    t: int,
+    server_state: CheckpointState,
+) -> CheckpointState:
+    """
+    Publish the checkpoint for completed iteration `t` from a snapshot.
+
+    `agent.joblib` accumulates the regret-matched strategy of every dump in
+    `strategy`, keeps the live `regret` and update counts
+    (`pre_flop_strategy`), records `timestep` and embeds the resume state.
+    `server.gz` then receives the same resume state. Both files are replaced
+    atomically, agent first, so an interrupted write leaves the previous
+    checkpoint usable, and `resume` can detect an agent newer than
+    `server.gz` from the embedded state.
+    """
+    save_path = Path(save_path)
+    agent_path = os.path.abspath(str(save_path / "agent.joblib"))
+    if os.path.isfile(agent_path):
+        offline_agent = joblib.load(agent_path)
+    else:
+        offline_agent = {"regret": {}, "timestep": t, "strategy": {}}
+    # Accumulate the regret-matched strategy for each info set.
+    accumulated = offline_agent["strategy"]
+    for info_set, this_info_sets_regret in sorted(regret.items()):
+        sigma = calculate_strategy(this_info_sets_regret)
+        if info_set not in accumulated:
+            accumulated[info_set] = dict(sigma)
+        else:
+            for action, probability in sigma.items():
+                accumulated[info_set][action] += probability
+    # Update the resume state so the next run starts after this iteration.
+    resume_state = dict(server_state)
+    resume_state["agent_path"] = agent_path
+    resume_state["start_timestep"] = t + 1
+    offline_agent["regret"] = regret
+    offline_agent["pre_flop_strategy"] = strategy
+    offline_agent["timestep"] = t
+    offline_agent["resume_state"] = resume_state
+    _atomic_dump(offline_agent, Path(agent_path))
+    _atomic_dump(resume_state, save_path / "server.gz")
+    return resume_state
+
+
 def serialise(
     agent: Agent,
     save_path: Path,
     t: int,
-    server_state: Dict[str, Union[str, float, int, None]],
+    server_state: CheckpointState,
     locks: Dict[str, mp.synchronize.Lock] = {},
-):
+) -> CheckpointState:
     """
     Write progress of optimising agent (and server state) to file.
 
@@ -328,58 +457,14 @@ def serialise(
     ----------
     agent : Agent
         Agent being trained.
-    save_path : ShortDeckPokerState
-        Current game state.
+    save_path : Path
+        Directory of the training run.
     t : int
-        The iteration.
+        The completed iteration.
     server_state : Dict[str, Union[str, float, int, None]]
         All the variables required to resume training.
     locks : Dict[str, mp.synchronize.Lock]
         The locks for multiprocessing
     """
-    # Load the shared strategy that we accumulate into.
-    agent_path = os.path.abspath(str(save_path / f"agent.joblib"))
-    if os.path.isfile(agent_path):
-        offline_agent = joblib.load(agent_path)
-    else:
-        offline_agent = {
-            "regret": {},
-            "timestep": t,
-            "strategy": {},
-            "pre_flop_strategy": {}
-        }
-    # Lock shared dicts so no other process modifies it whilst writing to
-    # file.
-    # Calculate the strategy for each info sets regret, and accumulate in
-    # the offline agent's strategy.
-    for info_set, this_info_sets_regret in sorted(agent.regret.items()):
-        if locks:
-            locks["regret"].acquire()
-        strategy = calculate_strategy(this_info_sets_regret)
-        if locks:
-            locks["regret"].release()
-        if info_set not in offline_agent["strategy"]:
-            offline_agent["strategy"][info_set] = {
-                action: probability for action, probability in strategy.items()
-            }
-        else:
-            for action, probability in strategy.items():
-                offline_agent["strategy"][info_set][action] += probability
-    if locks:
-        locks["regret"].acquire()
-    offline_agent["regret"] = copy.deepcopy(agent.regret)
-    if locks:
-        locks["regret"].release()
-    if locks:
-        locks["pre_flop_strategy"].acquire()
-    offline_agent["pre_flop_strategy"] = copy.deepcopy(agent.strategy)
-    if locks:
-        locks["pre_flop_strategy"].release()
-    joblib.dump(offline_agent, agent_path)
-    # Dump the server state to file too, but first update a few bits of the
-    # state so when we load it next time, we start from the right place in
-    # the optimisation process.
-    server_path = save_path / f"server.gz"
-    server_state["agent_path"] = agent_path
-    server_state["start_timestep"] = t + 1
-    joblib.dump(server_state, server_path)
+    regret, strategy = snapshot(agent, locks)
+    return write_checkpoint(regret, strategy, save_path, t, server_state)

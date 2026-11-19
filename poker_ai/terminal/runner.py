@@ -1,19 +1,29 @@
-import random
 import time
 from typing import Dict
 
 import click
-import joblib
-import numpy as np
 from blessed import Terminal
 
 from poker_ai.games.short_deck.state import new_game, ShortDeckPokerState
+from poker_ai.policies import CheckpointPolicy, Policy, RandomPolicy, seat_view
 from poker_ai.terminal.ascii_objects.card_collection import AsciiCardCollection
 from poker_ai.terminal.ascii_objects.player import AsciiPlayer
 from poker_ai.terminal.ascii_objects.logger import AsciiLogger
 from poker_ai.terminal.render import print_footer, print_header, print_log, print_table
 from poker_ai.terminal.results import UserResults
 from poker_ai.utils.algos import rotate_list
+
+# Pause after each bot action so the human can follow the hand.
+BOT_DELAY_SECONDS = 0.8
+
+
+def make_policy(agent: str, strategy_path: str = "") -> Policy:
+    """Return the bot policy for `--agent`."""
+    if agent == "random":
+        return RandomPolicy()
+    if agent == "offline":
+        return CheckpointPolicy.from_checkpoint(strategy_path)
+    raise ValueError(f"Unknown agent: {agent}")
 
 
 @click.command()
@@ -49,10 +59,7 @@ def run_terminal_app(
     selected_action_i: int = 0
     positions = ["left", "middle", "right"]
     names = {"left": "BOT 1", "middle": "BOT 2", "right": "HUMAN"}
-    if agent == "offline":
-        offline_strategy = joblib.load(strategy_path)["strategy"]
-    else:
-        offline_strategy = {}
+    bot: Policy = make_policy(agent, strategy_path)
     user_results: UserResults = UserResults()
     with term.cbreak(), term.hidden_cursor():
         while True:
@@ -145,26 +152,8 @@ def run_terminal_app(
                         log.info(term.green(f"{current_player_name} chose {action}"))
                         state: ShortDeckPokerState = state.apply_action(action)
             else:
-                if agent == "random":
-                    action = random.choice(state.legal_actions)
-                    time.sleep(0.8)
-                elif agent == "offline":
-                    default_strategy = {
-                        action: 1 / len(state.legal_actions)
-                        for action in state.legal_actions
-                    }
-                    this_state_strategy = offline_strategy.get(
-                        state.info_set, default_strategy
-                    )
-                    # Normalizing strategy.
-                    total = sum(this_state_strategy.values())
-                    this_state_strategy = {
-                        k: v / total for k, v in this_state_strategy.items()
-                    }
-                    actions = list(this_state_strategy.keys())
-                    probabilties = list(this_state_strategy.values())
-                    action = np.random.choice(actions, p=probabilties)
-                    time.sleep(0.8)
+                action = bot.choose(seat_view(state))
+                time.sleep(BOT_DELAY_SECONDS)
                 log.info(f"{current_player_name} chose {action}")
                 state: ShortDeckPokerState = state.apply_action(action)
 

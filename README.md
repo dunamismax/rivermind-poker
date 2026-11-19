@@ -28,6 +28,9 @@ Those paths are examples for locally generated files. The terminal records compl
 | Rules and legal actions for the training game | [Short-deck state](poker_ai/games/short_deck/state.py) |
 | Card abstraction and lookup tables | [Clustering](poker_ai/clustering/) |
 | Monte Carlo counterfactual regret minimization (MCCFR) and checkpoints | [Training](poker_ai/ai/) |
+| Bot decisions from one seat’s information | [Policies](poker_ai/policies.py) |
+| Fixed-seed matches against random bots | [Benchmark](poker_ai/benchmark.py) |
+| Server-owned table for networked clients | [Table](poker_ai/table.py) |
 | Playable client | [Terminal](poker_ai/terminal/) |
 | Tests | [Unit and functional tests](test/) |
 

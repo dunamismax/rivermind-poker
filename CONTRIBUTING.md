@@ -14,7 +14,7 @@ For a quick edit-and-test cycle, run `uv run pytest test/unit` or point pytest a
 
 Clustering turns the two hole cards and the shared board into a bucket for each betting stage. Training uses those buckets and the betting history to learn an action distribution through self-play. Keep tables and checkpoints from the same experiment together. Load artifacts that you generated or trust because joblib uses Python pickle serialization.
 
-To start a full experiment, use a local artifact directory. Clustering the default 20-card deck enumerates millions of hands and board combinations in memory and can take substantial time and RAM. For a quick playable baseline, use the random opponents in the README.
+To start a full experiment, use a local artifact directory. Clustering the default 20-card deck enumerates millions of hands and board combinations in memory. With default settings it took 77 minutes and peaked at 5.2 GB on a 10-core machine. A 3,000-iteration single-process training run on those tables took 42 minutes. For a quick playable baseline, use the random opponents in the README.
 
 ```sh
 mkdir -p artifacts/tables
@@ -25,13 +25,43 @@ uv run rivermind-poker train start --single_process --lut_path tables --nickname
 
 Clustering writes `tables/card_info_lut.joblib` and `tables/centroids.joblib`. Training creates a timestamped `baseline_*` directory. Once it passes the update threshold and reaches a dump iteration, it writes `agent.joblib`. Pass that file and the same tables to `play --agent offline`. Use `cluster --help` and `train start --help` for experiment settings. The game engine deals ranks ten through ace, so tables generated with a smaller rank range cover only a subset of its hands.
 
+### Checkpoints and resuming
+
+Each dump replaces two files in the run directory. `agent.joblib` holds `strategy`, the regret-matched policy accumulated over every dump that offline play samples from. It also holds the live `regret`, the trainer’s update counts under `pre_flop_strategy`, the completed iteration as `timestep` and an embedded copy of the resume state. `server.gz` holds that resume state: the mode, every training setting, absolute `save_path` and `lut_path`, the next iteration and, for single-process runs, the random-generator state. Both files are written to a temporary name and renamed, agent first, so an interrupted write leaves the previous checkpoint usable. [Checkpoint writer](poker_ai/ai/ai.py)
+
+```sh
+uv run rivermind-poker train resume --server_config_path baseline_*/server.gz
+```
+
+Resuming keeps the saved mode and settings and continues at the saved next iteration. A resumed single-process run reproduces the uninterrupted run exactly. Multiprocess workers seed themselves randomly. Files written before RM-02 also resume. Their relative `lut_path` resolves against the current directory unless you pass `--lut_path`. Their single-process runs lack generator state, so the run continues with a fresh seed derived from the next iteration. If `agent.joblib` is newer than `server.gz`, resume uses the state embedded in the agent so no iteration is applied twice. To extend a run, raise `n_iterations` in `server.gz` before resuming. [Resume command](poker_ai/ai/runner.py)
+
+Multiprocess checkpoints wait until every job for the dump iteration has finished, then copy the shared tables before sending the next iteration. With `--async_serialise`, the default, workers continue while a background thread writes the copy. Writes stay in iteration order. Discounting follows Algorithm 1 of the Pluribus supplement. It applies at multiples of `--discount_interval` strictly below `--lcfr_threshold`. The defaults scale Pluribus’s minute schedule to iterations: discounting every 10 iterations through iteration 390 (39 times), pruning from iteration 200 and strategy averaging from iteration 400. At about 0.85 seconds per three-seat single-process iteration on a 10-core MacBook Pro, the default 1,500-iteration run takes about 21 minutes. Multiprocess runs use one fewer worker than the CPU count. [Server](poker_ai/ai/multiprocess/server.py)
+
 ### Tables and checkpoints across the hand-strength fix
 
 River clustering fits K-means to simulated `[win, loss, tie]` rates. Before RM-01, the first two rates were reversed. Turn and flop clustering use distributions over the following street’s clusters. For each postflop street, the builder saves the fitted cluster ID for each card combination. Preflop IDs come from a separate fixed mapping of ranks and suitedness. [Table builder](poker_ai/clustering/card_info_lut_builder.py) · [Preflop mapping](poker_ai/clustering/preflop.py)
 
-Keep an existing checkpoint with the exact lookup table used to train it. Training and offline play look up the acting player’s bucket and combine it with the betting history to form the key for checkpoint regrets and strategy. They read the stored IDs directly, so using that pair requires no conversion. This follows from the lookup and checkpoint code. The fixed-card tests verify the corrected rates. To reuse a checkpoint with a regenerated table, first verify that the original and regenerated tables assign the same IDs to the same card combinations on every street. Equal cluster counts alone cannot establish compatibility. [Information-set key](poker_ai/games/short_deck/state.py) · [Checkpoint writer](poker_ai/ai/ai.py) · [Offline strategy lookup](poker_ai/terminal/runner.py)
+Keep an existing checkpoint with the exact lookup table used to train it. Training and offline play look up the acting player’s bucket and combine it with the betting history to form the key for checkpoint regrets and strategy. They read the stored IDs directly, so using that pair requires no conversion. This follows from the lookup and checkpoint code. The fixed-card tests verify the corrected rates. To reuse a checkpoint with a regenerated table, first verify that the original and regenerated tables assign the same IDs to the same card combinations on every street. Equal cluster counts alone cannot establish compatibility. [Information-set key](poker_ai/games/short_deck/state.py) · [Checkpoint writer](poker_ai/ai/ai.py) · [Checkpoint policy](poker_ai/policies.py)
 
 For a bot trained on corrected labels, run clustering in a new, empty directory under `artifacts/`. The builder loads existing lookup tables and centroids and skips streets already present, so reusing a legacy directory can preserve old results or mix generations. Start a fresh training run against the regenerated tables and keep the resulting checkpoint with them.
+
+## Evaluate a bot
+
+`evaluate` plays fixed-seed deals at the three-seat table. It pairs one candidate with two uniform-random bots. Each deal is played three times on identical cards so the candidate sits in the small blind, big blind and button once each. Cards come from a per-deal seed. Every bot samples from its own generator, seeded by deal, rotation and seat. The same inputs therefore reproduce the report exactly, apart from its `created` time.
+
+```sh
+uv run rivermind-poker evaluate --strategy_path RUN/agent.joblib \
+  --lut_path TABLES --deals 2000 --seed 0 --output artifacts/eval.json
+uv run rivermind-poker evaluate --agent random --deals 2000 --seed 0
+```
+
+The report records the rules, seed, deal and hand counts and the SHA-256 of the checkpoint and card table. It also records the checkpoint’s training settings and timestep. Results are given as net chips per hand overall and by seat, and as big blinds per 100 hands. The standard error and 95% interval are computed over per-deal means, because a deal’s three rotations share cards. `checkpoint_info_set_coverage` is the share of the candidate’s decisions found in the checkpoint; the rest fall back to uniform legal play. The `random` control should include zero. [Benchmark](poker_ai/benchmark.py)
+
+## Bots and the table service
+
+Clients ask a policy for a decision by passing `seat_view(state)`. It contains the acting seat’s cards, the board, history, stacks, pot and legal actions, never an opponent’s cards. `RandomPolicy` and `CheckpointPolicy` share that interface. The terminal, the benchmark and the table all use it. [Policies](poker_ai/policies.py)
+
+`Table` is the server side of a networked game. It owns the deck, turn order, validation and play-chip payouts. A human seat holds a secret token and acts with `act(token, action, seq)`. `seq` must match the latest view, so duplicate or stale submissions fail with a `TableError` code and leave the hand unchanged. Bots act on the server until a human is to act. `view(token)` is also how a client reconnects. Opponents’ cards appear only for players who reach a showdown. The module has no network transport yet. [Table](poker_ai/table.py)
 
 For bot changes, record the rules, seat count, training settings, checkpoint and evaluation opponent along with results. For engine changes, add a reproducible hand or action sequence that exercises the rule. Run the full suite before proposing a change to `main`.
 

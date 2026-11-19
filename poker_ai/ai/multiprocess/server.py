@@ -2,11 +2,13 @@ import logging
 import multiprocessing as mp
 import os
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import enlighten
 
+from poker_ai.ai import ai
 from poker_ai.ai.agent import Agent
 from poker_ai import utils
 from poker_ai.games.short_deck import state
@@ -51,7 +53,7 @@ class Server:
         self._dump_iteration = dump_iteration
         self._update_threshold = update_threshold
         self._save_path = save_path
-        self._lut_path = lut_path
+        self._lut_path = os.path.abspath(str(lut_path)) if lut_path else lut_path
         self._pickle_dir = pickle_dir
         self._agent_path = agent_path
         self._sync_update_strategy = sync_update_strategy
@@ -73,6 +75,12 @@ class Server:
         )
         if os.environ.get("TESTING_SUITE"):
             n_processes = 4
+        # Checkpoint files are written in order by one thread in this process
+        # from snapshots taken between iterations.
+        self._checkpoint_writer = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="checkpoint"
+        )
+        self._pending_checkpoints: List[Future] = []
         self._workers: Dict[str, Worker] = self._start_workers(n_processes)
 
     def search(self):
@@ -104,19 +112,52 @@ class Server:
                         i=i,
                     )
                 self.job("cfr", sync_workers=self._sync_cfr, t=t, i=i)
-            if t < self._lcfr_threshold & t % self._discount_interval == 0:
+            if ai.should_discount(t, self._lcfr_threshold, self._discount_interval):
                 self.job("discount", sync_workers=self._sync_discount, t=t)
             if t > self._update_threshold and t % self._dump_iteration == 0:
-                self.job(
-                    "serialise",
-                    sync_workers=self._sync_serialise,
-                    t=t,
-                    server_state=self.to_dict(),
-                )
+                self.checkpoint(t)
             progress_bar.update()
+        self.wait_for_checkpoints()
+
+    def checkpoint(self, t: int):
+        """
+        Publish a checkpoint describing exactly iterations 1 to `t`.
+
+        Waits until every queued job (all iterations up to `t`) has finished,
+        then copies the shared regret and strategy before any job for `t + 1`
+        is sent. Writing the copy happens on the checkpoint thread, so
+        asynchronous serialisation lets workers continue while the files are
+        written; `--sync_serialise` waits for the write.
+        """
+        self._raise_checkpoint_errors()
+        self._job_queue.join()
+        regret, strategy = ai.snapshot(self._agent, self._locks)
+        future = self._checkpoint_writer.submit(
+            ai.write_checkpoint, regret, strategy, self._save_path, t, self.to_dict()
+        )
+        self._pending_checkpoints.append(future)
+        if self._sync_serialise:
+            future.result()
+
+    def wait_for_checkpoints(self):
+        """Block until every scheduled checkpoint write has finished."""
+        for future in self._pending_checkpoints:
+            future.result()
+        self._pending_checkpoints = []
+
+    def _raise_checkpoint_errors(self):
+        """Surface a failed write from the checkpoint thread."""
+        done = [f for f in self._pending_checkpoints if f.done()]
+        self._pending_checkpoints = [
+            f for f in self._pending_checkpoints if not f.done()
+        ]
+        for future in done:
+            future.result()
 
     def terminate(self, safe: bool = False):
         """Kill all workers."""
+        # Let an in-progress checkpoint finish so its files are complete.
+        self._checkpoint_writer.shutdown(wait=True)
         if safe:
             # Wait for all workers to finish their current jobs.
             self._job_queue.join()

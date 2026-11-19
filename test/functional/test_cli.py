@@ -27,5 +27,19 @@ def test_training_checkpoint(tmp_path, monkeypatch, mode):
     checkpoint, = tmp_path.glob("smoke_*/agent.joblib")
     assert joblib.load(checkpoint)["timestep"] == 1
     assert joblib.load(checkpoint.with_name("server.gz"))["start_timestep"] == 2
-    if mode != ["--multi_process"]:
-        assert joblib.load(checkpoint)["strategy"]
+    # Checkpoints are taken after the iteration's jobs finish in every mode.
+    assert joblib.load(checkpoint)["strategy"]
+
+
+def test_training_schedule_defaults():
+    """Pluribus-style schedule in iterations: discount every 10 until 400."""
+    from poker_ai.ai import ai
+    from poker_ai.ai.runner import start
+    defaults = {p.name: p.default for p in start.params}
+    assert defaults["lcfr_threshold"] == 400
+    assert defaults["discount_interval"] == 10
+    assert defaults["prune_threshold"] == 200
+    assert defaults["update_threshold"] == 400
+    discounted = [t for t in range(1, 1001) if ai.should_discount(
+        t, defaults["lcfr_threshold"], defaults["discount_interval"])]
+    assert discounted == list(range(10, 400, 10))

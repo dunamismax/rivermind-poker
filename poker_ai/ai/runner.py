@@ -1,7 +1,9 @@
 """Train or resume a poker agent."""
+import inspect
 import logging
+import os
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict, Optional, Tuple, Union
 
 import click
 import joblib
@@ -35,15 +37,77 @@ def train():
     pass
 
 
+_SINGLE_PROCESS_KEYS = set(inspect.signature(simple_search).parameters)
+_SERVER_KEYS = set(inspect.signature(Server.__init__).parameters) - {"self"}
+
+
+def load_resume_state(
+    server_config_path: Union[str, Path], lut_path: Optional[str] = None
+) -> Tuple[bool, Dict[str, Any]]:
+    """
+    Read a saved `server.gz` and return `(single_process, kwargs)`.
+
+    `kwargs` suit `simple_search` or `Server`. Accepts checkpoints written
+    before RM-02: single-process files then held the `train start` options
+    (with `nickname` and `sync_*` flags) and no `save_path`, which is taken
+    from the checkpoint's directory. A relative `lut_path` resolves against
+    the current directory, as it did when training started, unless
+    `lut_path` overrides it. If `agent.joblib` embeds a newer resume state
+    than `server.gz` (a dump interrupted between the two files), the newer
+    state wins so iterations are not applied twice.
+    """
+    try:
+        config: Dict[str, Any] = joblib.load(server_config_path)
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            f"Server config file not found at the path: {server_config_path}\n "
+            f"Please set the path to a valid file dumped by a previous session."
+        )
+    agent_path = config.get("agent_path")
+    if agent_path and os.path.isfile(agent_path):
+        embedded = joblib.load(agent_path).get("resume_state")
+        if embedded and embedded["start_timestep"] > config["start_timestep"]:
+            log.warning(
+                "agent.joblib is newer than server.gz; resuming from iteration "
+                f"{embedded['start_timestep']}."
+            )
+            config = embedded
+    config = dict(config)
+    if lut_path is not None:
+        config["lut_path"] = lut_path
+    if config.get("lut_path"):
+        config["lut_path"] = os.path.abspath(str(config["lut_path"]))
+    single_process = bool(config.get("single_process"))
+    if single_process:
+        if "save_path" not in config:
+            source = agent_path or server_config_path
+            config["save_path"] = os.path.dirname(os.path.abspath(str(source)))
+        kwargs = {k: v for k, v in config.items() if k in _SINGLE_PROCESS_KEYS}
+    else:
+        kwargs = {k: v for k, v in config.items() if k in _SERVER_KEYS}
+    return single_process, kwargs
+
+
 @train.command()
 @click.option(
     "--server_config_path",
     default="./server.gz",
     help="The path to the previous server.gz file from a previous study.",
 )
-def resume(server_config_path: str):
+@click.option(
+    "--lut_path",
+    default=None,
+    help=(
+        "Override the saved card table directory, for example when the run "
+        "was started with a relative path from another directory."
+    ),
+)
+def resume(server_config_path: str, lut_path: Optional[str]):
     """
     Continue training agent from config loaded from file.
+
+    The saved mode is kept: single-process runs resume in this process and
+    multiprocess runs restart the worker server.
 
     ...
 
@@ -52,15 +116,16 @@ def resume(server_config_path: str):
     server_config_path : str
         Path to server configurations.
     """
-    try:
-        config = joblib.load(server_config_path)
-    except FileNotFoundError:
-        raise FileNotFoundError(
-            f"Server config file not found at the path: {server_config_path}\n "
-            f"Please set the path to a valid file dumped by a previous session."
-        )
-    server = Server.from_dict(config)
-    _safe_search(server)
+    single_process, kwargs = load_resume_state(server_config_path, lut_path)
+    log.info(
+        f"Resuming {'single' if single_process else 'multi'}-process training "
+        f"at iteration {kwargs['start_timestep']} of {kwargs['n_iterations']}."
+    )
+    if single_process:
+        simple_search(**kwargs)
+    else:
+        server = Server.from_dict(kwargs)
+        _safe_search(server)
 
 
 @train.command()
@@ -77,22 +142,25 @@ def resume(server_config_path: str):
 @click.option(
     "--lcfr_threshold",
     default=400,
+    show_default=True,
     help=(
-        "A threshold for linear CFR which means don't apply discounting "
-        "before this iteration."
+        "Linear CFR window: discount only at iterations strictly before this "
+        "one (Pluribus: the first 400 minutes)."
     ),
 )
 @click.option(
     "--discount_interval",
-    default=400,
+    default=10,
+    show_default=True,
     help=(
-        "Discount the current regret and strategy whenever iteration % "
-        "discount_interval == 0."
+        "Within the linear CFR window, discount regret and strategy whenever "
+        "iteration % discount_interval == 0 (Pluribus: every 10 minutes)."
     ),
 )
 @click.option(
     "--prune_threshold",
-    default=400,
+    default=200,
+    show_default=True,
     help=(
         "When a uniform random number is less than 95%, and the iteration > "
         "prune_threshold, use CFR with pruning."
@@ -195,7 +263,6 @@ def start(
             "simple_search for the optimisation."
         )
         simple_search(
-            config=config,
             save_path=save_path,
             lut_path=lut_path,
             pickle_dir=pickle_dir,
