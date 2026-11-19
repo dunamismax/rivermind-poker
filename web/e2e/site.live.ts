@@ -4,6 +4,7 @@ import {
 	expect,
 	handNumber,
 	noOverflow,
+	playUntil,
 	playUntilHand,
 	sitDown,
 	withCsp as test
@@ -62,6 +63,24 @@ for (const seats of [2, 6, 9]) {
 		await leave(page);
 	});
 }
+
+test('sits out, comes back and rebuys', async ({ page }) => {
+	await sitDown(page, 3, { bots: /Calling bot/, buyIn: /40 big blinds/ });
+	await expect(page.locator('.seat.acting .ring')).toHaveCount(1); // a turn clock is running
+	await page.getByRole('button', { name: 'Sit out next hand' }).click();
+	const sittingOut = page.getByText('You are sitting out.');
+	await playUntil(page, () => sittingOut.isVisible(), LIVE_HAND_MS);
+	await page.getByRole('button', { name: 'I’m back' }).click();
+	await expect(page.getByRole('group', { name: 'Your action' })).toBeVisible({ timeout: 60_000 });
+	await page.getByRole('spinbutton', { name: 'Rebuy amount' }).fill('25');
+	await page.getByRole('button', { name: 'Rebuy' }).click();
+	await expect(
+		page
+			.getByText(/^\+25 after this hand$/)
+			.or(page.getByRole('region', { name: 'Hand log' }).getByText(/adds 25/))
+	).toBeVisible();
+	await leave(page);
+});
 
 test('continues a hand across a service restart', async ({ page }) => {
 	const restart = process.env.LIVE_RESTART_COMMAND;

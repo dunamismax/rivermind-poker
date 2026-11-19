@@ -161,7 +161,7 @@ ssh root@ubuntu-vm 'bash /home/sawyer/github/rivermind-poker/deploy/update.sh'
 
 The site database is set up once with [`deploy/setup-database.sh`](deploy/setup-database.sh), run as root on ubuntu-vm. It is safe to rerun and keeps existing passwords. It creates PostgreSQL roles for an owner, migrations, the web service and tests, plus the `rivermind_poker` and `rivermind_poker_test` databases and pg_hba rules for 127.0.0.1. Credentials go in root-only `/etc/rivermind-poker/web.env`, `migration.env` and `test.env`. `update.sh` runs the test suite against the test database when `test.env` exists, runs `alembic upgrade head` on the site database before restarting the service, and stops if `web.env` is missing, since the unit passes its `DATABASE_URL` to the app.
 
-After a deploy, `pnpm e2e:live` from `web/` checks the site’s headers and plays a hand at 2, 6 and 9 seats; with `LIVE_RESTART_COMMAND="ssh root@ubuntu-vm systemctl restart rivermind-poker"` it also restarts the service mid-hand and checks the hand continues. Set `LIVE_URL` to smoke-test another deployment.
+After a deploy, `pnpm e2e:live` from `web/` checks the site’s headers, plays a hand at 2, 6 and 9 seats, and sits out, comes back and rebuys; with `LIVE_RESTART_COMMAND="ssh root@ubuntu-vm systemctl restart rivermind-poker"` it also restarts the service mid-hand and checks the hand continues. Set `LIVE_URL` to smoke-test another deployment.
 
 For bot changes, record the rules, seat count, training settings, checkpoint and evaluation opponent along with results. For engine changes, add a reproducible hand or action sequence that exercises the rule. Run the full suite before proposing a change to `main`.
 

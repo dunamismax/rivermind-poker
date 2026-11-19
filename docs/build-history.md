@@ -39,6 +39,10 @@ This archive holds the evidence for finished work and older session handoffs, mo
 
 **2026-11-18 · RM-00.** Established the tracker on `main` at baseline `056e542`. Ran `uv sync --locked`, help for both CLI names and for `play`, and `uv run --locked pytest` (55 passed). A scripted terminal check completed and recorded one three-seat hand in each mode using simulated input and temporary results. The offline check used synthetic tables and an empty strategy to exercise fallback. Checked document paths, workflow agreement and the documentation-only diff. Next action for RM-01 is to add fixed hero-win, hero-loss and tie cases alongside the [clustering tests](../test/functional/test_clustering.py).
 
+## Phase 2 session handoffs
+
+**2026-11-19 · P2.1.** Wrote [docs/rules.md](docs/rules.md), the no-limit specification for the Phase 2 engine. For the owner, the choices where card rooms differ: a moving button rather than a dead button; new and returning players dealt in at once with no missed-blind charges; an optional per-player ante; a short big blind still requires a full big blind to call; only a full raise in total reopens betting; odd chips go left of the button per pot; losing hands are auto-mucked and all-in hands tabled; burn cards are dealt; timeouts check or fold. Change any of them before P2.2 builds on them. Next action: P1.6 after the owner approves the deploy.
+
 ## Phase 1 session handoffs
 
 **2026-11-19 · P1.5.** Added the `web` job to the test workflow (pnpm/action-setup v6 reading `web/package.json`, setup-node v7 from `web/.node-version`, Playwright with system dependencies, report uploaded on failure) and listed the web commands in AGENTS.md. Run 44461612198 passed both jobs. Next action: P1.6 needs the owner’s approval to deploy; meanwhile P2.1 may start.
