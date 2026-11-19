@@ -4,8 +4,9 @@ A ``TableRunner`` owns one ``Table``. Its task deals a new hand whenever at
 least two players are dealt in, asks bots for their decisions and waits for
 people to act. Every change, whether from a player request or from the task
 itself, happens under the runner's lock, so changes are applied one at a
-time and published in order. Publishing hands the table's new events to each
-listener; P3.5 saves the table first, so nothing is shown before it is safe.
+time and published in order. Publishing runs the ``before_publish`` hooks,
+which save the table (P3.5) so nothing is shown before it is safe, then hands
+the table's new events to each listener.
 
 Bot decisions run in a worker thread (``asyncio.to_thread``) because a bot
 may take milliseconds or more to decide, which would stall every other table
@@ -24,6 +25,7 @@ generator, an instant ``sleep`` and a ``ManualClock``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import random
 import secrets
@@ -99,19 +101,33 @@ class TableRunner:
             self._task = asyncio.get_running_loop().create_task(self._run(), name=f"table-{self.table_id}")
 
     async def stop(self) -> None:
+        """Stop the task. A change being saved or published finishes first."""
         self._closed = True
         self._wake.set()
-        if self._task is not None:
-            self._task.cancel()
+        task, self._task = self._task, None
+        async with self.lock:
+            if task is not None:
+                task.cancel()
+        if task is not None:
             try:
-                await self._task
+                await task
             except asyncio.CancelledError:
                 pass
-            self._task = None
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
 
     @property
     def running(self) -> bool:
         return self._task is not None and not self._task.done()
+
+    def adopt_bots(self) -> None:
+        """Number new bots after those already seated, so bot ids stay unique."""
+        for _, player in self.table.players():
+            if player.is_bot:
+                with contextlib.suppress(ValueError):
+                    self._bot_count = max(self._bot_count, int(player.player_id.rsplit(":", 1)[1]))
 
     # Requests from players. Each raises TableError and leaves the table unchanged on refusal.
 
@@ -180,11 +196,14 @@ class TableRunner:
                     self.table.rebuy(player.player_id, self.table.config.max_buy_in)
         events = self.table.drain_events()
         self._wake.set()
-        if not events:
+        if not events or self._closed:
             return
         self.last_active = self.options.clock.now()
         for hook in self.before_publish:
             await hook(self, events)
+        # Whatever the hooks did not take is not kept: tables play on for days.
+        self.table.drain_finished()
+        self.table.drain_departures()
         for listener in list(self.listeners):
             try:
                 await listener(self, events)
@@ -293,20 +312,39 @@ class TableRunner:
 
 
 class TableManager:
-    """Creates, finds and closes the server's tables."""
+    """Creates, finds and closes the server's tables.
 
-    def __init__(self, bots: Mapping[str, Policy], options: RunnerOptions | None = None) -> None:
+    ``setup`` is called with each new or restored runner before its task
+    starts, to attach hooks and listeners that must see every change.
+    """
+
+    def __init__(
+        self,
+        bots: Mapping[str, Policy],
+        options: RunnerOptions | None = None,
+        setup: Callable[[TableRunner], None] | None = None,
+    ) -> None:
         self.bots = dict(bots)
         self.options = options or RunnerOptions()
+        self.setup = setup
         self.tables: dict[str, TableRunner] = {}
 
     def create(self, config: TableConfig, *, name: str = "", table_id: str | None = None) -> TableRunner:
         """Make a table and start its task. Call from inside the event loop."""
-        table_id = table_id or secrets.token_urlsafe(9)
+        return self.restore(table_id or secrets.token_urlsafe(9), Table(config, self.options.clock.now), name=name)
+
+    def restore(self, table_id: str, table: Table, *, name: str = "") -> TableRunner:
+        """Run an existing table, such as one loaded from the database (P3.5)."""
         if table_id in self.tables:
             raise ValueError(f"table {table_id} exists")
-        runner = TableRunner(table_id, Table(config, self.options.clock.now), self.bots, self.options, name=name)
+        missing = {p.bot for _, p in table.players() if p.bot is not None and p.bot not in self.bots}
+        if missing:
+            raise ValueError(f"table {table_id} has bots this server does not run: {sorted(missing)}")
+        runner = TableRunner(table_id, table, self.bots, self.options, name=name)
+        runner.adopt_bots()
         self.tables[table_id] = runner
+        if self.setup is not None:
+            self.setup(runner)
         runner.start()
         return runner
 

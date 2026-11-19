@@ -41,6 +41,13 @@ def load_secret(secret_file: str | None) -> bytes | None:
 @click.option("--hand_pause", default=3.0, show_default=True, help="Seconds between hands.")
 @click.option("--bot_delay", default=0.6, show_default=True, help="Seconds a bot waits before acting.")
 @click.option(
+    "--database_url",
+    envvar="DATABASE_URL",
+    default=None,
+    help="PostgreSQL URL for durable tables (default: DATABASE_URL). Migrate it first with "
+    "`alembic upgrade head`. Without one, tables live only in memory.",
+)
+@click.option(
     "--client_dir",
     default=None,
     help="Also serve this SvelteKit build (web/build) with the site's security headers.",
@@ -52,6 +59,7 @@ def serve_nl(
     max_tables: int,
     hand_pause: float,
     bot_delay: float,
+    database_url: str | None,
     client_dir: str | None,
 ) -> None:
     """Serve no-limit tables of 2 to 9 seats against the Phase 2 bots."""
@@ -62,7 +70,16 @@ def serve_nl(
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(message)s")
     options = RunnerOptions(hand_pause=hand_pause, bot_delay=bot_delay, require_person=True)
+    store = None
+    if database_url:
+        from rivermind.db import make_engine
+
+        from .store import TableStore
+
+        store = TableStore(make_engine(database_url))
+    else:
+        logging.getLogger("rivermind.server").warning("No DATABASE_URL: tables will not survive a restart")
     app = create_app(
-        secret=load_secret(secret_file), options=options, max_tables=max_tables, client_dir=client_dir
+        secret=load_secret(secret_file), options=options, max_tables=max_tables, client_dir=client_dir, store=store
     )
     uvicorn.run(app, host=host, port=port, log_level="info", ws_max_size=64 * 1024, server_header=False)

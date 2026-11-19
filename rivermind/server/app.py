@@ -10,6 +10,11 @@ A player's seat is marked disconnected when their last socket following
 that table closes, and connected again when one follows it; the table's
 clock then sits them out if they stay away (P3.3). A table closes when no
 person holds a seat, and idle tables are evicted when the server needs room.
+
+With a ``TableStore`` (P3.5) every table is saved to PostgreSQL after each
+change and before any socket hears of it, and the open tables are restored
+when the app starts. Nobody is connected to a restored table yet, so its
+people are marked disconnected until they rejoin.
 """
 
 from __future__ import annotations
@@ -33,7 +38,11 @@ from rivermind.engine import Action, ActionKind
 
 from . import auth
 from . import protocol as p
+from rivermind.engine.history import FormatError
+
 from .runner import BOT_LABELS, RunnerOptions, TableManager, TableRunner, default_bots
+from .snapshot import table_from_dict
+from .store import TableSaver, TableStore
 from .table import Event, TableConfig, TableError
 from .views import table_events, table_view
 
@@ -99,8 +108,10 @@ class Server:
         options: RunnerOptions,
         max_tables: int,
         idle_seconds: float,
+        store: TableStore | None = None,
     ) -> None:
         self.secret = secret
+        self.store = store
         self.bots = dict(bots)
         self.options = options
         self.max_tables = max_tables
@@ -117,7 +128,35 @@ class Server:
         return self.manager
 
     async def start(self) -> None:
-        self.manager = TableManager(self.bots, self.options)
+        self.manager = TableManager(self.bots, self.options, setup=self._setup)
+        if self.store is not None:
+            await self._restore(self.store)
+
+    def _setup(self, runner: TableRunner) -> None:
+        if self.store is not None:
+            runner.before_publish.append(TableSaver(self.store))
+        runner.listeners.append(self._watch_table)
+
+    async def _restore(self, store: TableStore) -> None:
+        """Run every open table saved in the database again."""
+        restored = 0
+        for saved in await asyncio.to_thread(store.load_open):
+            try:
+                table = table_from_dict(saved.state, self.options.clock.now)
+                runner = self.tables.restore(saved.table_id, table, name=saved.name)
+            except (FormatError, ValueError):
+                log.exception("Could not restore table %s; closing it", saved.table_id)
+                await asyncio.to_thread(store.close, saved.table_id)
+                continue
+            restored += 1
+            if not runner.has_people():
+                self._schedule_close(saved.table_id, "Everyone has left the table.")
+                continue
+            for _, player in list(table.players()):
+                if not player.is_bot and player.connected:
+                    await runner.set_connected(player.player_id, False)
+        if restored:
+            log.info("Restored %d table(s) from the database", restored)
 
     async def stop(self) -> None:
         if self.manager is not None:
@@ -147,7 +186,6 @@ class Server:
             raise HTTPException(503, "Every table is in use; try again later.")
         label = BOT_LABELS.get(request.bots, request.bots)
         runner = self.tables.create(config, name=f"{request.seats}-seat table with {label}s")
-        runner.listeners.append(self._watch_table)
         # Bots first: with require_person, nothing is dealt until the person sits.
         for seat in range(1, request.seats):
             await runner.seat_bot(seat, request.bots)
@@ -168,6 +206,11 @@ class Server:
     async def _close_table(self, table_id: str, message: str) -> None:
         try:
             await self.tables.close(table_id)
+            if self.store is not None:
+                try:
+                    await asyncio.to_thread(self.store.close, table_id)
+                except Exception:
+                    log.exception("Could not mark table %s closed in the database", table_id)
             for connection in list(self.connections):
                 if connection.tables.pop(table_id, None) is not None:
                     connection.send(p.TableClosedMessage(type="table_closed", table_id=table_id, message=message))
@@ -284,19 +327,22 @@ def create_app(
     max_tables: int = 200,
     idle_seconds: float = 24 * 3600,
     client_dir: str | None = None,
+    store: TableStore | None = None,
 ) -> FastAPI:
     """Build the no-limit table server.
 
     ``secret`` signs player tokens; without one a random secret is made, so
     tokens last only as long as the process. With ``client_dir`` (the
     SvelteKit build) the app also serves the client, as Caddy does live.
+    With ``store`` tables are saved to PostgreSQL and restored at startup;
+    without one they live only in memory.
     """
     if secret is None:
         log.warning("No secret given: player tokens will not survive a restart")
         secret = secrets.token_bytes(32)
     if options is None:
         options = RunnerOptions(require_person=True)
-    server = Server(secret, bots if bots is not None else default_bots(), options, max_tables, idle_seconds)
+    server = Server(secret, bots if bots is not None else default_bots(), options, max_tables, idle_seconds, store)
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
