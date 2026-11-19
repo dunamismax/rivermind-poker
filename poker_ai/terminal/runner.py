@@ -17,9 +17,9 @@ from poker_ai.utils.algos import rotate_list
 
 
 @click.command()
-@click.option('--lut_path', required=True, type=str)
+@click.option('--lut_path', default=".", type=str)
 @click.option('--pickle_dir', required=False, default=False, type=bool)
-@click.option('--agent', required=False, default="offline", type=str)
+@click.option('--agent', default="offline", type=click.Choice(["random", "offline"]))
 @click.option('--strategy_path', required=False, default="", type=str)
 @click.option('--debug_quick_start/--no_debug_quick_start', default=False)
 def run_terminal_app(
@@ -29,30 +29,18 @@ def run_terminal_app(
     strategy_path: str = "",
     debug_quick_start: bool = False
 ):
-    """Start up terminal app to play against your poker AI.
-
-    Example
-    -------
-
-    Usually you would call this from the `poker_ai` CLI. Alternatively you can
-    call this method from this module directly from python.
-
-    ```bash
-    python -m poker_ai.terminal.runner                                       \
-        --lut_path ./research/blueprint_algo                               \
-        --agent offline                                                      \
-        --pickle_dir ./research/blueprint_algo                               \
-        --strategy_path ./agent.joblib                                       \
-        --no_debug_quick_start
-    ```
-    """
+    """Play a three-seat table. Use --agent random for a game without training data."""
+    if debug_quick_start:
+        agent = "random"
+    if agent == "offline" and not strategy_path:
+        raise click.UsageError("Offline play requires --strategy_path and matching card tables.")
     term = Terminal()
     log = AsciiLogger(term)
     n_players: int = 3
-    if debug_quick_start:
+    if agent == "random":
         state: ShortDeckPokerState = new_game(n_players, {}, load_card_lut=False)
     else:
-        state: ShortDeckPokerState = new_game(
+        state = new_game(
             n_players,
             lut_path=lut_path,
             pickle_dir=pickle_dir
@@ -61,13 +49,8 @@ def run_terminal_app(
     selected_action_i: int = 0
     positions = ["left", "middle", "right"]
     names = {"left": "BOT 1", "middle": "BOT 2", "right": "HUMAN"}
-    if not debug_quick_start and agent in {"offline", "online"}:
-        offline_strategy_dict = joblib.load(strategy_path)
-        offline_strategy = offline_strategy_dict['strategy']
-        # Using the more fine grained preflop strategy would be a good idea
-        # for a future improvement
-        del offline_strategy_dict["pre_flop_strategy"]
-        del offline_strategy_dict["regret"]
+    if agent == "offline":
+        offline_strategy = joblib.load(strategy_path)["strategy"]
     else:
         offline_strategy = {}
     user_results: UserResults = UserResults()
@@ -128,7 +111,7 @@ def run_terminal_app(
                 # previously picked the last one.
                 selected_action_i %= len(legal_actions)
                 key = term.inkey(timeout=None)
-                if key.name == "q":
+                if key.lower() == "q":
                     log.info(term.pink("quit"))
                     break
                 elif key.name == "KEY_LEFT":
@@ -147,13 +130,13 @@ def run_terminal_app(
                         user_results.add_result(strategy_path, agent, state, og_name_to_name)
                         log.clear()
                         log.info(term.green("new game"))
-                        if debug_quick_start:
+                        if agent == "random":
                             state: ShortDeckPokerState = new_game(
                                 n_players, state.card_info_lut, load_card_lut=False,
                             )
                         else:
                             state: ShortDeckPokerState = new_game(
-                                n_players, state.card_info_lut,
+                                n_players, state.card_info_lut, pickle_dir=pickle_dir,
                             )
                         n_table_rotations -= 1
                         if n_table_rotations < 0:

@@ -13,7 +13,6 @@ from poker_ai.games.short_deck import state
 from poker_ai.ai.multiprocess.worker import Worker
 
 log = logging.getLogger("sync.server")
-manager = mp.Manager()
 
 
 class Server:
@@ -39,7 +38,7 @@ class Server:
         sync_discount: bool = False,
         sync_serialise: bool = False,
         start_timestep: int = 1,
-        n_processes: int = mp.cpu_count() - 1,
+        n_processes: int = max(1, mp.cpu_count() - 1),
     ):
         """Set up the optimisation server."""
         self._strategy_interval = strategy_interval

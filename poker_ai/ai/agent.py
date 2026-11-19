@@ -1,11 +1,8 @@
 import multiprocessing as mp
-import os
 from pathlib import Path
 from typing import Callable, Optional, Union
 
 import joblib
-
-manager = mp.Manager()
 
 
 class Agent:
@@ -35,10 +32,8 @@ class Agent:
         use_manager: bool = True,
     ):
         """Construct an agent."""
-        # Don't use manager if we are running tests.
-        testing_suite = bool(os.environ.get("TESTING_SUITE", False))
-        use_manager = use_manager and not testing_suite
-        dict_constructor: Callable = manager.dict if use_manager else dict
+        # Dict proxies keep the manager alive in the process that created them.
+        dict_constructor: Callable = mp.Manager().dict if use_manager else dict
         self.strategy = dict_constructor()
         self.regret = dict_constructor()
         if agent_path is not None:

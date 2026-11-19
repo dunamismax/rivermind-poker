@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import logging
 import multiprocessing as mp
@@ -150,8 +152,8 @@ def cfr(
     log.debug(f"P(h) Updating Regret? {state.player_i == i}")
     log.debug(f"Betting Round {state._betting_stage}")
     log.debug(f"Community Cards {state._table.community_cards}")
-    for i, player in enumerate(state.players):
-        log.debug(f"Player {i} hole cards: {player.cards}")
+    for seat, player in enumerate(state.players):
+        log.debug(f"Player {seat} hole cards: {player.cards}")
     try:
         log.debug(f"I(h): {state.info_set}")
     except KeyError:

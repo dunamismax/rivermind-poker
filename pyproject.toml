@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rivermind-poker"
+version = "0.1.0.dev0"
+description = "A short-deck poker engine and self-play bot for RiverMind Poker"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE", "licenses/*.txt"]
+maintainers = [{name = "RiverMind Poker contributors"}]
+dependencies = [
+    "blessed>=1.20",
+    "click>=8.1",
+    "enlighten>=1.12",
+    "joblib>=1.4",
+    "numpy>=2",
+    "PyYAML>=6",
+    "rich>=13",
+    "scikit-learn>=1.5",
+    "scipy>=1.13",
+    "tqdm>=4.66",
+]
+
+[project.urls]
+Repository = "https://github.com/dunamismax/rivermind-poker"
+
+[project.scripts]
+rivermind-poker = "poker_ai.cli.runner:cli"
+poker_ai = "poker_ai.cli.runner:cli"
+
+[tool.setuptools.packages.find]
+include = ["poker_ai", "poker_ai.*"]
+namespaces = false
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]

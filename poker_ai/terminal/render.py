@@ -46,6 +46,7 @@ def print_header(
     state: ShortDeckPokerState,
     og_name_to_name: Dict[str, str]
 ):
+    print(term.center(term.bold("RiverMind Poker")))
     for line in _compute_header_lines(state, og_name_to_name):
         print(term.center(term.yellow(line)))
     print(f"\n{term.width * '-'}\n")

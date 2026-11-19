@@ -1,11 +1,12 @@
 import collections
 import copy
+import pickle
 import random
+from pathlib import Path
 from typing import List, Tuple, Optional
 
 import pytest
 import numpy as np
-import dill as pickle
 
 from poker_ai.games.short_deck.state import ShortDeckPokerState
 from poker_ai.games.short_deck.player import ShortDeckPokerPlayer
@@ -110,16 +111,13 @@ def test_short_deck_2():
     assert state.betting_stage == "terminal"
 
 
-@pytest.mark.parametrize(
-    "n_players",
-    [
-        pytest.param(0, marks=pytest.mark.xfail),
-        pytest.param(1, marks=pytest.mark.xfail),
-        2,
-        3,
-        4,
-    ],
-)
+@pytest.mark.parametrize("n_players", [0, 1])
+def test_rejects_too_few_players(n_players):
+    with pytest.raises(ValueError, match="At least 2 players"):
+        _new_game(n_players=n_players)
+
+
+@pytest.mark.parametrize("n_players", [2, 3, 4])
 def test_short_deck_3(n_players: int):
     """Check the state fails when the wrong number of players are provided.
 
@@ -164,7 +162,7 @@ def test_pre_flop_pot(n_players: int, small_blind: int, big_blind: int):
     )
     n_bet_chips = sum(p.n_bet_chips for p in state.players)
     target = small_blind + big_blind
-    assert state.player_i == 0 if n_players == 2 else 2
+    assert state.player_i == (0 if n_players == 2 else 2)
     assert state.betting_stage == "pre_flop"
     assert (
         n_bet_chips == target
@@ -244,7 +242,7 @@ def test_action_sequence(n_players: int):
     """
     # Seed the random number generation so things are procedural/reproducable.
     seed(42)
-    directory = "research/size_of_problem/action_sequences.pkl"
+    directory = Path(__file__).resolve().parents[1] / "fixtures" / "action_sequences.pkl"
     action_sequences = _load_action_sequences(directory)
     for i in range(200):
         state, _ = _new_game(n_players=n_players, small_blind=50, big_blind=100)

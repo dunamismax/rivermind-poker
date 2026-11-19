@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib.metadata import version
 import logging
 
 from rich.logging import RichHandler
@@ -17,4 +18,4 @@ from . import poker
 from . import terminal
 from . import utils
 
-__version__ = "1.0.0rc3"
+__version__ = version("rivermind-poker")
