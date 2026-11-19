@@ -7,11 +7,11 @@ This file is the single source of truth for project status, from today’s worki
 | | |
 | --- | --- |
 | **Current phase** | Phase 1 · SvelteKit client |
-| **Next step** | **P1.1** Scaffold the SvelteKit app |
-| **In progress** | **P1.1** Scaffold the SvelteKit app in `web/` with the dev proxy and a placeholder page (claimed 2026-11-19) |
+| **Next step** | **P1.2** Typed protocol shared by server and client |
+| **In progress** | _None_ |
 | **Blockers** | _None_ |
 | **Live site** | https://rivermindpoker.com runs the Phase 0 prototype: a three-seat, fixed-limit, 20-card game against random bots or the RM-06 checkpoint. It uses FastAPI, WebSockets and a vanilla JavaScript client. Tables survive restarts. |
-| **`main`** | All Phase 0 work is on `main`, which pushes to GitHub and Codeberg. GitHub Actions passes on every push. |
+| **`main`** | Phase 0 and the P1.1 scaffold in `web/` are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python suite on every push. |
 | **Last updated** | 2026-11-19 |
 
 ## The 1.0 product
@@ -110,12 +110,13 @@ Each question has a default. Agents build on the default until the owner decides
 - [ ] Browser tests pass in Chromium, Firefox and WebKit, at desktop and phone sizes.
 - [ ] CI runs the Python and web suites and passes on GitHub.
 
-- [ ] **P1.1 · Scaffold the SvelteKit app** · Depends on: none
-  - [ ] `web/` contains a SvelteKit app using Svelte 5 and strict TypeScript, with `adapter-static` and a `200.html` fallback, and `ssr = false` in the root layout.
-  - [ ] pnpm with a committed `pnpm-lock.yaml`, and the Node LTS major pinned in `web/.node-version` and `package.json` `engines`.
-  - [ ] Scripts: `dev`, `build`, `check` (svelte-check), `lint` (ESLint and Prettier), `test` (Vitest) and `e2e` (Playwright).
-  - [ ] The Vite dev server proxies `/api` and `/ws` to `rivermind-poker serve` on port 8000. With both running, a placeholder page shows the result of `/api/config`.
-  - [ ] `pnpm install --frozen-lockfile && pnpm check && pnpm lint && pnpm build` succeeds from a clean clone. CONTRIBUTING.md documents the commands.
+- [x] **P1.1 · Scaffold the SvelteKit app** · Depends on: none
+  - [x] `web/` contains a SvelteKit app using Svelte 5 and strict TypeScript, with `adapter-static` and a `200.html` fallback, and `ssr = false` in the root layout.
+  - [x] pnpm with a committed `pnpm-lock.yaml`, and the Node LTS major pinned in `web/.node-version` and `package.json` `engines`.
+  - [x] Scripts: `dev`, `build`, `check` (svelte-check), `lint` (ESLint and Prettier), `test` (Vitest) and `e2e` (Playwright).
+  - [x] The Vite dev server proxies `/api` and `/ws` to `rivermind-poker serve` on port 8000. With both running, a placeholder page shows the result of `/api/config`.
+  - [x] `pnpm install --frozen-lockfile && pnpm check && pnpm lint && pnpm build` succeeds from a clean clone. CONTRIBUTING.md documents the commands.
+  - Evidence: `be99381`. SvelteKit 3.3 and Svelte 5.57 with Node 26 and pnpm 12.18. In a fresh clone, `pnpm install --frozen-lockfile && pnpm check && pnpm lint && pnpm build` passed; `pnpm test` (3) and `pnpm e2e` (Chromium, placeholder page against a real `serve`) passed; with `serve` and `pnpm dev` running, the browser showed "Opponents available: random" and a Node WebSocket joined a table through the `/ws` proxy; `uv run --locked pytest` 123 passed.
 
 - [ ] **P1.2 · Typed protocol shared by server and client** · Depends on: P1.1
   - [ ] Pydantic models describe every HTTP body and every WebSocket message in both directions, including the full seat view, in `poker_ai/web/protocol.py`. Phase 3 moves this module into `rivermind/server`.
@@ -424,6 +425,8 @@ These are possible directions after the release:
 ## Handoff log
 
 Newest first. Keep eight entries and move older ones to [docs/build-history.md](docs/build-history.md). Each entry gives the date, the step IDs, what changed, the checks actually run and the next concrete action.
+
+**2026-11-19 · P1.1.** Scaffolded `web/` with `sv create` (SvelteKit 3.3, which configures the kit in `vite.config.ts`; `#lib/…` subpath imports take the file extension). Added the 200.html fallback, `ssr = false`, the Node 26 pin, the scripts, the `/api` and `/ws` proxy and a placeholder page, and documented them in CONTRIBUTING. Ran the clean-clone install, check, lint and build, Vitest, Playwright in Chromium, a browser check against `serve`, and pytest (123 passed). Note for P1.3: the SPA fallback bootstraps with an inline `<script>`, which the current `script-src 'self'` CSP blocks. Next action: P1.2.
 
 **2026-11-19 · Plan to 1.0.** At the owner’s request, rewrote this tracker into phases toward 1.0 with checkable steps. It now covers the expanded scope (multiplayer, 2 to 9 seats, no-limit, strong bots, a full site) and records the stack decisions as D-1 to D-9. Phase 0 evidence and earlier handoffs moved verbatim to [docs/build-history.md](docs/build-history.md), and [AGENTS.md](AGENTS.md) and the [roadmap](docs/roadmap.md) were aligned with the new format. GitHub Actions showed passing runs for the latest pushes. Next action: P1.1.
 
