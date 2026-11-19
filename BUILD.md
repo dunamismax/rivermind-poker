@@ -7,11 +7,11 @@ This file is the single source of truth for project status, from today’s worki
 | | |
 | --- | --- |
 | **Current phase** | Phase 1 · SvelteKit client |
-| **Next step** | **P1.4** Unit and browser tests |
-| **In progress** | **P1.4** Vitest for wording and the socket store; Playwright flows in three browsers (claimed 2026-11-19) |
+| **Next step** | **P1.5** CI for the web app |
+| **In progress** | _None_ |
 | **Blockers** | _None_ |
 | **Live site** | https://rivermindpoker.com runs the Phase 0 prototype: a three-seat, fixed-limit, 20-card game against random bots or the RM-06 checkpoint. It uses FastAPI, WebSockets and a vanilla JavaScript client. Tables survive restarts. |
-| **`main`** | Phase 0, the P1.1 scaffold, the P1.2 typed protocol and the P1.3 SvelteKit table UI are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python suite on every push. |
+| **`main`** | Phase 0, the P1.1 scaffold, the P1.2 typed protocol the P1.3 SvelteKit table UI and the P1.4 tests are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python suite on every push. |
 | **Last updated** | 2026-11-19 |
 
 ## The 1.0 product
@@ -107,7 +107,7 @@ Each question has a default. Agents build on the default until the owner decides
 
 **Exit criteria**
 - [ ] The live site serves the SvelteKit client, and every behaviour on the P1.3 parity list works there.
-- [ ] Browser tests pass in Chromium, Firefox and WebKit, at desktop and phone sizes.
+- [x] Browser tests pass in Chromium, Firefox and WebKit, at desktop and phone sizes. (P1.4 evidence)
 - [ ] CI runs the Python and web suites and passes on GitHub.
 
 - [x] **P1.1 · Scaffold the SvelteKit app** · Depends on: none
@@ -141,15 +141,16 @@ Each question has a default. Agents build on the default until the owner decides
   - [x] Layout has no horizontal overflow at 375×812 and is comfortable at 1440×900. Reduced motion is respected and there is no inline script or style, so the current CSP holds.
   - Evidence: `8a4c757`. In the browser pane against `serve --client_dir web/build --state_path …` (and the RM-06 checkpoint for the opponent choice), checked every parity item: both opponent kinds with the checkpoint preselected; Check, Call, Bet and Raise labels; "checks", "bets 200", "calls 50 and raises 100" wording; log lines revealing in sequence (sampled 1/1, 3/5, 4/5, 5/5 over a second); last action per seat; showdown reveal and hidden cards on fold-outs; result, payouts and session balance; Next hand and Leave table; the closed-table message after a restart without state; rejoining after a reload and after killing and restarting the server. No CSP violations were logged, `scrollWidth` equalled the 375 px viewport at the table and the result, and 1440×900 shows the centred 760 px table. pytest 138 passed; web check, lint, Vitest, build and Playwright (Chromium desktop and phone) passed.
 
-- [ ] **P1.4 · Unit and browser tests** · Depends on: P1.3
-  - [ ] Vitest covers the wording and amount helpers and the socket store (against a mock socket: join, stale error, reconnect).
-  - [ ] Playwright runs against a real `serve --state_path` with random opponents and covers:
+- [x] **P1.4 · Unit and browser tests** · Depends on: P1.3
+  - [x] Vitest covers the wording and amount helpers and the socket store (against a mock socket: join, stale error, reconnect).
+  - [x] Playwright runs against a real `serve --state_path` with random opponents and covers:
     - completing three consecutive hands;
     - rejoining after a mid-hand reload;
     - continuing after the server process is restarted;
     - the closed-table path;
     - no horizontal overflow at 375×812.
-  - [ ] Playwright projects for Chromium, Firefox and WebKit all pass. This closes the Phase 0 gap of Chromium-only testing.
+  - [x] Playwright projects for Chromium, Firefox and WebKit all pass. This closes the Phase 0 gap of Chromium-only testing.
+  - Evidence: `66fb895`. `pnpm test` 28 passed (wording, results, hand log and the socket store against a mock socket). `pnpm e2e` 36 passed (six tests × Chromium, Firefox and WebKit at 1440×900 and 375×812) against a real `serve --client_dir web/build --state_path` per worker, with the restart test killing the process group; `--repeat-each 2` gave 72 of 72. Every test also fails on a CSP violation. pytest 138 passed; check, lint and build passed.
 
 - [ ] **P1.5 · CI for the web app** · Depends on: P1.4
   - [ ] [`.github/workflows/test.yml`](.github/workflows/test.yml) gains a web job: frozen pnpm install, check, lint, Vitest, build and Playwright against the Python server.
@@ -427,6 +428,8 @@ These are possible directions after the release:
 ## Handoff log
 
 Newest first. Keep eight entries and move older ones to [docs/build-history.md](docs/build-history.md). Each entry gives the date, the step IDs, what changed, the checks actually run and the next concrete action.
+
+**2026-11-19 · P1.4.** Added Vitest specs for `wording.ts` and `TableConnection` (injectable socket, timers and storage), and six Playwright flows run in six projects. Each worker starts its own server on port 8700 and up in a detached process group, because killing `uv run` alone leaves the Python server running. 36 of 36 browser runs passed, and 72 of 72 with `--repeat-each 2`. Next action: P1.5.
 
 **2026-11-19 · P1.3.** Ported the table to Svelte components with a `TableConnection` store and `wording.ts` helpers that match the vanilla client, plus a visible "Bot" label on bot seats (D-7). Found that SvelteKit's SPA fallback uses an inline bootstrap script and its route announcer an inline style, both blocked by the site CSP; the build now externalizes the script and fails on any inline code, and a Vite plugin drops the style. Added `serve --client_dir` so the built client runs locally with the production headers (P1.6 still removes the legacy client), and a Playwright harness that starts its own server per worker. Checks are in the P1.3 evidence. Next action: P1.4.
 
