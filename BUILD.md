@@ -6,12 +6,12 @@ This file is the single source of truth for project status, from today’s worki
 
 | | |
 | --- | --- |
-| **Current phase** | Phase 2 · No-limit hold’em engine |
-| **Next step** | **P2.2** State machine and legal actions |
+| **Current phase** | Phase 3 · Table server v2 |
+| **Next step** | **P3.1** PostgreSQL foundation |
 | **In progress** | _None_ |
-| **Blockers** | _None._ Phase 1 is complete. Before P2.2 builds on them, the owner may still change the [rules choices](docs/rules.md#choices) listed in the P2.1 handoff. |
+| **Blockers** | _None._ Phases 1 and 2 are complete. P3.1 ends with an **Owner gate** for creating the site’s database and role on ubuntu-vm. The Phase 2 commits are local and not yet pushed. |
 | **Live site** | https://rivermindpoker.com runs the Phase 0 game (three seats, fixed limit, 20 cards, against random bots or the RM-06 checkpoint) in the SvelteKit client. Caddy serves the client from `/srv/rivermindpoker.com/current` and proxies `/api/*` and `/ws` to the FastAPI app. Tables survive restarts. Deployed at `a172a17`. |
-| **`main`** | Phases 0 and 1, the P2.1 rules and the P6.5 card artwork are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python and web suites on every push. |
+| **`main`** | Phases 0 to 2 and the P6.5 card artwork are on `main`. The no-limit engine is in `rivermind/engine` and the simple bots in `rivermind/bots`, but the live site still runs the Phase 0 game until P3.7. `main` pushes to GitHub and Codeberg, and GitHub Actions runs the Python and web suites on every push. |
 | **Last updated** | 2026-11-19 |
 
 ## The 1.0 product
@@ -70,7 +70,7 @@ Each question has a default. Agents build on the default until the owner decides
 
 - [x] **Phase 0 · Prototype and foundation.** Training repairs, a bot baseline, a server-owned table, the browser client, self-hosting and restart-safe tables.
 - [x] **Phase 1 · SvelteKit client.** Replace the vanilla client with SvelteKit on the existing protocol, with browser tests and CI.
-- [ ] **Phase 2 · No-limit hold’em engine.** A correct, tested 52-card no-limit engine for 2 to 9 seats, with hand histories.
+- [x] **Phase 2 · No-limit hold’em engine.** A correct, tested 52-card no-limit engine for 2 to 9 seats, with hand histories.
 - [ ] **Phase 3 · Table server v2.** Multi-seat tables on the new engine with PostgreSQL persistence, action clocks and the live cutover.
 - [ ] **Phase 4 · Multiplayer and identity.** Anonymous players, a play-chip wallet, a lobby, safe multi-human tables and fair dealing.
 - [ ] **Phase 5 · Strong bots.** No-limit abstractions, training, evaluation, a promotion gate and serving, for heads-up, 6-max and 9-max.
@@ -171,9 +171,9 @@ Each question has a default. Agents build on the default until the owner decides
 **Goal.** A new, pure engine in `rivermind/engine` for 52-card no-limit Texas hold’em with 2 to 9 seats. It must be correct to the rules, fully tested and fast enough to train bots on. It shares no mutable global state and takes randomness only from its caller.
 
 **Exit criteria**
-- [ ] Every rule in `docs/rules.md` has a passing fixture test, and the property tests and fuzzing find no failures.
-- [ ] Hand histories round-trip through versioned JSON and replay to identical states.
-- [ ] Measured speed is recorded and meets the P2.6 target.
+- [x] Every rule in `docs/rules.md` has a passing fixture test, and the property tests and fuzzing find no failures. (P2.2 to P2.4 evidence; rules 2.3 and 13.2 are table behaviour, covered by folding here and built in P3.2 and P3.3)
+- [x] Hand histories round-trip through versioned JSON and replay to identical states. (P2.5 evidence)
+- [x] Measured speed is recorded and meets the P2.6 target. (P2.6 evidence)
 
 - [x] **P2.1 · Write the rules specification** · Depends on: none (may start during Phase 1)
   - [x] `docs/rules.md` covers the game rules:
@@ -193,37 +193,43 @@ Each question has a default. Agents build on the default until the owner decides
   - [x] Each rule has at least one worked example. Choices that vary between card rooms are listed with the option chosen, and the list is noted in the handoff for the owner.
   - Evidence: `8878047`. [docs/rules.md](docs/rules.md) covers every listed rule with 25 worked examples and a Choices table. The side-pot, uncalled-bet and odd-chip examples were recomputed with a throwaway script (which caught and fixed one wrong pot total), the hand-ranking example was checked with the Deuces evaluator (A♥3♦ beats Q♣J♣ on K♠K♥7♦7♣2♠; A♣4♣ ties), and the internal links resolve. pytest 138 passed.
 
-- [ ] **P2.2 · State machine and legal actions** · Depends on: P2.1
-  - [ ] Immutable state objects provide `legal_actions(state)` (fold, check, call, and bet or raise with exact minimum and maximum amounts) and `apply(state, action)`. Dealing uses a deck order or random generator supplied by the caller.
-  - [ ] Tests cover action order on every street for 2, 3, 6 and 9 seats, heads-up blinds, and every street transition, including all-ins that skip later betting.
+- [x] **P2.2 · State machine and legal actions** · Depends on: P2.1
+  - [x] Immutable state objects provide `legal_actions(state)` (fold, check, call, and bet or raise with exact minimum and maximum amounts) and `apply(state, action)`. Dealing uses a deck order or random generator supplied by the caller.
+  - [x] Tests cover action order on every street for 2, 3, 6 and 9 seats, heads-up blinds, and every street transition, including all-ins that skip later betting.
+  - Evidence: `0e8e63e`. [rivermind/engine](rivermind/engine/) holds frozen `HandState` objects, `start_hand`, `legal_actions`, `apply`, `timeout_action` and the button helpers in `seating.py`. [test_rules.py](test/engine/test_rules.py) (37 tests) checks the examples in rules sections 1 to 8 and 13, action order on every street for 2, 3, 6 and 9 seats with different buttons and empty seats, and all-ins that skip later betting. Two rules were added to the specification: 7.8 (no raise when everyone else still in is all-in) and the river case in 12.1. pytest 217 passed at that commit.
 
-- [ ] **P2.3 · Pots, showdown and payouts** · Depends on: P2.2
-  - [ ] Side pots, split pots, odd chips and returned uncalled bets are implemented. Hands are ranked with the existing Deuces evaluator, which handles seven cards; keep its MIT notice.
-  - [ ] Table-driven tests run at least 30 fixed hands taken from the specification’s examples, each checking every payout.
+- [x] **P2.3 · Pots, showdown and payouts** · Depends on: P2.2
+  - [x] Side pots, split pots, odd chips and returned uncalled bets are implemented. Hands are ranked with the existing Deuces evaluator, which handles seven cards; keep its MIT notice.
+  - [x] Table-driven tests run at least 30 fixed hands taken from the specification’s examples, each checking every payout.
+  - Evidence: `0e8e63e`. `pots.py` handles uncalled bets, side pots and odd chips, and `state.py` applies the showing and mucking order of rule 12. [evaluator.py](rivermind/engine/evaluator.py) ports Deuces with its notice and a memoized seven-card path (about 0.5 µs per hand). It gave the same rank as the legacy Deuces copy on 60,000 random five-, six- and seven-card hands. [fixtures.py](test/engine/fixtures.py) has 33 hands, from fold-outs to nine all-ins with eight side pots. Their expected final stacks, pots, returned bets and shown or mucked seats were worked out by hand from the rules, and every one passes.
 
-- [ ] **P2.4 · Properties and fuzzing** · Depends on: P2.3
-  - [ ] Hypothesis property tests check that:
+- [x] **P2.4 · Properties and fuzzing** · Depends on: P2.3
+  - [x] Hypothesis property tests check that:
     - chips are conserved and no stack goes negative;
     - every action from `legal_actions` applies cleanly and anything else is rejected;
     - every hand ends;
     - pots always equal what was put in.
-  - [ ] A self-play fuzz run plays random legal actions with random stacks at every seat count from 2 to 9. A short version runs in CI, and the long version (at least 100,000 hands per seat count) runs on demand, with its results recorded.
+  - [x] A self-play fuzz run plays random legal actions with random stacks at every seat count from 2 to 9. A short version runs in CI, and the long version (at least 100,000 hands per seat count) runs on demand, with its results recorded.
+  - Evidence: `9a704d9` and `fbde4ea`. [test_properties.py](test/engine/test_properties.py) runs 300 Hypothesis examples of legal play from random stakes, antes, stacks and seat counts, and 200 of arbitrary actions. The same file runs the short fuzz (300 hands per seat count) in the normal suite. `uv run python -m rivermind.engine.fuzz --hands 100000 --seats 2-9 --seed 0` played 800,000 hands and 10,436,878 actions in 200 s with 0 failures. Each action also checked that nearby illegal actions were rejected. Showdowns at 2 to 9 seats included 375,878 played in order and 336,497 tabled, with 277,125 hands including a muck and 453,165 with side pots. A first long run with uniform action choice also passed, but it tabled almost every showdown, so the action mix was reweighted.
 
-- [ ] **P2.5 · Hand histories and serialization** · Depends on: P2.3
-  - [ ] States and hand histories serialize to versioned JSON (with a `"format"` version field). Replaying a history reproduces the identical final state. There is also a readable plain-text history format.
-  - [ ] Round-trip and replay tests cover every fixture hand and a sample of fuzzed hands.
+- [x] **P2.5 · Hand histories and serialization** · Depends on: P2.3
+  - [x] States and hand histories serialize to versioned JSON (with a `"format"` version field). Replaying a history reproduces the identical final state. There is also a readable plain-text history format.
+  - [x] Round-trip and replay tests cover every fixture hand and a sample of fuzzed hands.
+  - Evidence: `369c0d6`. [history.py](rivermind/engine/history.py) writes `hand_state` and `hand_history` documents with `"format": 1`. A hand record carries the stakes, stacks, button, deck and actions, plus final stacks and board that the replay checks. [test_history.py](test/engine/test_history.py) round-trips every intermediate state of all 33 fixture hands and 400 fuzzed hands, and replays them to equal states. It also rejects unknown formats, wrong kinds and tampered records. `format_text` was read for side-pot and all-in hands: tabled hands appear before the runout, and a mucked hand appears only in its owner’s and the server’s text.
 
-- [ ] **P2.6 · Performance** · Depends on: P2.4
-  - [ ] A benchmark script measures random self-play speed for 2, 6 and 9 seats on this Mac, and the results are recorded in the step evidence. Target: at least 2,000 complete six-seat hands per second on one core.
-  - [ ] If the target is missed after profiling, record the measured gap and add an open question proposing a faster core (for example Rust through PyO3) for the owner.
+- [x] **P2.6 · Performance** · Depends on: P2.4
+  - [x] A benchmark script measures random self-play speed for 2, 6 and 9 seats on this Mac, and the results are recorded in the step evidence. Target: at least 2,000 complete six-seat hands per second on one core.
+  - [x] If the target is missed after profiling, record the measured gap and add an open question proposing a faster core (for example Rust through PyO3) for the owner. (Not needed: the target is met.)
+  - Evidence: `fbde4ea`. `uv run python -m rivermind.engine.bench` on an Apple M5 with Python 3.12.15 played 100 big blind stacks at 50/100 with weighted random actions, median of 5 runs of 20,000 hands. Two seats: 23,381 hands/s (6.1 actions a hand, 55% showdowns). Six seats: **9,518 hands/s** (19.0 actions, 95% showdowns). Nine seats: 7,516 hands/s (24.4 actions, 99% showdowns). With a `SeatView` and `RandomPolicy` call for every decision (`--mode view`), six seats ran at 10,628 hands/s, faster because that bot ends hands sooner. Pure Python meets the target 4.8 times over, so no faster core is proposed.
 
-- [ ] **P2.7 · Policy interface v2 and simple bots** · Depends on: P2.2
-  - [ ] `SeatView` v2 holds the acting seat’s cards, the board, all stacks and bets, the pot, the amount to call, the minimum and maximum raise, positions and the action history. It never includes another seat’s private cards, and a test proves this.
-  - [ ] Bots implemented:
+- [x] **P2.7 · Policy interface v2 and simple bots** · Depends on: P2.2
+  - [x] `SeatView` v2 holds the acting seat’s cards, the board, all stacks and bets, the pot, the amount to call, the minimum and maximum raise, positions and the action history. It never includes another seat’s private cards, and a test proves this.
+  - [x] Bots implemented:
     - `RandomPolicy`;
     - `CallingStationPolicy`;
     - a rule-based `HeuristicPolicy` that plays tight-aggressive by hand strength. It becomes the "easy" bot and an evaluation opponent.
-  - [ ] Each bot plays 1,000 fuzzed hands with only legal actions.
+  - [x] Each bot plays 1,000 fuzzed hands with only legal actions.
+  - Evidence: `2626830`. [view.py](rivermind/engine/view.py) builds the view, and [test_view.py](test/engine/test_view.py) proves privacy over 60 seeded hands at 2 to 9 seats. It reshuffles every card the viewer cannot see, including other hole cards, burns and undealt cards, and checks the view is identical after every action. After a showdown only the shown hands are added. [rivermind/bots](rivermind/bots/) has the three bots; the heuristic uses Chen scores before the flop and enumerated hand strength after it. [test_bots.py](test/engine/test_bots.py) plays 1,000 fuzzed hands per bot at 2 to 9 seats and 300 at mixed tables, all legal; the random and heuristic bots used every action kind. A quick six-seat check over 3,000 hands (not a published evaluation) had the heuristic win about 2 big blinds a hand against five random bots and about 9 against five calling stations.
 
 ---
 
@@ -435,6 +441,8 @@ These are possible directions after the release:
 
 Newest first. Keep eight entries and move older ones to [docs/build-history.md](docs/build-history.md). Each entry gives the date, the step IDs, what changed, the checks actually run and the next concrete action.
 
+**2026-11-19 · P2.2 to P2.7, Phase 2 complete.** The owner asked for as much of the build as possible. Built the no-limit engine in `rivermind/engine`: an immutable state machine, pots and showdown, a faster port of Deuces, seating helpers, versioned JSON with replay, text histories, `SeatView` v2, a fuzzer (`python -m rivermind.engine.fuzz`) and a benchmark (`python -m rivermind.engine.bench`). The random, calling-station and heuristic bots are in `rivermind/bots`, and `hypothesis` is a new dev dependency. Rules changes for the owner to review: rule 7.8 (no bet or raise when everyone else still in is all-in) and rule 12.1 now also tables every hand when a river call puts a player all-in. The checks are in each step’s evidence; pytest 341 passed before the last commit. Nothing was pushed or deployed, and the web client was not changed, so its suite was not rerun. Next action: P3.1. PostgreSQL 17 runs locally on port 5432 for its tests, and creating the site’s database on ubuntu-vm needs the owner.
+
 **2026-11-19 · P1.6, Phase 1 complete.** With the owner’s approval, deployed the SvelteKit client. Caddy now serves each build as a release under `/srv/rivermindpoker.com/` and proxies only `/api/*` and `/ws`. `update.sh` builds the client from the frozen lockfile before changing the live site, using Node 26.13 from mise and pnpm from corepack on ubuntu-vm. The legacy `poker_ai/web/static/` client is gone, and `pnpm e2e:live` smoke-tests a deployment. One fix came out of local testing behind Caddy: a missing `/_app/` asset had fallen through to the app page and now returns 404. The checks are in the P1.6 evidence. The owner asked to stop once Phase 1 was done, so Phase 2 has not started. Next action: P2.2.
 
 **2026-11-19 · P6.5 artwork.** At the owner’s request a separate session created the original card deck (52 standard faces, four-colour clubs and diamonds, three backs) and wired it into the SvelteKit table, documented in [docs/card-art.md](docs/card-art.md). This session then reviewed it, moved the in-memory rendering into `web/scripts/card-art/render.js`, added `pnpm cards` and a stale-artwork test, fixed a docs link into the ignored `artifacts/` folder, and committed it as `e826f94`. Checks are in the P6.5 evidence; follow-ups are under Remaining. P1.6 is still the next phase step and awaits deployment approval.
@@ -448,5 +456,3 @@ Newest first. Keep eight entries and move older ones to [docs/build-history.md](
 **2026-11-19 · P1.3.** Ported the table to Svelte components with a `TableConnection` store and `wording.ts` helpers that match the vanilla client, plus a visible "Bot" label on bot seats (D-7). Found that SvelteKit's SPA fallback uses an inline bootstrap script and its route announcer an inline style, both blocked by the site CSP; the build now externalizes the script and fails on any inline code, and a Vite plugin drops the style. Added `serve --client_dir` so the built client runs locally with the production headers (P1.6 still removes the legacy client), and a Playwright harness that starts its own server per worker. Checks are in the P1.3 evidence. Next action: P1.4.
 
 **2026-11-19 · P1.2.** Added Pydantic models for the whole protocol (`poker_ai/web/protocol.py`), used them for validation and for every outgoing message, and added `rivermind-poker protocol-schema` with a small JSON-Schema-to-TypeScript generator (`poker_ai/web/typescript.py`, no new dependency). Behaviour changes: malformed messages (a string `seq`, extra fields) are now `bad_request`, and HTTP body errors are 400 instead of 422. Ran pytest (136 passed), a live WebSocket check and the web suite. Next action: P1.3.
-
-**2026-11-19 · P1.1.** Scaffolded `web/` with `sv create` (SvelteKit 3.3, which configures the kit in `vite.config.ts`; `#lib/…` subpath imports take the file extension). Added the 200.html fallback, `ssr = false`, the Node 26 pin, the scripts, the `/api` and `/ws` proxy and a placeholder page, and documented them in CONTRIBUTING. Ran the clean-clone install, check, lint and build, Vitest, Playwright in Chromium, a browser check against `serve`, and pytest (123 passed). Note for P1.3: the SPA fallback bootstraps with an inline `<script>`, which the current `script-src 'self'` CSP blocks. Next action: P1.2.

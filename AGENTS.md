@@ -33,6 +33,13 @@ uv run --locked rivermind-poker play --agent offline \
   --lut_path "$TABLE_DIR" --strategy_path "$CHECKPOINT_FILE"
 ```
 
+The no-limit engine (`rivermind/engine`) and its bots (`rivermind/bots`) have their tests in `test/engine`. Engine rule tests are hands in `test/engine/fixtures.py`, with expected stacks worked out by hand rather than copied from engine output. After an engine change, also run the long fuzz and the benchmark and record their results.
+
+```sh
+uv run --locked python -m rivermind.engine.fuzz --hands 100000 --seats 2-9
+uv run --locked python -m rivermind.engine.bench
+```
+
 The SvelteKit client in `web/` has its own suite (Node from `web/.node-version`, pnpm through corepack). Run it from `web/` before committing web changes; CI runs the same steps in its `web` job.
 
 ```sh
