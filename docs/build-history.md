@@ -41,6 +41,10 @@ This archive holds the evidence for finished work and older session handoffs, mo
 
 ## Phase 1 session handoffs
 
+**2026-11-19 · P1.5.** Added the `web` job to the test workflow (pnpm/action-setup v6 reading `web/package.json`, setup-node v7 from `web/.node-version`, Playwright with system dependencies, report uploaded on failure) and listed the web commands in AGENTS.md. Run 44461612198 passed both jobs. Next action: P1.6 needs the owner’s approval to deploy; meanwhile P2.1 may start.
+
+**2026-11-19 · P1.4.** Added Vitest specs for `wording.ts` and `TableConnection` (injectable socket, timers and storage), and six Playwright flows run in six projects. Each worker starts its own server on port 8700 and up in a detached process group, because killing `uv run` alone leaves the Python server running. 36 of 36 browser runs passed, and 72 of 72 with `--repeat-each 2`. Next action: P1.5.
+
 **2026-11-19 · P1.3.** Ported the table to Svelte components with a `TableConnection` store and `wording.ts` helpers that match the vanilla client, plus a visible "Bot" label on bot seats (D-7). Found that SvelteKit's SPA fallback uses an inline bootstrap script and its route announcer an inline style, both blocked by the site CSP; the build now externalizes the script and fails on any inline code, and a Vite plugin drops the style. Added `serve --client_dir` so the built client runs locally with the production headers (P1.6 still removes the legacy client), and a Playwright harness that starts its own server per worker. Checks are in the P1.3 evidence. Next action: P1.4.
 
 **2026-11-19 · P1.2.** Added Pydantic models for the whole protocol (`poker_ai/web/protocol.py`), used them for validation and for every outgoing message, and added `rivermind-poker protocol-schema` with a small JSON-Schema-to-TypeScript generator (`poker_ai/web/typescript.py`, no new dependency). Behaviour changes: malformed messages (a string `seq`, extra fields) are now `bad_request`, and HTTP body errors are 400 instead of 422. Ran pytest (136 passed), a live WebSocket check and the web suite. Next action: P1.3.
