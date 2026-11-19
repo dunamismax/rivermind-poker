@@ -20,6 +20,12 @@ uv run --locked rivermind-poker --help
 uv run --locked pytest
 ```
 
+The database tests need a disposable PostgreSQL database whose name contains `test`. They are skipped locally without one, but the pre-commit full run must include them. The [development guide](CONTRIBUTING.md#postgresql) covers setup.
+
+```sh
+RIVERMIND_TEST_DATABASE_URL=postgresql://localhost/rivermind_test uv run --locked pytest
+```
+
 For focused checks, use `uv run --locked pytest test/unit` or name the affected functional test. The following command starts a table with two random bots.
 
 ```sh

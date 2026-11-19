@@ -1,0 +1,135 @@
+"""The initial schema: tables, seats, hands and hand histories (P3.1).
+
+Chips are whole numbers stored as ``bigint``. Table state and hand histories
+are versioned JSON documents from ``rivermind.engine.history`` (D-4), stored
+as ``jsonb`` with their format number beside them. Player identity arrives in
+P4.1 with its own migration.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Identity,
+    Integer,
+    MetaData,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+NAMING = {
+    "ix": "ix_%(table_name)s_%(column_0_name)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=NAMING)
+
+
+def _now() -> Any:
+    return mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class PokerTable(Base):
+    """A table's configuration and, from P3.5, its saved state."""
+
+    __tablename__ = "poker_tables"
+    __table_args__ = (
+        CheckConstraint("seat_count BETWEEN 2 AND 9", name="seat_count"),
+        CheckConstraint("small_blind > 0 AND big_blind >= small_blind", name="blinds"),
+        CheckConstraint("ante >= 0", name="ante"),
+        CheckConstraint("min_buy_in > 0 AND max_buy_in >= min_buy_in", name="buy_in"),
+        CheckConstraint("status IN ('open', 'closed')", name="status"),
+        CheckConstraint("(state IS NULL) = (state_format IS NULL)", name="state_format"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    seat_count: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    small_blind: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    big_blind: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    ante: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    min_buy_in: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    max_buy_in: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="open")
+    state: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    state_format: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = _now()
+
+    seats: Mapped[list[Seat]] = relationship(back_populates="table", cascade="all, delete-orphan", order_by="Seat.seat_no")
+    hands: Mapped[list[Hand]] = relationship(back_populates="table", cascade="all, delete-orphan", order_by="Hand.hand_no")
+
+
+class Seat(Base):
+    """An occupied seat. Empty seats have no row."""
+
+    __tablename__ = "seats"
+    __table_args__ = (
+        CheckConstraint("seat_no BETWEEN 0 AND 8", name="seat_no"),
+        CheckConstraint("stack >= 0", name="stack"),
+        CheckConstraint("is_bot = (bot_kind IS NOT NULL)", name="bot_kind"),
+    )
+
+    table_id: Mapped[str] = mapped_column(ForeignKey("poker_tables.id", ondelete="CASCADE"), primary_key=True)
+    seat_no: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    is_bot: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    bot_kind: Mapped[str | None] = mapped_column(String(64))
+    stack: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sitting_out: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    joined_at: Mapped[datetime] = _now()
+
+    table: Mapped[PokerTable] = relationship(back_populates="seats")
+
+
+class Hand(Base):
+    """One hand dealt at a table."""
+
+    __tablename__ = "hands"
+    __table_args__ = (
+        UniqueConstraint("table_id", "hand_no", name="uq_hands_table_id_hand_no"),
+        CheckConstraint("hand_no >= 1", name="hand_no"),
+        CheckConstraint("button BETWEEN 0 AND 8", name="button"),
+        CheckConstraint("ended_at IS NULL OR ended_at >= started_at", name="ended_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    table_id: Mapped[str] = mapped_column(ForeignKey("poker_tables.id", ondelete="CASCADE"), nullable=False, index=True)
+    hand_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    button: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    started_at: Mapped[datetime] = _now()
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    table: Mapped[PokerTable] = relationship(back_populates="hands")
+    history: Mapped[HandHistory | None] = relationship(back_populates="hand", cascade="all, delete-orphan")
+
+
+class HandHistory(Base):
+    """The replayable record of a finished hand (``history.hand_record``)."""
+
+    __tablename__ = "hand_histories"
+    __table_args__ = (CheckConstraint("format >= 1", name="format"),)
+
+    hand_id: Mapped[int] = mapped_column(ForeignKey("hands.id", ondelete="CASCADE"), primary_key=True)
+    format: Mapped[int] = mapped_column(Integer, nullable=False)
+    record: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = _now()
+
+    hand: Mapped[Hand] = relationship(back_populates="history")

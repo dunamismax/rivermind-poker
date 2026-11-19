@@ -37,6 +37,7 @@ Open http://127.0.0.1:8000, choose opponents and sit down. It works on desktop a
 | --- | --- |
 | No-limit hold’em engine (2 to 9 seats), hand histories and fuzzing | [Engine](rivermind/engine/) and [rules](docs/rules.md) |
 | Random, calling-station and heuristic no-limit bots | [Bots](rivermind/bots/) |
+| PostgreSQL models and Alembic migrations | [Database](rivermind/db/) |
 | Cards, betting, pots and payouts for the short-deck prototype | [Poker engine](poker_ai/poker/) |
 | Rules and legal actions for the training game | [Short-deck state](poker_ai/games/short_deck/state.py) |
 | Card abstraction and lookup tables | [Clustering](poker_ai/clustering/) |

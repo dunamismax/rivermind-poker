@@ -22,6 +22,31 @@ uv run python -m rivermind.engine.bench                    # random self-play sp
 
 The engine tests check every rule’s example and more than 30 fixed hands with their payouts, and run Hypothesis property tests and a short fuzz. To add a rule test, write the hand in `test/engine/fixtures.py`: the stacks, button, cards and an action script such as `"S5:r300 S0:c S1:f"`, with final stacks worked out by hand from the rules.
 
+## PostgreSQL
+
+From Phase 3, tables and hand histories live in PostgreSQL (D-4). [`rivermind/db`](rivermind/db/) has the SQLAlchemy 2 models and Alembic migrations, connecting through psycopg 3. The app reads `DATABASE_URL`, and a plain `postgresql://` URL is fine. The initial schema has `poker_tables`, `seats`, `hands` and `hand_histories`. Table state and hand records are versioned JSON from `rivermind.engine.history`, stored as `jsonb`. The database checks seat counts, blinds, buy-ins, seat numbers and stacks. [Models](rivermind/db/models.py) · [Migrations](rivermind/db/migrations/versions/)
+
+For local development, any PostgreSQL 15 or later works. With Homebrew, install and start a server, then create a development database and a separate test database.
+
+```sh
+brew install postgresql@17 && brew services start postgresql@17
+createdb rivermind
+createdb rivermind_test
+DATABASE_URL=postgresql://localhost/rivermind uv run alembic upgrade head
+```
+
+The database tests in `test/db` use `RIVERMIND_TEST_DATABASE_URL`. Each test drops and recreates the `public` schema, so the test refuses to run unless the database name contains `test`. Without the variable the tests are skipped locally, but they fail in CI, where the test job runs a PostgreSQL 17 service. Set the variable for the full run before committing.
+
+```sh
+RIVERMIND_TEST_DATABASE_URL=postgresql://localhost/rivermind_test uv run pytest
+```
+
+After changing the models, generate a migration and review it, then check that `test_models_match_the_migrations` passes.
+
+```sh
+DATABASE_URL=postgresql://localhost/rivermind uv run alembic revision --autogenerate -m "describe the change"
+```
+
 ## Work with a learned bot
 
 Clustering turns the two hole cards and the shared board into a bucket for each betting stage. Training uses those buckets and the betting history to learn an action distribution through self-play. Keep tables and checkpoints from the same experiment together. Load artifacts that you generated or trust because joblib uses Python pickle serialization.
