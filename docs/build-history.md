@@ -23,10 +23,6 @@ This archive holds the evidence for finished work and older session handoffs, mo
 - **RM-00 · Agent handoff.** Added this tracker and the [repository instructions](../AGENTS.md).
 
 
-## Later session handoffs
-
-**2026-11-19 · Plan to 1.0.** At the owner’s request, rewrote this tracker into phases toward 1.0 with checkable steps. It now covers the expanded scope (multiplayer, 2 to 9 seats, no-limit, strong bots, a full site) and records the stack decisions as D-1 to D-9. Phase 0 evidence and earlier handoffs moved verbatim to [docs/build-history.md](docs/build-history.md), and [AGENTS.md](AGENTS.md) and the [roadmap](docs/roadmap.md) were aligned with the new format. GitHub Actions showed passing runs for the latest pushes. Next action: P1.1.
-
 ## Phase 0 session handoffs
 
 **2026-11-19 · RM-10.** Made tables survive restarts at the owner’s request: snapshot and restore on `Table`, a SQLite store, `serve --state_path` and a state directory in the systemd unit. `serve` now configures logging, so app messages such as `Restored N saved tables` reach the journal. Ran `uv run --locked pytest` (123 passed) and the real-process SIGKILL check described under RM-10. Deploying it resets in-memory tables once, because the version deployed before this change saved nothing.
