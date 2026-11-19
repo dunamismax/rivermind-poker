@@ -29,6 +29,14 @@ function faceRows(treatment) {
 	).join('\n');
 }
 
+// The sizes PlayingCard.svelte draws: desktop and phone, others' and your own.
+const TABLE_SIZES = [
+	[54, 74, 'Your cards on desktop'],
+	[42, 58, 'Desktop table'],
+	[46, 64, 'Your cards on a phone'],
+	[34, 48, 'Phone table, the smallest size']
+];
+
 const backNames = { rivermind: 'RiverMind', current: 'Current', lattice: 'Lattice' };
 const backs = CARD_BACKS.map((back) => image(cardBackPath(back), `${backNames[back]} back`)).join(
 	''
@@ -61,15 +69,14 @@ write(
 		<h2>RiverMind, Current and Lattice backs</h2>
 		<div class="row">${backs}</div>
 	</section>
-	<section class="phone">
-		<h2>Smallest table size · 34 × 48 px</h2>
-		<h3>Standard deck</h3>
+	${TABLE_SIZES.map(
+		([width, height, label]) => `<section class="table w${width}">
+		<h2>${label} · ${width} × ${height} px</h2>
 		${faceRows('standard')}
-		<h3>Four-colour deck</h3>
 		${faceRows('four-colour')}
-		<h3>Backs</h3>
 		<div class="row">${backs}</div>
-	</section>
+	</section>`
+	).join('\n\t')}
 </main>
 </body>
 </html>

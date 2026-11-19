@@ -30,7 +30,8 @@
 	.card {
 		width: 42px;
 		height: 58px;
-		border-radius: 6px;
+		/* Matches the 15.25-unit corner of the 168 × 232 artwork at every size. */
+		border-radius: 9.1% / 6.6%;
 		display: block;
 		box-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
 		flex: none;

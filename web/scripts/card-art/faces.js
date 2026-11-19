@@ -1,146 +1,131 @@
 // RiverMind Poker card artwork. SPDX-License-Identifier: GPL-3.0-or-later
+// Card faces: the stock, the big corner indices and the pip layouts. Courts
+// and aces supply their own centrepieces.
+import { ace } from './aces.js';
 import { court } from './courts.js';
+import { RANKS, RANK_HEIGHT, RANK_STROKE, SUITS } from './glyphs.js';
+import { EDGE, INKS, STOCK } from './palette.js';
+import { HALF_TURN, n } from './svg.js';
 
-const PAPER = '#fbf9f1';
-const BLACK = '#1b1b1b';
-const RED = '#a71f34';
-const GOLD = '#a97d34';
+// The corner index: a numeral 54 units tall (about 11 px on a 34 × 48 card)
+// over a suit 33 units wide, centred on a column 25 units from the edge.
+const INDEX = { x: 25, top: 10, suitY: 83, suitScale: 0.245 };
 
-export const INKS = {
-	standard: { spades: BLACK, hearts: RED, clubs: BLACK, diamonds: RED },
-	'four-colour': { spades: BLACK, hearts: RED, clubs: '#126047', diamonds: '#215588' }
-};
+// Pip grid. The columns sit inside the indices, and the outer rows are 34
+// units from each end; the rows between them divide the height in thirds.
+const PIP_SCALE = 0.285;
+const L = 60.5;
+const C = 84;
+const R = 107.5;
+const TOP = 32;
+const BOTTOM = 200;
+const MID = 116;
+const THIRD = (BOTTOM - TOP) / 3;
+const ROW2 = TOP + THIRD;
+const ROW3 = BOTTOM - THIRD;
 
-// Indices are drawn on the same baseline and need no font at render time.
-const RANK_MARKS = {
-	2: 'M-10 8 C-9-2 11-2 11 8 C11 15 3 19-4 25 L-11 33 H12',
-	3: 'M-11 4 Q-6 0 0 0 C13 0 15 13 3 16 C17 18 14 34 0 34 Q-7 34-12 29',
-	4: 'M6 33 V1 L-12 23 H12',
-	5: 'M10 0 H-9 L-11 16 Q-6 13 0 13 C16 13 15 34 0 34 Q-7 34-12 29',
-	6: 'M10 3 Q6 0 1 0 C-15 0-17 34 0 34 C15 34 16 13 1 13 Q-6 13-11 19',
-	7: 'M-12 0 H12 L-3 33',
-	8: 'M0 16 C-15 14-14 0 0 0 C14 0 15 14 0 16 C-17 19-15 34 0 34 C15 34 17 19 0 16 Z',
-	9: 'M-10 31 Q-6 34-1 34 C15 34 17 0 0 0 C-15 0-16 21-1 21 Q6 21 11 15',
-	10: 'M-16 6 -10 0 V33 M2 11 C2-4 17-4 17 11 V22 C17 37 2 37 2 22 Z',
-	11: 'M-3 0 H10 V23 Q10 34 0 34 Q-10 34-11 25',
-	12: 'M0 0 C17 0 17 33 0 33 C-17 33-17 0 0 0 Z M3 24 L13 35',
-	13: 'M-10 0 V33 M11 0 -9 18 M-1 12 L12 33',
-	14: 'M-13 33 L0 0 13 33 M-8 22 H8'
-};
-
-// Each silhouette is drawn around the origin on a roughly 32-unit square.
-const SUIT_MARKS = {
-	spades:
-		'M0-16 C4-10 16-4 16 5 C16 13 6 16 2 9 C2 12 4 15 7 17 H-7 C-4 15-2 12-2 9 C-6 16-16 13-16 5 C-16-4-4-10 0-16Z',
-	hearts: 'M0-8 C-5-18-17-15-17-6 C-17 3-6 11 0 16 C6 11 17 3 17-6 C17-15 5-18 0-8Z',
-	clubs:
-		'M0-16 C8-16 12-8 7-2 C13-5 18-1 18 5 C18 14 7 16 2 9 C2 12 4 15 7 17 H-7 C-4 15-2 12-2 9 C-7 16-18 14-18 5 C-18-1-13-5-7-2 C-12-8-8-16 0-16Z',
-	diamonds: 'M0-17 Q7-7 15 0 Q7 7 0 17 Q-7 7-15 0 Q-7-7 0-17Z'
-};
-
-function pip(suit, x, y, scale, inverted = false) {
-	return `<path d="${SUIT_MARKS[suit]}" transform="translate(${x} ${y}) scale(${inverted ? -scale : scale})"/>`;
-}
-
-function index(rank, suit) {
-	return `<path d="${RANK_MARKS[rank]}" transform="translate(23 15)" fill="none" stroke="currentColor" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
-	${pip(suit, 23, 68, 0.78)}`;
-}
-
-// Traditional layouts, with the outer rows clear of the corner indices.
-// Lower pips turn towards the other index.
-const PIP_ROWS = {
+const PIPS = {
 	2: [
-		[47, 84],
-		[185, 84]
+		[C, TOP],
+		[C, BOTTOM]
 	],
 	3: [
-		[47, 84],
-		[116, 84],
-		[185, 84]
+		[C, TOP],
+		[C, MID],
+		[C, BOTTOM]
 	],
-	4: [
-		[47, 59, 109],
-		[185, 59, 109]
-	],
+	4: [L, R].flatMap((x) => [
+		[x, TOP],
+		[x, BOTTOM]
+	]),
 	5: [
-		[47, 59, 109],
-		[116, 84],
-		[185, 59, 109]
+		...[L, R].flatMap((x) => [
+			[x, TOP],
+			[x, BOTTOM]
+		]),
+		[C, MID]
 	],
-	6: [
-		[47, 59, 109],
-		[116, 59, 109],
-		[185, 59, 109]
-	],
+	6: [L, R].flatMap((x) => [
+		[x, TOP],
+		[x, MID],
+		[x, BOTTOM]
+	]),
 	7: [
-		[47, 59, 109],
-		[81, 84],
-		[116, 59, 109],
-		[185, 59, 109]
+		...[L, R].flatMap((x) => [
+			[x, TOP],
+			[x, MID],
+			[x, BOTTOM]
+		]),
+		[C, (TOP + MID) / 2]
 	],
 	8: [
-		[47, 59, 109],
-		[81, 84],
-		[116, 59, 109],
-		[151, 84],
-		[185, 59, 109]
+		...[L, R].flatMap((x) => [
+			[x, TOP],
+			[x, MID],
+			[x, BOTTOM]
+		]),
+		[C, (TOP + MID) / 2],
+		[C, (MID + BOTTOM) / 2]
 	],
 	9: [
-		[47, 59, 109],
-		[93, 59, 109],
-		[116, 84],
-		[139, 59, 109],
-		[185, 59, 109]
+		...[L, R].flatMap((x) => [
+			[x, TOP],
+			[x, ROW2],
+			[x, ROW3],
+			[x, BOTTOM]
+		]),
+		[C, MID]
 	],
 	10: [
-		[47, 59, 109],
-		[70, 84],
-		[93, 59, 109],
-		[139, 59, 109],
-		[162, 84],
-		[185, 59, 109]
+		...[L, R].flatMap((x) => [
+			[x, TOP],
+			[x, ROW2],
+			[x, ROW3],
+			[x, BOTTOM]
+		]),
+		[C, (TOP + ROW2) / 2],
+		[C, (ROW3 + BOTTOM) / 2]
 	]
 };
 
-// Each ace carries its own escutcheon around the oversized suit.
-const ACE_FRAMES = {
-	spades: 'M84 63 Q102 71 121 76 V113 Q121 146 84 169 Q47 146 47 113 V76 Q66 71 84 63Z',
-	hearts:
-		'M84 68 C104 68 123 84 123 107 V125 C123 148 104 164 84 164 C64 164 45 148 45 125 V107 C45 84 64 68 84 68Z',
-	clubs:
-		'M84 67 Q94 67 99 78 Q121 78 121 102 Q129 116 121 130 Q121 154 99 154 Q94 165 84 165 Q74 165 69 154 Q47 154 47 130 Q39 116 47 102 Q47 78 69 78 Q74 67 84 67Z',
-	diamonds: 'M84 62 L123 94 V138 L84 170 45 138 V94Z'
-};
+/** A pip from the shared suit outline; pips below the middle face down. */
+export function pip(x, y, scale, turned = y > MID) {
+	const turn = turned ? ' rotate(180)' : '';
+	return `<use href="#pip" transform="translate(${n(x)} ${n(y)})${turn} scale(${scale})"/>`;
+}
 
-function ace(suit) {
-	const flourish = `<path d="M84 49 90 55 84 61 78 55Z" fill="${GOLD}"/>
-	<path d="M52 67 Q66 62 74 65 M94 65 Q102 62 116 67" fill="none" stroke="${GOLD}" stroke-width="2"/>`;
-	return `<g id="ace">
-		<path d="${ACE_FRAMES[suit]}" fill="currentColor" fill-opacity=".06" stroke="${GOLD}" stroke-width="2.4"/>
-		${flourish}<g transform="rotate(180 84 116)">${flourish}</g>
-		${pip(suit, 84, 116, 1.73)}
-	</g>`;
+function index(rank) {
+	const glyph = RANKS[rank];
+	const half = glyph.half;
+	const x = INDEX.x + (glyph.shift ?? 0);
+	const turn = glyph.turned ? ` rotate(180 0 ${RANK_HEIGHT / 2})` : '';
+	return `<clipPath id="rank-box"><rect x="${x - half}" y="${INDEX.top}" width="${2 * half}" height="${RANK_HEIGHT}"/></clipPath>
+<g id="index">
+	<g clip-path="url(#rank-box)"><path d="${glyph.d}" transform="translate(${x} ${INDEX.top})${turn}" fill="none" stroke="currentColor" stroke-width="${glyph.stroke ?? RANK_STROKE}" stroke-miterlimit="3"/></g>
+	${pip(INDEX.x, INDEX.suitY, INDEX.suitScale, false)}
+</g>`;
 }
 
 export function face(rank, suit, treatment) {
 	const ink = INKS[treatment][suit];
 	let centre;
+	let defs = '';
 	if (rank === 14) {
-		centre = ace(suit);
+		({ defs = '', art: centre } = ace(suit, ink));
 	} else if (rank >= 11) {
-		centre = court(rank);
+		({ defs = '', art: centre } = court(rank, suit, ink));
 	} else {
-		const pips = PIP_ROWS[rank].flatMap(([y, ...columns]) =>
-			columns.map((x) => pip(suit, x, y, 0.89, y > 116))
-		);
-		centre = `<g id="pips">${pips.join('\n\t')}</g>`;
+		centre = PIPS[rank].map(([x, y]) => pip(x, y, PIP_SCALE)).join('');
 	}
-	const corner = index(rank, suit);
-	return `<rect x=".8" y=".8" width="166.4" height="230.4" rx="20" fill="${PAPER}" stroke="#dfd9c8" stroke-width="1.6"/>
+	return `<defs>
+<path id="pip" d="${SUITS[suit]}"/>
+${index(rank)}
+${defs}
+</defs>
+<rect x=".75" y=".75" width="166.5" height="230.5" rx="15.25" fill="${STOCK}" stroke="${EDGE}" stroke-width="1.5"/>
 <g color="${ink}" fill="currentColor">
-	<g id="index">${corner}</g>
-	<use href="#index" transform="rotate(180 84 116)"/>
-	${centre}
+${centre}
+<use href="#index"/>
+<use href="#index" transform="${HALF_TURN}"/>
 </g>`;
 }
