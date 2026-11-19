@@ -1,16 +1,16 @@
 # RiverMind Poker build tracker
 
-This file is the single source of truth for project status, from today’s working prototype to the 1.0 release. It is written for AI agents and human contributors who pick the work up in sequence. Read **Now**, follow **How to work this file**, do the next unchecked step, and leave this file accurate for whoever comes next.
+This file tracks the live no-limit game and the work remaining for 1.0. Start with **Now**. The [phase overview](#phase-overview) gives the order, and each step records its acceptance criteria and evidence.
 
 ## Now
 
 | | |
 | --- | --- |
-| **Current phase** | Phase 5 · Strong bots |
-| **Next step** | **P5.1** Abstraction design (`docs/bots.md`) |
+| **Current phase** | [Phase 5A · Practice, heads-up opponent and replay](#phase-5a--practice-heads-up-opponent-and-replay) |
+| **Next step** | **P6.0b** · Add “Practice vs bots” to the lobby. A new guest or a guest with zero chips starts a heads-up hand against RiverMind Easy in one click. |
 | **In progress** | _None._ |
-| **Early work** | **P6.0b** One-click practice and **P6.1** Hand replay can start during Phase 5. |
-| **Blockers** | _None._ Phases 0 to 4 are complete (P4.7 declined, D-12). The card sprites’ source and license are not yet recorded (Q-8). |
+| **Required order** | One-click practice → one evaluated heads-up opponent → replay from the table → verify all three together (P5.9). Six- and nine-seat bot training, the remaining site features and release hardening follow P5.9. |
+| **Blockers** | None for P6.0b. The card sprites’ source and license are due at P7.7 (Q-8). |
 | **Live site** | https://rivermindpoker.com runs no-limit hold’em at 2 to 9 seats against the Phase 2 bots (random, calling station and RiverMind Easy), on `serve-nl` with tables and hand histories in PostgreSQL (`rivermind_poker`), so tables survive restarts. Caddy serves the client from `/srv/rivermindpoker.com/current` and proxies `/api/*` and `/ws` to the app on 127.0.0.1:4316. Players are anonymous with signed session cookies (P4.1) and play from play-chip wallets (P4.2), find each other in the lobby (P4.3: table list, quick seat, bots giving up seats, held seats, waitlists, private tables with invite links), with safety controls (P4.5: app rate limits, reactions, mute, block, report, collusion signals) and fair-dealing pages (P4.6: your hands, the fairness page). The site wears the P6.0 pixel-art design with the owner’s card deck (P6.0a). Deployed at `e99ca90`; Caddy rate-limits the seating endpoints and has the `safety` zone. The short-deck game left the site (D-11). |
 | **`main`** | Phases 0 to 4, the P6.0 pixel-art redesign and the owner’s card deck (P6.0a) are on `main`, pushed and deployed. The engine is in `rivermind/engine`, the bots in `rivermind/bots`, the durable table server (`serve-nl`, protocol v2) in `rivermind/server` and the client in `web/`. The short-deck code (`poker_ai/`, `serve`, the old client components) stays for reference until P7.6. `main` pushes to GitHub and Codeberg, and GitHub Actions runs the Python and web suites on every push. |
 | **Last updated** | 2026-11-19 |
@@ -19,14 +19,14 @@ This file is the single source of truth for project status, from today’s worki
 
 RiverMind Poker 1.0 is a free, self-hosted, full-featured poker website at rivermindpoker.com. It uses **play money only, forever**. People play no-limit Texas hold’em at tables of 2 to 9 seats. They can play anonymous strangers, strong AI bots, or both. The site keeps their play-chip balance, hand histories and stats, and offers single-table tournaments. It works well on desktop and phone. The bots are the best this project can train and measure, and they are always labelled as bots.
 
-The first visit should lead straight to a hand, even with an empty wallet. Prioritize one-click practice (P6.0b), the first evaluated heads-up bot (P5.7), and review from the table (P6.1). Make it easy to find RiverMind through a useful rules page or a friend’s link (P6.7, P6.7a). Use a small playtest and aggregate usage counts (P7.1a) to see where players get stuck and which paths bring them back.
+The first release after Phase 4 lets a guest practice at any balance, choose a heads-up opponent with a published evaluation, then revisit a decision from the table and play another hand. Later work gives people ways to find the game through a rules page or a friend’s link (P6.7, P6.7a). A small playtest and aggregate usage counts (P7.1a) will show where players get stuck and which paths bring them back.
 
 The [release checklist](#10-release-checklist) at the end defines "done" precisely.
 
 ## How to work this file
 
 1. **Orient.** Read **Now**, then [AGENTS.md](AGENTS.md). Run `git status --short --branch` and `git log -5 --oneline`. Preserve unrelated work in the tree.
-2. **Choose.** The owner’s current request comes first. Otherwise take **Next step**. If it is blocked, take the first unchecked step in the current phase whose `Depends on` steps are all checked. Do not start a later phase until the current phase’s exit criteria are met, unless a step says it can run early.
+2. **Choose.** The owner’s current request comes first. Otherwise take **Next step**. If it is blocked, work on a ready prerequisite within the current phase or record what is needed to proceed. Phase entry conditions apply to every step under that heading, in addition to its listed dependencies. Follow the order in the file even where steps retain an older phase number.
 3. **Claim.** Put the step ID, a one-line goal and today’s date under **In progress** in **Now**. Claim one step at a time. If parallel sessions share the repo, each claims a different step and stays out of the others’ files.
 4. **Build and verify.** Every step lists **Done when** criteria. Verify each one through the real entry point, such as the CLI, the browser, the server or the deployed site, as well as through tests. Run the full test suites (Python and, from P1.1 on, web) before committing.
 5. **Record.** Tick each criterion as it is verified, then tick the step. Add an `Evidence:` line under the step with the commit hash and the checks you ran. Keep it to one or two sentences; longer write-ups go in a doc and are linked. If you only partly finish, leave the step unchecked, tick what is verified and add a `Remaining:` line saying exactly what is left and why.
@@ -35,7 +35,7 @@ The [release checklist](#10-release-checklist) at the end defines "done" precise
 
 **Changing the plan.** You may split a step (P3.2 becomes P3.2a and P3.2b), add a step you discover is needed, or reword criteria that turned out to be wrong. Say why in the handoff entry. Do not delete unfinished steps, lower acceptance criteria, reorder phases or change a settled decision without the owner. Raise those as an open question instead.
 
-**Owner gates.** Steps marked **Owner gate** need the owner’s explicit approval in the current conversation before you act. These include pushing to a remote, deploying, tagging a release, choosing among options listed under open questions and anything touching money or real identity. Approval does not carry over between sessions. Setting up ubuntu-vm itself is not an owner gate (D-10).
+**Owner gates.** Obtain the owner’s explicit approval in the current conversation for each separate action of publishing, pushing to a remote, deploying to the live site or tagging a release. Decisions marked **Owner gate** and anything touching money or real identity also need approval. Server setup is already authorized under D-10. Use the stated defaults for ordinary open questions.
 
 **IDs.** Phase 0 used task IDs `RM-00` to `RM-10`, which still appear in the code docs and history. From Phase 1 on, steps are `P<phase>.<step>`. Settled decisions are `D-n` and open questions are `Q-n`.
 
@@ -49,7 +49,7 @@ These were decided with the owner. Build on them; change one only with the owner
 | D-2 | **Backend:** Python 3.12, FastAPI and WebSockets, run by Uvicorn and managed with uv. The server is authoritative: it owns the deck, turn order, validation and payouts. Clients see only their own seat’s private information. |
 | D-3 | **Frontend:** SvelteKit with Svelte 5 and TypeScript (strict), built as a single-page app with `adapter-static` and served as static files by Caddy. Use pnpm with a committed lockfile, Vitest for unit tests and Playwright for browser tests. Astro is not used for this project; SvelteKit pre-renders the content pages itself. |
 | D-4 | **Database:** PostgreSQL, accessed through SQLAlchemy 2 and psycopg 3, with Alembic migrations. PostgreSQL already runs on ubuntu-vm. From Phase 3 on, persisted state is versioned JSON, not pickle. |
-| D-5 | **Main game:** no-limit Texas hold’em with a 52-card deck at 2 to 9 seats, played on a new engine. The Phase 0 short-deck limit game is the prototype; Q-2 decides when it leaves the site. |
+| D-5 | **Main game:** no-limit Texas hold’em with a 52-card deck at 2 to 9 seats, played on a new engine. It replaced the Phase 0 short-deck prototype on the live site at P3.7 (D-11). |
 | D-6 | **Code layout:** new code goes in a new `rivermind/` Python package (`engine`, `server`, `bots`, `db`) and a `web/` SvelteKit app. `poker_ai/` is legacy, fixed but not extended, until P7.6. The one exception is Phase 1, which still works on the current server in `poker_ai/web` because Phase 3 replaces it. The `rivermind-poker` and `poker_ai` commands keep working. |
 | D-7 | **Bots are honest.** Bots are always labelled, never pose as humans, and their strength claims come from published evaluations. |
 | D-8 | **Fair dealing:** live tables shuffle with the operating system’s cryptographic randomness (`secrets.SystemRandom`). Seeded generators are only for tests, evaluation and training. |
@@ -57,10 +57,11 @@ These were decided with the owner. Build on them; change one only with the owner
 | D-10 | **Server administration** (owner, 2026-11-19): agents may SSH into ubuntu-vm as root and install packages, create and change databases, roles, services, files and configuration, and do whatever setup the project needs there, without asking first. Keep other sites on the host working, follow its conventions and record what changed. Pushing, deploying to the live domain and release tags still follow D-9. |
 | D-11 | **Short-deck prototype** (owner, 2026-11-19, answering Q-2): the no-limit game replaces the short-deck game on the live site at the P3.7 cutover. Open short-deck tables are closed with a clear message. Its code stays for reference until P7.6. |
 | D-12 | **No sign-in or user accounts before 1.0** (owner, 2026-11-19, answering Q-1): players stay anonymous guests with a signed session cookie (P4.1). P4.7 is declined for 1.0, and optional sign-in (such as passkeys that claim a guest identity) moves to Phase 8. |
+| D-13 | **Player priorities** (owner, 2026-11-19). Complete one-click practice, one evaluated heads-up opponent and replay from the table, in that order, before expanding to more bot formats, other site features or release hardening. P5.9 verifies the complete player experience. |
 
 ## Open questions
 
-Each question has a default. Agents build on the default until the owner decides, and only the step named under **Needed by** waits for the answer.
+Use each default until the owner decides otherwise. **Needed by** names the step that relies on the answer. A missing prerequisite such as proof of the card license stays open until verified.
 
 | ID | Question | Default until decided | Needed by |
 | --- | --- | --- | --- |
@@ -68,7 +69,7 @@ Each question has a default. Agents build on the default until the owner decides
 | Q-2 | When does the short-deck prototype leave the live site? | **Decided** (D-11): it is replaced at the Phase 3 cutover (P3.7). | — |
 | Q-3 | Tournaments in 1.0? | Single-table sit-and-go in 1.0 (P6.4). Multi-table tournaments after 1.0. | P6.4 |
 | Q-4 | Chat? | No free-text chat in 1.0. Preset reactions only (P4.5). | P4.5 |
-| Q-5 | Compute for bot training: this Mac only, or rented or extra machines? | This Mac. Don’t train on ubuntu-vm, which serves the site. | P5.6 |
+| Q-5 | Compute for bot training: this Mac only, or rented or extra machines? | Train on this Mac. Reserve ubuntu-vm for serving. Record the measured shortfall if a format needs more compute. | P5.2–P5.3, P5.6 |
 | Q-6 | Analytics? | None from third parties. Server-side aggregate counts only (P7.1). | P7.1 |
 | Q-7 | Retire the `poker_ai` namespace and its pickled formats at 1.0? | Keep the namespace as a thin legacy package and drop it from the site. | P7.6 |
 | Q-8 | Where do the card sprites added in P6.0a come from, and what are their license terms (`8BitDeck_opt*.png`, `Deck Backs*.png`)? | Keep using them; record the source, author and terms in `licenses/` and the README credits, and replace any card whose terms do not allow a GPL site. | P7.7 |
@@ -80,8 +81,9 @@ Each question has a default. Agents build on the default until the owner decides
 - [x] **Phase 2 · No-limit hold’em engine.** A correct, tested 52-card no-limit engine for 2 to 9 seats, with hand histories.
 - [x] **Phase 3 · Table server v2.** Multi-seat tables on the new engine with PostgreSQL persistence, action clocks and the live cutover.
 - [x] **Phase 4 · Multiplayer and identity.** Anonymous players, a play-chip wallet, a lobby, safe multi-human tables and fair dealing.
-- [ ] **Phase 5 · Strong bots.** No-limit abstractions, training, evaluation, a promotion gate and serving, for heads-up, 6-max and 9-max.
-- [ ] **Phase 6 · Full-featured site.** One-click practice, hand replays, friend invites, stats, leaderboards, sit-and-go tournaments, settings, accessibility and content pages.
+- [ ] **Phase 5A · Practice, heads-up opponent and replay.** Build the three player priorities in order. Verify them together through the live browser at P5.9.
+- [ ] **Phase 5B · Multi-seat bots and difficulty levels.** After P5.9, extend the evaluated heads-up pipeline to 6-max, then 9-max.
+- [ ] **Phase 6 · Full-featured site.** After Phase 5B, finish replay sharing, friend invites, stats, leaderboards, sit-and-go tournaments, settings, accessibility, content pages and installability.
 - [ ] **Phase 7 · Hardening and 1.0.** Monitoring, backups, load tests, fast restarts, a security review, cleanup and the release.
 - Phase 8 · After 1.0. Ideas that do not gate the release.
 
@@ -89,7 +91,7 @@ Each question has a default. Agents build on the default until the owner decides
 
 ## Phase 0 · Prototype and foundation (complete)
 
-**Outcome.** A three-seat, 20-card, fixed-limit game is playable in the terminal, locally in the browser and at rivermindpoker.com, against random bots or a trained checkpoint. The full evidence for each item is in [docs/build-history.md](docs/build-history.md).
+**Outcome at the time.** The three-seat, 20-card, fixed-limit prototype ran in the terminal and browser against random bots or a trained checkpoint. The terminal still supports it. P3.7 replaced the browser game with no-limit hold’em. The full evidence for each item is in [docs/build-history.md](docs/build-history.md).
 
 - [x] **RM-00 to RM-04 · Trustworthy training.** Covers the tracker and agent guide, corrected river hand-strength labels and resume in both modes, reproducing an uninterrupted run exactly. It also covers discounting at the intended iterations, consistent asynchronous checkpoints written atomically, and Pluribus-style training defaults.
 - [x] **RM-05 · Shared policies.** A `SeatView` exposes only the acting seat’s information. `RandomPolicy` and `CheckpointPolicy` work through it in every client. [Policies](poker_ai/policies.py)
@@ -102,8 +104,8 @@ Each question has a default. Agents build on the default until the owner decides
 **Operations facts that later phases rely on**
 
 - **Updating the live site:** after the owner approves, push `main`, then run `ssh root@ubuntu-vm 'bash /home/sawyer/github/rivermind-poker/deploy/update.sh'`. The script runs the full test suite on the server and stops if anything fails.
-- **Service details:** `rivermind-poker.service` runs on `127.0.0.1:4316` as the `rivermind-poker` user, with a 3 GB memory cap. The table database is `/var/lib/rivermind-poker/tables.sqlite3`, and the Caddy site is `/etc/caddy/sites/rivermindpoker.com.caddy`. Startup takes about 23 seconds while the card table loads.
-- **Served bot artifacts:** `artifacts/rm06/` on the server and this Mac, not tracked in Git. `card_info_lut.joblib` has SHA-256 `df3c314d…62f298b6` and `agent.joblib` has SHA-256 `ba63be69…b044121` (full hashes in the history).
+- **Service details.** The [production unit](deploy/rivermind-poker.service) runs `serve-nl` on `127.0.0.1:4316` as the `rivermind-poker` user with a 3 GB memory cap. Tables and hand histories live in PostgreSQL. The SQLite file and the 23-second startup measurement belong to the retired short-deck service (P3.7).
+- **Prototype bot artifacts.** RM-06 paired `card_info_lut.joblib` and `agent.joblib` under the ignored `artifacts/rm06/`. The [archived evaluation](docs/build-history.md) records their hashes and the short-deck settings. Phase 5A produces a separate pair for 52-card heads-up no-limit play.
 - **Database:** PostgreSQL 18 on ubuntu-vm, set up by [`deploy/setup-database.sh`](deploy/setup-database.sh), which is safe to rerun. The site database `rivermind_poker` is owned by the NOLOGIN `rivermind_poker_owner`, and its tables live in the `app` schema. `rivermind_poker_migration` runs Alembic and switches to the owner through `RIVERMIND_MIGRATION_ROLE`. `rivermind_poker_web` is the service’s role and can only read and write rows. `rivermind_poker_test` owns the separate `rivermind_poker_test` database for the deploy’s test run. Each role logs in over 127.0.0.1 with scram-sha-256. Credentials are in root-only `/etc/rivermind-poker/{web,migration,test}.env`. `update.sh` runs the tests with `test.env` and `alembic upgrade head` with `migration.env` before restarting, and the unit reads `web.env`.
 - **Tooling on this Mac:** Python through uv, Node through mise (Node 26 at the time of writing) and pnpm through corepack. ubuntu-vm has uv, pnpm, Docker, Caddy and PostgreSQL.
 
@@ -334,21 +336,26 @@ Each question has a default. Agents build on the default until the owner decides
 
 ---
 
-## Phase 5 · Strong bots
+## Phase 5A · Practice, heads-up opponent and replay
 
-**Goal.** Train and serve the strongest no-limit bots the project can build, with every strength claim backed by reproducible, statistically sound evaluations. The order is heads-up first, then 6-max, then 9-max.
+**Starts after Phase 4.** The player milestones below are in execution order. The bot work between practice and replay is limited to what it takes to qualify and serve one heads-up opponent. Multi-seat training, additional difficulty levels and shareable replays have their own later steps.
 
-**Exit criteria**
-- [ ] Each supported format (heads-up, 6-max and 9-max) has a promoted champion bot. Its published evaluation shows it beats the heuristic and calling-station bots, with the 95% interval above zero.
-- [ ] Bots meet the serving latency and memory budgets on ubuntu-vm.
+### 1. Start a practice hand in one click
 
-- [ ] **P5.1 · Abstraction design** · Depends on: P2.7
+- [ ] **P6.0b · One-click practice at any balance** · Depends on: P3.7, P4.2, P4.5, P4.6
+  - [ ] A prominent “Practice vs bots” action starts a heads-up hand against the labelled RiverMind Easy bot from the lobby. Seats, blinds and a practice stack have defaults, so the first hand takes one click for a new guest or a guest at zero chips before their next top-up is due.
+  - [ ] Each guest can resume one active practice table after reload. Only that guest can access it. Concurrent start requests return the same table, and abandoned tables expire under the server’s existing capacity and rate limits.
+  - [ ] A player who busts can start another hand with a fresh practice stack. Practice chips stay at the table. Practice hands appear in “Your hands” with a practice label. On phone and desktop, verify the first hand, reload and playing again after a bust. Server tests check that practice leaves the wallet and ledger unchanged, marks stored hands for exclusion from competitive stats and refuses access to a second guest.
+
+### 2. Play one evaluated heads-up opponent
+
+- [ ] **P5.1 · Abstraction design** · Depends on: P6.0b, P2.7
   - [ ] `docs/bots.md` defines the bot design:
     - the action abstraction for each street (for example fold, check or call, ½ pot, pot, 2× pot and all-in);
     - how off-tree bets map to the abstraction;
     - the card abstraction: 169 lossless pre-flop classes, and post-flop buckets clustered on hand-strength distributions;
     - the info-set key format;
-    - memory and training-time estimates for each format.
+    - memory and training-time estimates for heads-up on this Mac (Q-5). Add estimates for 6-max and 9-max at P5.6.
 
 - [ ] **P5.2 · 52-card clustering pipeline** · Depends on: P5.1
   - [ ] The clustering is generalized to the full deck. Simulations and K-means are seeded so table generation is reproducible. Each table set has a manifest with its settings, version and SHA-256.
@@ -359,29 +366,57 @@ Each question has a default. Agents build on the default until the owner decides
   - [ ] Checkpoints carry a manifest: engine version, abstraction and table hashes, settings and iteration count.
 
 - [ ] **P5.4 · Evaluation v2** · Depends on: P5.3
-  - [ ] A duplicate, seat-rotated match harness plays against random, calling-station, heuristic and current-champion opponents. It reports big blinds per 100 hands with a 95% interval; variance reduction (for example AIVAT) is optional.
-  - [ ] Reports are saved under `docs/evaluations/` and repeat exactly from their recorded inputs.
+  - [ ] A duplicate, seat-rotated match harness evaluates the same deals from both seats against random, calling-station, heuristic (RiverMind Easy) and, once available, current-champion opponents. Report big blinds per 100 hands and a 95% interval for each matchup. Compute uncertainty over independent deals, keeping both seat rotations together. Further variance reduction (for example AIVAT) is optional.
+  - [ ] Save reports under `docs/evaluations/`. Record rules, seats, stacks, blinds, opponent versions, seed, deal and hand counts, commands, settings and artifact hashes. Rerunning those inputs reproduces the reported results exactly.
 
 - [ ] **P5.5 · Promotion gate and model registry** · Depends on: P5.4
-  - [ ] A challenger is promoted only if it beats the current champion with the 95% interval above zero and also beats the heuristic bot. `docs/models.md` lists each format’s champion with hashes, settings and evaluation links.
+  - [ ] Promote the first champion for a format when the lower bound of its 95% interval is above zero against **each** of RiverMind Easy and the calling station. Replacements must also clear that threshold against the incumbent. Record failed or inconclusive runs and leave promotion open. The RM-06 short-deck result applies only to the prototype.
+  - [ ] `docs/models.md` lists each promoted champion by format with checkpoint and table hashes, settings and evaluation links.
   - [ ] Artifacts stay out of Git. Their storage and backup location on ubuntu-vm is documented.
 
-- [ ] **P5.6 · 6-max and 9-max** · Depends on: P5.5 · Compute per Q-5
-  - [ ] Train, evaluate and promote champions for 6-max and 9-max, or record measured reasons why a format needs more compute and what was tried.
+- [ ] **P5.7a · Serve the evaluated heads-up opponent** · Depends on: P5.5, P3.2
+  - [ ] A guest can choose RiverMind Easy or the promoted bot for a two-seat table, including in practice. Keep the one-click Easy default and let a guest switch opponents between practice hands. Play a complete hand against each and verify the server loaded the champion’s registered checkpoint and matching tables.
+  - [ ] Label the bot and link its selection to the evaluation with the game settings, opponents, number of hands, win rate in big blinds per 100 hands and 95% intervals. Record p95 decision time under 200 ms and peak service memory within the unit limit on ubuntu-vm. Measure decision time separately from the short presentation delay. Document how to deploy a champion under D-9.
 
-- [ ] **P5.7 · Serving and difficulty levels** · Depends on: P5.5, P3.2
-  - [ ] Bots run within budget: 95th-percentile decision time under 200 ms and memory inside the service limits. A short "thinking" delay keeps play humane.
-  - [ ] Difficulty levels are Easy (heuristic), Medium (champion mixed with heuristic) and Hard (champion). Bots are labelled per D-7. Deploying a new champion is documented and is an **Owner gate**.
-  - [ ] Heads-up is the first player-facing release under P5.7 and can ship as soon as it passes its own promotion and serving checks and the owner approves deployment. A guest can play Easy and the promoted bot at a two-seat table. The bot selection links to the published evaluation, with game settings, opponents, hand count, win rate in big blinds per 100 hands and its 95% interval.
+### 3. Review the hand and return to the table
 
-- [ ] **P5.8 · Real-time search (stretch, does not gate 1.0)** · Depends on: P5.5
+- [ ] **P6.1 · Replay from the table** · Depends on: P5.7a, P3.5, P4.6
+  - [ ] “Review hand” on the settled result opens that exact hand. The player can also browse and open older hands from “Your hands”. Step forward and back through the recorded actions with the board, cards, acting seat, amounts bet or called, and pot sizes as of each action.
+  - [ ] Explain why each pot was awarded. For a showdown, name the winning hand when its cards were shown (for example, “king-high straight”). For a fold-out, identify the last player standing. Verify a showdown, a fold-out and a side pot against the stored results. The response contains only cards the viewer is entitled to see, and the replay reveals them at the recorded street or showdown.
+  - [ ] On phone and desktop, review a settled practice hand, return to the same table and act in the next hand. If the next deal begins during review, the live clock and action controls remain reachable. Verify this also works at a wallet-backed table.
+
+### Phase 5A exit criteria
+
+- [ ] **P5.9 · Verify the three priorities together** · Depends on: P6.0b, P5.7a, P6.1 · **Owner gate** for publishing, pushing and deploying under D-9
+  - [ ] In Playwright against the real `serve-nl` and a disposable PostgreSQL database, cover a fresh guest and a zero-balance guest before top-up. Start practice in one click, choose the evaluated heads-up opponent, complete a hand, open that hand from the result, return and play again. Verify wallet and ledger totals before and after.
+  - [ ] After the owner approves the relevant release actions, run the player journey on the live site on phone and desktop. Record the deployed revision, champion and evaluation link, and browser results here. Phase 5B opens when both checks pass. If deployment awaits approval, record the verified local work and the outstanding live check in **Now**.
+
+---
+
+## Phase 5B · Multi-seat bots and difficulty levels
+
+**Starts after P5.9.** Extend the training and evaluation pipeline one format at a time.
+
+**Exit criteria**
+
+- [ ] Heads-up, 6-max and 9-max each have a promoted champion, a published evaluation meeting P5.5, and the difficulty levels in P5.7.
+- [ ] Each format meets the serving latency and memory budgets on ubuntu-vm.
+
+- [ ] **P5.6 · 6-max and 9-max** · Depends on: P5.9 · Compute per Q-5
+  - [ ] Extend the design estimates and seat-rotated harness to 6-max, then 9-max. For each, train, evaluate and promote a champion under P5.5. Record compute used and the results. If a format falls short, record what was tried, the measured gap and what it needs, and leave that format open.
+
+- [ ] **P5.7 · Serving and difficulty levels** · Depends on: P5.6, P5.7a
+  - [ ] Serve Easy (heuristic), Medium (champion mixed with heuristic) and Hard (champion) for each supported format. Label bots under D-7 and link their evaluations. Deploying each new champion is an **Owner gate**.
+  - [ ] Verify p95 decision time under 200 ms and peak service memory within the unit limit for every format. Keep the short thinking delay separate from the measured decision time.
+
+- [ ] **P5.8 · Real-time search (stretch, does not gate 1.0)** · Depends on: P5.9
   - [ ] Depth-limited subgame solving for heads-up runs within the serving budget, and its evaluation shows a significant gain over the blueprint alone. If it is not reached by 1.0, move it to Phase 8.
 
 ---
 
 ## Phase 6 · Full-featured site
 
-**Goal.** Turn the game into a complete poker website that people enjoy coming back to.
+**Starts after the Phase 5B exit criteria.** P6.0 and P6.0a below record completed artwork. Phase 5A owns P6.0b and P6.1. The remaining work adds sharing, multiplayer features and polish.
 
 **Exit criteria**
 - [ ] Every step below is shipped on the live site and covered by Playwright tests.
@@ -393,7 +428,7 @@ Each question has a default. Agents build on the default until the owner decides
   - [x] The lobby and table are rebuilt on the kit for phone, tablet and desktop: a felt table with bets in front of each seat, a segmented turn clock, the action dock beside the table on landscape screens and pinned to the bottom on phones, compact pods that keep a 9-seat phone table clear of the board, and seat tools that never move when the action panel opens. The `/style` page shows the whole kit, and [docs/design.md](docs/design.md) gives the rules.
   - Evidence: `4937f18`. Reviewed full-resolution screenshots of the lobby, a turn, the flop or turn and a showdown against a real `serve-nl` at 1440×900, 1280×800, 1024×768, 768×1024 and 375×812 (2, 6 and 9 seats; DPR 1 to 3), with no console errors and no horizontal overflow, and the `/style` page. pytest 478 passed with the database tests; Vitest 60, check, lint and build passed; Playwright 48 of 48 (Chromium, Firefox and WebKit at desktop and phone sizes, failing on any CSP violation). The art’s drift check regenerates 129 files.
   - Deployed: with the owner’s approval, `fcae7d5` (which also gives the 10 a bold index with a clear margin, after the owner’s review) was pushed and deployed with `deploy/update.sh`, which ran the server’s test suite and migrations `0002` and `0003` (P4.1 and P4.2 went live with it). `pnpm e2e:live` passed 12 of 12 against https://rivermindpoker.com (Chromium desktop and WebKit phone: headers, a hand at 2, 6 and 9 seats, sitting out and rebuying, and a hand continued across a `systemctl restart`).
-  - Remaining (for later steps): a landscape tablet at 1024×768 fits a 9-seat table, but the top seats’ turn clocks can touch the pot label; 15px text is soft on 1x screens, so it is kept to secondary text. Settings to choose the four-colour deck and the backs remain in P6.5.
+  - Remaining (for later steps): a landscape tablet at 1024×768 fits a 9-seat table, but the top seats’ turn clocks can touch the pot label; 15px text is soft on 1x screens, so it is kept to secondary text. P6.0a superseded the face choices. Card-back selection remains in P6.5.
 - [x] **P6.0a · The owner’s card deck** · Depends on: P6.0 · Requested by the owner (2026-11-19)
   - [x] The owner’s sprites (52 fronts, 18 backs) live in `web/art/cards/` as `fronts/<rank>-<suit>.png` and `backs/<name>.png`, and are the only card art on the site: the P6.0 faces, the four-colour set, the three backs and `cards.pxl` are deleted, and `pnpm art` removes any card file it did not make.
   - [x] `pnpm art` reads each sprite, checks it is an exact whole-number enlargement of 73 × 97 with hard-edged transparency, shrinks it to 1x and crops the clear ring to 71 × 95; the slot is redrawn on the cards’ outline and the phone pods’ card-back badge on the red back. Vitest fails on stale or stray card files, soft alpha or a wrong size.
@@ -401,17 +436,11 @@ Each question has a default. Agents build on the default until the owner decides
   - Evidence: `b4492df`. `pnpm art` regenerates 118 files from the sprites (each verified as an exact 12x or 13x enlargement; the parchment back's few alpha-2 and alpha-4 strays count as clear). Reviewed contact sheets at 1x, 2x and 4x, and full-resolution screenshots of the lobby, a 9-seat table to showdown with calling bots and `/hands` against a local `serve-nl` at 1440×900 (DPR 2), 1280×800 (DPR 1), 768×1024 (DPR 2), 412×915 (DPR 2.625) and 375×812 (DPR 2 and 3, also in WebKit), with no horizontal overflow. pytest 548 passed with the database tests; Vitest 63, check, lint and build passed; Playwright 90 of 90 (Chromium, Firefox and WebKit at desktop and phone sizes). Not pushed or deployed.
   - Deployed: with the owner’s approval, pushed `main` and deployed `7be243a` (with P4.5 and P4.6) using `deploy/update.sh`. The first run stopped before the live site changed when `test_tables_are_saved_before_publishing_and_restored_at_startup` failed (547 passed); its file passed six times in a row on the server, and the second run passed all 548, ran migrations `0004` and `0005`, installed the Caddy `safety` zone and restored the open table. `pnpm e2e:live` passed 12 of 12 against https://rivermindpoker.com and 2 of 2 for the restart test with `LIVE_RESTART_COMMAND` (Chromium desktop and WebKit phone), and a live 6-seat table to showdown shows the new deck.
 
-- [ ] **P6.0b · One-click practice at any balance** · Depends on: P3.7, P4.2, P4.5, P4.6 · May run during Phase 5
-  - [ ] A prominent “Practice vs bots” action starts a heads-up hand against the labelled RiverMind Easy bot from the lobby. Seats, blinds and a practice stack have defaults, so the first hand takes one click for a new guest or a guest at zero chips before their next top-up is due.
-  - [ ] Each guest can resume one active practice table after reload. Only that guest can access it. Concurrent start requests return the same table, and abandoned tables expire under the server’s existing capacity and rate limits.
-  - [ ] A player who busts can start another hand with a fresh practice stack. Practice chips stay at the practice table, and results appear in “Your hands” with a practice label that identifies them for exclusion from competitive stats. Browser tests on phone and desktop cover the first hand, reload and playing again after a bust. Server tests verify wallet and ledger equality before and after practice, the practice marker on stored hands, and refusal of access to a second guest.
-
-- [ ] **P6.1 · Hand history viewer and replayer** · Depends on: P3.5, P4.6 · May run during Phase 5
-  - [ ] Players can browse their hands and replay them step by step with cards and pot sizes, and share a link to a finished hand. Shared links never show cards that were mucked.
-  - [ ] A player can open “Review hand” from the table as soon as a hand is settled. The live turn clock and controls remain reachable if a new hand starts. Replay uses the recorded actions and shows who acted, the amounts bet or called, and why each pot was awarded. Verify a fold-out, a showdown and a side-pot hand in the browser. The player can return to play from the replay.
+- [ ] **P6.1a · Share a finished replay** · Depends on: P6.1
   - [ ] Sharing requires the player to create a revocable link from a finished hand. The shared view contains the public actions, board and cards shown at showdown, with generic seat labels. Shared pages serve `noindex`. Verify access and revocation in a second browser context and check the response payload for hidden cards and private table metadata.
-- [ ] **P6.2 · Player profile and stats** · Depends on: P4.2
+- [ ] **P6.2 · Player profile and stats** · Depends on: P4.2, P6.0b
   - [ ] Profiles show hands played and net chips over time, with a graph, plus VPIP, PFR and win rate in big blinds per 100 hands.
+  - [ ] Check that adding practice hands leaves competitive stats unchanged and that existing wallet-backed hands still count.
 - [ ] **P6.3 · Leaderboards** · Depends on: P6.2, P6.0b
   - [ ] Daily, weekly and all-time boards rank play-chip results. Humans and bots are ranked separately, and boards resist simple abuse such as farming chips from fresh accounts.
   - [ ] The boards count only eligible wallet-backed games. Verify that adding practice hands to a fixture produces the same rankings as the fixture with only wallet-backed games.
@@ -422,7 +451,7 @@ Each question has a default. Agents build on the default until the owner decides
   - [ ] Settings: card backs (18 since P6.0a, whose deck is always four-colour), animation speed, sound with mute, and keyboard shortcuts.
   - [ ] Pre-action checkboxes: check/fold and call any. Bets and pot changes are animated.
   - Evidence: `e826f94`. Reviewed after the artwork session: the generator reproduces all 81 committed SVGs byte for byte, and a Vitest check now fails if they drift (it caught a deliberate one-character edit). Every SVG is valid XML with no styles or scripts. The faces, courts, aces, four-colour inks and the three backs were inspected at 150 px and at 34 × 48 px. The built client under `serve --client_dir` played to showdown at 375 × 812 with no broken images, no overflow, folded seats still face down and revealed hands shown. pytest 138, Vitest 32 and Playwright 36 of 36 (three browsers, two sizes) passed, as did check, lint and build.
-  - Remaining: Deck and back preference controls, animation speed, sound and mute, keyboard shortcuts, pre-actions, and bet and pot animations (P6.0 added only entrance animations for cards, bets and the action panel). The artwork follow-ups from the SVG review are resolved by P6.0: phone cards draw their rank 14px tall at 2x, card files are content-hashed and fetched before the first deal, and the alt text says "Jack of hearts".
+  - Remaining: Card-back selection, animation speed, sound and mute, keyboard shortcuts, pre-actions, and bet and pot animations (P6.0 added only entrance animations for cards, bets and the action panel). P6.0a sets the current face artwork and sizing.
 - [ ] **P6.6 · Accessibility** · Depends on: P3.6
   - [ ] Playwright runs axe checks on every page. The game is fully playable by keyboard, actions and turns are announced to screen readers, focus is managed and reduced motion is respected. The target is WCAG 2.2 AA.
 - [ ] **P6.7 · Content pages** · Depends on: P1.6, P6.0b
@@ -440,7 +469,7 @@ Each question has a default. Agents build on the default until the owner decides
 
 ## Phase 7 · Hardening and 1.0 release
 
-**Goal.** Make the site dependable and secure, then ship 1.0.
+**Starts after the Phase 6 exit criteria.** Verify the site’s operations, recovery and performance, then ship 1.0.
 
 **Exit criteria**
 - [ ] Every item in the [1.0 release checklist](#10-release-checklist) is ticked.
@@ -465,9 +494,10 @@ Each question has a default. Agents build on the default until the owner decides
   - [ ] Authorization tests show that no one can see another seat’s cards, act for another player or alter balances. Rate limits are checked. Findings are fixed or documented with owner approval.
 - [ ] **P7.6 · Retire the prototype** · Depends on: P3.7, P5.5 · Per Q-7
   - [ ] The legacy short-deck code is removed from the serving path, and `poker_ai` is handled as Q-7 decides. Docs and tests are updated, and nothing on the site imports legacy modules.
-- [ ] **P7.7 · Documentation and release** · Depends on: everything above · **Owner gate:** tag and release
+- [ ] **P7.7 · Documentation and release** · Depends on: P7.1a, P7.2, P7.3, P7.4, P7.5, P7.6 · **Owner gate** for tagging, pushing, publishing and deployment
   - [ ] README, CONTRIBUTING and the operations notes are current. CHANGELOG.md is written. The version is set to 1.0.0 in `pyproject.toml` and `web/package.json`.
-  - [ ] With the owner’s approval: the `v1.0.0` tag is pushed to both remotes, release notes are published and the deployment is verified live.
+  - [ ] Resolve Q-8 by recording the card sprites’ source, author and license in `licenses/` and the README credits. Replace any sprites whose terms do not permit their use, and verify the replacement deck.
+  - [ ] Verify the pre-release checklist items and a passing CI run. With the owner’s approval for each release action, tag `v1.0.0`, push it to both remotes, publish the release notes and verify the deployment live. Then tick the final release item.
 
 ---
 
@@ -475,7 +505,8 @@ Each question has a default. Agents build on the default until the owner decides
 
 - [ ] No-limit hold’em at 2 to 9 seats, matching `docs/rules.md`, on the live site.
 - [ ] Anonymous players can play each other and bots, with persistent play-chip balances and a ledger that balances.
-- [ ] Guests can start solo practice at any balance, review a completed hand and join friends by link. First-time playtest findings and an aggregate usage baseline are recorded (P7.1a).
+- [ ] P5.9 has live evidence that a guest can start one-click practice at any balance, play the evaluated heads-up opponent, replay the settled hand from the table and return to play.
+- [ ] Guests can join friends by link. First-time playtest findings and an aggregate usage baseline are recorded (P7.1a).
 - [ ] Champion bots for heads-up, 6-max and 9-max, with published evaluations, plus difficulty levels. Bots are always labelled.
 - [ ] Hand histories, a replayer, stats, leaderboards and sit-and-go tournaments.
 - [ ] Works on current Chromium, Firefox and Safari (WebKit), from phone to desktop. Accessibility checks pass and the game is fully keyboard playable.
@@ -492,7 +523,7 @@ These are possible directions after the release:
 - other games such as pot-limit Omaha, with short-deck back as a variant;
 - real-time search for every format;
 - a Rust engine core if training needs it;
-- spectating and table chat with moderation;
+- richer spectator features and table chat with moderation (basic spectating shipped in P4.3);
 - optional sign-in, such as passkeys that claim a guest identity so chips and history follow a player across devices (D-12);
 - native app wrappers;
 - public research write-ups on the bots.
@@ -503,6 +534,8 @@ These are possible directions after the release:
 ## Handoff log
 
 Newest first. Keep eight entries and move older ones to [docs/build-history.md](docs/build-history.md). Each entry gives the date, the step IDs, what changed, the checks actually run and the next concrete action.
+
+**2026-11-19 · Practice, heads-up opponent and replay take priority (D-13).** The owner moved these three features ahead of broader work. Phase 5A starts with P6.0b, qualifies and serves the first heads-up champion at P5.7a, then adds table replay at P6.1. P5.9 verifies them together before Phase 5B. Replay sharing stays in Phase 6. Checked step order, dependencies, local links and the handoff rotation. Next action is P6.0b in the lobby and table server.
 
 **2026-11-19 · Player experience and adoption plan.** The owner asked for roadmap additions based on the project review. A live guest had 542 chips against a 2,000 minimum buy-in at the lowest stakes. Added P6.0b for wallet-independent practice, P6.7a for friend invites and P7.1a for a first-time playtest and aggregate usage baseline. Expanded P5.7, P6.1 and P6.7 with the first evaluated heads-up release, post-hand review and public learning pages. Verified the step dependencies and the handoff archive. Next action is P5.1, with practice and replay eligible to run during Phase 5.
 
@@ -517,5 +550,3 @@ Newest first. Keep eight entries and move older ones to [docs/build-history.md](
 **2026-11-19 · P4.3 and P4.4 deployed.** The owner asked to commit, push and redeploy. Everything was already committed; pushed `main` to both remotes and ran `deploy/update.sh` (server tests 500 passed, no migrations pending, Caddy reloaded with the seating rate limit, one table restored from a format 1 snapshot). `pnpm e2e:live` passed 10 of 10, and 2 of 2 for the restart test with `LIVE_RESTART_COMMAND="ssh root@ubuntu-vm systemctl restart rivermind-poker"`. Added a live smoke test of two people meeting in the lobby and playing together, which passed in both projects and ticks Phase 4's first exit criterion. Phase 4 stays current until P4.5 and P4.6 are done (P4.7 waits on Q-1). Next action: P4.5, safety and abuse controls.
 
 **2026-11-19 · P4.4 complete.** Continuing the same request. Added concurrent race tests (seats, last seat, two tabs on one turn, random concurrent rounds, nobody acting for another) and a browser test of two people and a bot through a disconnect; the one-seat rule was already in the table core and a mutation check showed the tests catch its removal. Phase 4's second exit criterion is ticked. Pitfalls: under load, random-play coverage checks failed while the ledgers held, so timing-dependent kinds now only need an attempt; forced clicks on the hidden lobby radios raced the table list's refresh on phones, and Playwright's `dispatchEvent` crashes Firefox pages, so the helper calls the input's own `click()`. Checks are in the P4.4 evidence. Committed `188d532`; not pushed or deployed. Next action: P4.5 (rate limits in the app, handle filter and reports, mute or block, preset reactions, collusion signals). Deploying P4.3 and P4.4 (owner approval) would let the first Phase 4 exit criterion be checked live.
-
-**2026-11-19 · P4.3 complete.** The owner asked for as much of the build as possible. Built the lobby: a live table list with filters, quick seat, seats taken from bots (at once between hands, otherwise held until the bot's hand ends), 60-second held seats, a waitlist, private tables with invite links, and spectating with “Sit here” on empty seats. Holds and the waitlist are table-core state (rule 2.4 in [docs/rules.md](docs/rules.md)), saved in snapshot format 2; bots refill a seat nobody wants. Pitfalls: inserting the lobby actions into the wallet's random play halved the rebuy band and made its coverage check flaky; advancing the `ManualClock` there made turn timeouts depend on thread timing, so hold expiry is tested deterministically instead. The new lobby has its own “Sit down” buttons and “Blinds” filter, so browser tests reach the new-table form through `newTableForm()`. The hand log now names each event's player as of that moment. Checks are in the P4.3 evidence. Committed `dedc77c`; not pushed or deployed (the deploy also installs the new Caddy rate limit). Next action: P4.4, multi-human correctness (one seat per player is already enforced; add concurrent-action race tests and a two-context browser test with disconnects).

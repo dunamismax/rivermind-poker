@@ -23,8 +23,9 @@ RiverMind Poker 1.0 is a free, self-hosted poker website at rivermindpoker.com, 
 2. **Engine before server (Phase 2).** Everything else depends on correct no-limit rules: side pots, all-ins, minimum raises and seat counts. Getting them right in isolation, with property tests and fuzzing, is far cheaper than debugging them through a live server.
 3. **Server v2 before multiplayer (Phase 3).** One player against bots exercises durable multi-seat tables, clocks and the new protocol without the extra risks of strangers sharing a table. The live cutover happens here.
 4. **Multiplayer before strong bots (Phase 4).** Identity, wallets, the lobby and fair dealing shape the data the bots and stats depend on. Simple bots fill seats in the meantime.
-5. **Strong bots (Phase 5).** These need the finished engine and a stable serving path. Heads-up comes first because it is the cheapest format to train and to evaluate rigorously.
-6. **Site features, then hardening (Phases 6 and 7).** Replays, stats, tournaments and polish build on stored histories. Monitoring, backups, load tests and a security review come last, followed by the 1.0 release.
+5. **Practice, heads-up opponent and replay (Phase 5A).** One click gets a guest into a hand at any balance. Heads-up is the cheapest format in which to train, evaluate and serve the first opponent. Replay then lets the guest revisit a decision from the table and play another hand. The three features must work together on the live site before the build expands.
+6. **Multi-seat bots and difficulty levels (Phase 5B).** Extend the measured heads-up pipeline to six seats, then nine, and verify the difficulty levels and serving budgets for each format.
+7. **Site features, then hardening (Phases 6 and 7).** Replay sharing, stats, tournaments and polish build on the working game. Monitoring, backups, load tests and a security review precede the 1.0 release.
 
 ## What Phase 0 established
 
