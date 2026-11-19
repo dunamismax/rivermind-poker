@@ -60,7 +60,7 @@ After changing `poker_ai/web/protocol.py` or `rivermind/server/protocol.py`, run
 
 Socket tests of the table server (`test/server/test_protocol_v2.py`) run with a `ManualClock`, so nobody times out, and a `TestClient` receive has no timeout. Check the last message already received before waiting for a turn (the snapshot after joining is often one), and keep playing your own turns while waiting for a later hand, or the test hangs.
 
-In the browser tests, the turn’s action panel opens above the table controls and pushes them down. Wait for the `Your action` group before clicking a button below it, or the click can land where the button was.
+In the browser tests, the turn’s action panel opens above the table controls and pushes them down. Wait for the `Your action` group before clicking a button below it, or the click can land where the button was. The lobby lists every open table on the test server, each with its own “Sit down”, and has its own “Blinds” filter, so reach the new-table form through `newTableForm()` and a listed table through its `li[data-table]` row.
 
 Training workers are separate processes, and macOS starts them with spawn, so pytest monkeypatches do not reach them. To test server scheduling with deterministic updates, use the thread workers in [the training test helpers](test/functional/training_helpers.py). Keep a real-worker CLI run for the end-to-end check.
 

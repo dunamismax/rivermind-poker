@@ -41,6 +41,8 @@ This archive holds the evidence for finished work and older session handoffs, mo
 
 ## Phase 3 session handoffs
 
+**2026-11-19 · P3.1 complete, server set up.** The owner lifted the owner gate on server setup (now D-10). Added [`deploy/setup-database.sh`](../deploy/setup-database.sh) and ran it on ubuntu-vm, following the host’s pattern of owner, web and migration roles. It created `rivermind_poker` and `rivermind_poker_test` on PostgreSQL 18 and migrated the site database to `0001`. `update.sh` now runs the database tests and migrations, the unit reads `DATABASE_URL`, and CI uses `postgres:18`. Checks are in the P3.1 evidence. Two pitfalls while checking: copying a tree with macOS `tar` adds `._*` files that Alembic tries to load (use `COPYFILE_DISABLE=1` and `--no-mac-metadata`), and root’s `git` refuses the sawyer-owned checkout, so run git as sawyer. Not deployed. Next action: P3.2.
+
 **2026-11-19 · P3.1 (partly).** Continuing the owner’s request, added `rivermind/db`: SQLAlchemy 2 models, Alembic migration `0001`, `alembic.ini`, database tests that skip locally and fail in CI without `RIVERMIND_TEST_DATABASE_URL`, and a PostgreSQL 17 service in the test workflow. Created the local `rivermind_test` database on this Mac’s PostgreSQL 17 (port 5432; PostgreSQL 18 also runs, on port 5433). Checks are in the P3.1 evidence. With the owner’s approval, pushed `main` to both remotes; CI run 44474555251 passed both jobs, with 357 Python tests including the database tests. Not done: the ubuntu-vm database (owner gate). Next action: P3.2, the table manager on the Phase 2 engine.
 
 ## Phase 2 session handoffs
