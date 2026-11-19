@@ -33,6 +33,16 @@ uv run --locked rivermind-poker play --agent offline \
   --lut_path "$TABLE_DIR" --strategy_path "$CHECKPOINT_FILE"
 ```
 
+The SvelteKit client in `web/` has its own suite (Node from `web/.node-version`, pnpm through corepack). Run it from `web/` before committing web changes; CI runs the same steps in its `web` job.
+
+```sh
+pnpm install --frozen-lockfile
+pnpm check && pnpm lint && pnpm test && pnpm build
+pnpm e2e    # Chromium, Firefox and WebKit against a real `serve`
+```
+
+After changing `poker_ai/web/protocol.py`, run `pnpm protocol` and commit the regenerated `web/src/lib/protocol.ts`. Keep the client free of inline script and style: the site CSP blocks them and `pnpm build` fails on them.
+
 Training workers are separate processes, and macOS starts them with spawn, so pytest monkeypatches do not reach them. To test server scheduling with deterministic updates, use the thread workers in [the training test helpers](test/functional/training_helpers.py). Keep a real-worker CLI run for the end-to-end check.
 
 Keep the `poker_ai` Python namespace and legacy CLI alias. Existing scripts import it, and serialized objects can refer to its module paths. Load only trusted pickle/joblib artifacts. When changing saved state, check the writer and its consumers (resume and offline play as applicable). Exercise existing-format data and document any required migration or regeneration. Keep checkpoints paired with the tables that define their buckets.
