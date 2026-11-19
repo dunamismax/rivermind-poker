@@ -34,22 +34,39 @@ export const test = withCsp.extend<object, { server: TableServer }>({
 
 export { expect };
 
+/** The lobby's form for starting a table (the table list has its own buttons). */
+export function newTableForm(page: Page) {
+	return page.getByRole('region', { name: 'Start a table' });
+}
+
 /** Start a table from the lobby and wait for the player's seat. */
 export async function sitDown(
 	page: Page,
 	seats: number,
-	{ bots = /Calling bot/, buyIn }: { bots?: RegExp; buyIn?: RegExp } = {}
+	{
+		bots = /Calling bot/,
+		buyIn,
+		privateTable = false
+	}: { bots?: RegExp; buyIn?: RegExp; privateTable?: boolean } = {}
 ): Promise<void> {
 	await page.goto('/');
-	await page.getByRole('radio', { name: String(seats), exact: true }).check({ force: true });
-	await page.getByRole('radio', { name: bots }).check({ force: true });
+	const form = newTableForm(page);
+	await form.getByRole('radio', { name: String(seats), exact: true }).check({ force: true });
+	await form.getByRole('radio', { name: bots }).check({ force: true });
+	if (privateTable) await form.getByRole('checkbox', { name: /Private table/ }).check();
 	if (buyIn) {
-		const select = page.getByRole('combobox', { name: 'Buy-in' });
+		const select = form.getByRole('combobox', { name: 'Buy-in' });
 		const option = select.getByRole('option', { name: buyIn });
 		await select.selectOption((await option.getAttribute('value')) ?? '');
 	}
-	await page.getByRole('button', { name: 'Sit down' }).click();
+	await form.getByRole('button', { name: 'Sit down' }).click();
 	await expect(page.getByRole('group', { name: /^Your seat/ })).toBeVisible();
+}
+
+/** The id of the table the page is at, as the page keeps it for a reload. */
+export async function tableIdOf(page: Page): Promise<string> {
+	const saved = await page.evaluate(() => localStorage.getItem('rivermind.nl.table'));
+	return JSON.parse(saved ?? 'null') as string;
 }
 
 export async function handNumber(page: Page): Promise<number> {

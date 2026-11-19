@@ -60,7 +60,7 @@ export interface ErrorMessage {
 }
 
 /** What a `TableEvent` reports. The fields it sets are listed per kind. */
-export type EventKind = 'seated' | 'left' | 'leaving' | 'sat_out' | 'sitting_out_next' | 'sat_in' | 'rebuy_pending' | 'rebought' | 'rebuy_dropped' | 'connected' | 'disconnected' | 'hand_started' | 'turn' | 'timed_out' | 'action' | 'board' | 'hand_ended';
+export type EventKind = 'seated' | 'left' | 'leaving' | 'sat_out' | 'sitting_out_next' | 'sat_in' | 'rebuy_pending' | 'rebought' | 'rebuy_dropped' | 'connected' | 'disconnected' | 'hand_started' | 'turn' | 'timed_out' | 'action' | 'board' | 'hand_ended' | 'reserved' | 'reservation_ended' | 'waitlist';
 
 /** The current hand, or the last one until the next starts. */
 export interface HandInfo {
@@ -153,18 +153,22 @@ export interface Legal {
 /** `POST /api/tables` with the session cookie. The player takes seat 0. */
 export interface NewTableRequest {
 	seats?: number;
-	/** The kind of bot in every other seat. */
-	bots?: string;
+	/** The kind of bot in every other seat, which gives up its seat when a person wants it; null leaves the seats for people. */
+	bots?: string | null;
 	/** One of the config's stakes. */
 	big_blind?: number;
-	/** Defaults to the maximum buy-in. */
+	/** Defaults to as much of the maximum as the wallet holds. */
 	buy_in?: number | null;
+	/** Unlisted; people join with the invite code. */
+	private?: boolean;
 }
 
 /** `POST /api/tables`, status 201. */
 export interface NewTableResponse {
 	table_id: string;
 	seat: number;
+	/** A private table's invite code. */
+	invite?: string | null;
 }
 
 export interface Post {
@@ -184,6 +188,14 @@ export interface PotResult {
 	shares: number[];
 }
 
+/** `POST /api/quick-seat`: a seat at the busiest matching public table, or a new table with bots. */
+export interface QuickSeatRequest {
+	seats?: number | null;
+	big_blind?: number | null;
+	/** Defaults to as much of the maximum as the wallet holds. */
+	buy_in?: number | null;
+}
+
 export type RaiseKind = 'bet' | 'raise';
 
 export interface RebuyMessage {
@@ -195,6 +207,16 @@ export interface RebuyMessage {
 export interface RefreshMessage {
 	type: 'refresh';
 	table_id: string;
+}
+
+/** A seat held for a player while they buy in (rule 2.4). */
+export interface SeatHold {
+	seat: number;
+	name: string;
+	/** False while a bot plays out the hand before giving up the seat. */
+	ready: boolean;
+	/** When the hold runs out; null until it is ready. */
+	until: number | null;
 }
 
 /** An occupied seat as the viewer may see it. */
@@ -222,6 +244,28 @@ export interface SeatInfo {
 }
 
 export type SeatKind = 'human' | 'bot';
+
+/** `POST /api/tables/{table_id}/seat`: hold a seat and, unless `hold_only`, buy in and sit in it. */
+export interface SeatRequest {
+	/** A seat to take; by default the server picks one. */
+	seat?: number | null;
+	/** Defaults to as much of the maximum as the wallet holds. */
+	buy_in?: number | null;
+	/** Only hold the seat, to buy in later with a `sit` message. */
+	hold_only?: boolean;
+	/** Needed for a private table. */
+	invite?: string | null;
+}
+
+/** `POST /api/tables/{table_id}/seat` and `POST /api/quick-seat`. */
+export interface SeatResponse {
+	table_id: string;
+	seat: number;
+	/** True when the player now sits at the table. */
+	seated: boolean;
+	/** When not seated: the held seat. Sit in it with a `sit` message once it is ready. */
+	hold: SeatHold | null;
+}
 
 /** Any message the server sends. */
 export type ServerMessage = WelcomeMessage | TableMessage | LeftTableMessage | TableClosedMessage | ErrorMessage;
@@ -289,6 +333,16 @@ export interface TableEvent {
 	cards?: Card[] | null;
 	reason?: string | null;
 	hand_no?: number | null;
+	count?: number | null;
+}
+
+/**
+ * `GET /api/tables`, with optional filters `seats`, `big_blind` and `open` (only tables with a seat to take).
+ *
+ * Public tables, and private ones the viewer is at, most people first.
+ */
+export interface TableListResponse {
+	tables: TableSummary[];
 }
 
 /** A table's view after a change, with the events since the last one sent. */
@@ -310,6 +364,37 @@ export interface TableSettings {
 	time_bank_seconds: number;
 }
 
+/** A table as the lobby lists it. */
+export interface TableSummary {
+	table_id: string;
+	name: string;
+	seat_count: number;
+	small_blind: number;
+	big_blind: number;
+	min_buy_in: number;
+	max_buy_in: number;
+	private: boolean;
+	/** People seated. */
+	people: number;
+	/** Bots seated. */
+	bots: number;
+	/** Empty seats nobody holds. */
+	free_seats: number;
+	/** Bots' seats a person can claim; the bot leaves when its hand ends. */
+	bot_seats: number;
+	/** Seats held for players buying in. */
+	holds: number;
+	waitlist: number;
+	/** Hands dealt so far. */
+	hand_no: number;
+	/** Whether the viewer has a seat here. */
+	seated: boolean;
+	/** The seat held for the viewer here, if any. */
+	hold: SeatHold | null;
+	/** The viewer's place on the waitlist here, from 1. */
+	waitlist_position: number | null;
+}
+
 /** Everything one player may see at a table. */
 export interface TableView {
 	table_id: string;
@@ -324,6 +409,12 @@ export interface TableView {
 	hand: HandInfo | null;
 	turn: Turn | null;
 	you: You;
+	private: boolean;
+	/** A private table's invite code, for its people to share. */
+	invite: string | null;
+	holds: SeatHold[];
+	/** Players waiting for a seat. */
+	waitlist: number;
 }
 
 /** The clock of the seat to act, in seconds since the epoch on the server. */
@@ -341,6 +432,18 @@ export interface Turn {
 export interface Uncalled {
 	seat: number;
 	amount: number;
+}
+
+/** `POST /api/tables/{table_id}/waitlist`: wait for a seat at a full table. */
+export interface WaitlistRequest {
+	/** Needed for a private table. */
+	invite?: string | null;
+}
+
+export interface WaitlistResponse {
+	table_id: string;
+	/** The player's place in line, from 1. */
+	position: number;
 }
 
 /** `GET /api/wallet` with the session cookie: the balance and the newest entries first. */
@@ -362,6 +465,10 @@ export interface You {
 	player_id: string;
 	/** The viewer's seat, or null when not seated. */
 	seat: number | null;
+	/** The seat held for the viewer, if any. */
+	hold: SeatHold | null;
+	/** The viewer's place on the waitlist, from 1. */
+	waitlist_position: number | null;
 	/** Set when it is the viewer's turn. */
 	legal: Legal | null;
 	time_bank: number | null;

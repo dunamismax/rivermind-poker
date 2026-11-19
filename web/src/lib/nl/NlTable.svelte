@@ -36,7 +36,10 @@
 	const board = $derived(Array.from({ length: 5 }, (_, i) => hand?.board[i]));
 	const lines = $derived(
 		connection.log
-			.map((event) => ({ seq: event.seq, text: describeEvent(event, nameOf) }))
+			.map((event) => ({
+				seq: event.seq,
+				text: describeEvent(event, (seat) => event.who ?? nameOf(seat))
+			}))
 			.filter((line): line is { seq: number; text: string } => line.text !== null)
 			.slice(-30)
 			.reverse()
@@ -58,6 +61,52 @@
 		if (rebuyAmount <= 0 || rebuyAmount > rebuyRoom) rebuyAmount = Math.max(0, rebuyRoom);
 	});
 	const busted = $derived(me !== null && me.stack === 0 && !inHand);
+
+	// Seating from the table (P4.3): a spectator can hold an empty seat, take
+	// any seat, or wait in line; a held seat waits for its player to buy in.
+	const hold = $derived(view.you.hold);
+	const holdAt = $derived(new Map(view.holds.map((h) => [h.seat, h])));
+	const room = $derived(
+		view.seats.some((info, seat) => !holdAt.has(seat) && (info === null || info.kind === 'bot'))
+	);
+	const holdLeft = $derived(hold?.until ? Math.max(0, Math.ceil(hold.until - now)) : null);
+	const most = $derived(Math.min(view.settings.max_buy_in, connection.balance ?? Infinity));
+	let buyIn = $state(0);
+	$effect.pre(() => {
+		const low = view.settings.min_buy_in;
+		if (buyIn < low || buyIn > view.settings.max_buy_in) buyIn = Math.max(low, most);
+	});
+	const short = $derived(
+		connection.balance !== null && connection.balance < view.settings.min_buy_in
+	);
+	let seating = $state(false);
+
+	async function seatTask(task: () => Promise<unknown>) {
+		seating = true;
+		try {
+			await task();
+		} catch (e) {
+			connection.notify(e instanceof Error ? e.message : String(e));
+		} finally {
+			seating = false;
+		}
+	}
+
+	let sharing = $state(false);
+	let copied = $state(false);
+	const inviteLink = $derived(
+		view.invite ? `${location.origin}/?invite=${encodeURIComponent(view.invite)}` : null
+	);
+	async function copyInvite() {
+		if (!inviteLink) return;
+		try {
+			await navigator.clipboard.writeText(inviteLink);
+			copied = true;
+			setTimeout(() => (copied = false), 2000);
+		} catch {
+			// The field shows the link to copy by hand.
+		}
+	}
 </script>
 
 <section class="nl-table" class:my-turn={myTurn} aria-label="Table">
@@ -65,6 +114,20 @@
 		{#if me}
 			<button type="button" class="px-btn small leave" onclick={() => connection.leave()}>
 				<span aria-hidden="true">←</span> Leave table
+			</button>
+		{:else}
+			<button type="button" class="px-btn small leave" onclick={() => connection.leave()}>
+				<span aria-hidden="true">←</span> Lobby
+			</button>
+		{/if}
+		{#if inviteLink}
+			<button
+				type="button"
+				class="px-btn small"
+				aria-expanded={sharing}
+				onclick={() => (sharing = !sharing)}
+			>
+				Invite
 			</button>
 		{/if}
 		<div class="meta">
@@ -74,6 +137,24 @@
 			<span class="sprite chip chip-red" aria-hidden="true"></span>{view.settings.small_blind}/{view
 				.settings.big_blind}
 		</div>
+		{#if sharing && inviteLink}
+			<div class="share px-inset" role="group" aria-label="Invite link">
+				<label>
+					<span class="visually-hidden">Invite link</span>
+					<input
+						class="px-field"
+						type="text"
+						readonly
+						value={inviteLink}
+						onfocus={(e) => e.currentTarget.select()}
+					/>
+				</label>
+				<button type="button" class="px-btn small amber" onclick={copyInvite}>
+					{copied ? 'Copied' : 'Copy'}
+				</button>
+				<span class="note">This private table is not listed: anyone with the link can join.</span>
+			</div>
+		{/if}
 	</div>
 
 	<div class="arena seats-{count}">
@@ -116,6 +197,19 @@
 							<span>Bet {info.bet}</span>
 						</div>
 					{/if}
+				{:else if holdAt.has(seat)}
+					<div class="empty held {placeClass(seat, mine, count)}">
+						{hold?.seat === seat ? 'Your seat' : 'Held'}
+					</div>
+				{:else if mine === null && !hold && view.you.waitlist_position === null}
+					<button
+						type="button"
+						class="empty open {placeClass(seat, mine, count)}"
+						disabled={seating || short}
+						onclick={() => seatTask(() => connection.holdSeat(seat))}
+					>
+						Sit here<span class="visually-hidden">, seat {seat + 1}</span>
+					</button>
 				{:else}
 					<div class="empty {placeClass(seat, mine, count)}" aria-hidden="true">Empty</div>
 				{/if}
@@ -124,7 +218,97 @@
 	</div>
 
 	<div class="dock">
-		{#if view.you.legal && hand && view.turn}
+		{#if !me}
+			<div class="join px-inset" role="group" aria-label="Take a seat">
+				{#if hold?.ready}
+					<p role="status">
+						Seat {hold.seat + 1} is held for you{holdLeft !== null ? ` for ${holdLeft}s` : ''}. Buy
+						in to sit down.
+					</p>
+					<form
+						class="buy-in"
+						onsubmit={(e) => {
+							e.preventDefault();
+							connection.sit(hold!.seat, Math.floor(buyIn));
+						}}
+					>
+						<label>
+							<span class="visually-hidden">Buy-in</span>
+							<input
+								class="px-field"
+								type="number"
+								inputmode="numeric"
+								min={view.settings.min_buy_in}
+								max={view.settings.max_buy_in}
+								step="1"
+								bind:value={buyIn}
+							/>
+						</label>
+						<button type="submit" class="px-btn amber" disabled={short || !connection.connected}>
+							Sit down
+						</button>
+						<button
+							type="button"
+							class="px-btn small"
+							disabled={seating}
+							onclick={() => seatTask(() => connection.giveUpHold())}
+						>
+							Give up
+						</button>
+					</form>
+					<p class="hint">
+						Buy in for {view.settings.min_buy_in.toLocaleString('en-US')} to {view.settings.max_buy_in.toLocaleString(
+							'en-US'
+						)} play chips.
+					</p>
+				{:else if hold}
+					<p role="status">Seat {hold.seat + 1} is yours when the bot there finishes this hand.</p>
+					<button
+						type="button"
+						class="px-btn small"
+						disabled={seating}
+						onclick={() => seatTask(() => connection.giveUpHold())}
+					>
+						Give up the seat
+					</button>
+				{:else if view.you.waitlist_position !== null}
+					<p role="status">
+						You are number {view.you.waitlist_position} in line. A seat is held for you when one opens.
+					</p>
+					<button
+						type="button"
+						class="px-btn small"
+						disabled={seating}
+						onclick={() => seatTask(() => connection.leaveWaitlist(view.table_id))}
+					>
+						Leave the line
+					</button>
+				{:else}
+					<p role="status">
+						You are watching.{short ? ' You need more play chips to sit at this table.' : ''}
+					</p>
+					{#if room}
+						<button
+							type="button"
+							class="px-btn amber"
+							disabled={seating || short}
+							onclick={() => seatTask(() => connection.takeSeat(view.table_id))}
+						>
+							Sit down
+						</button>
+					{:else}
+						<button
+							type="button"
+							class="px-btn amber"
+							disabled={seating || short}
+							onclick={() => seatTask(() => connection.joinWaitlist(view.table_id))}
+						>
+							Join the waitlist
+						</button>
+					{/if}
+				{/if}
+			</div>
+		{:else if view.you.legal && hand && view.turn}
 			<ActionPanel
 				legal={view.you.legal}
 				{hand}
@@ -218,6 +402,7 @@
 	.bar {
 		grid-area: bar;
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 12px;
 		min-height: 48px;
@@ -322,6 +507,65 @@
 		font-size: var(--fs-s);
 		border: var(--px) dashed var(--felt-light);
 		background: rgb(12 13 21 / 0.35);
+	}
+	.empty.held {
+		color: var(--amber);
+		border-color: var(--amber-dark);
+	}
+	button.empty.open {
+		font: inherit;
+		font-size: var(--fs-s);
+		color: var(--gold-light);
+		border-color: var(--gold);
+		cursor: pointer;
+		z-index: 3;
+	}
+	button.empty.open:hover:not(:disabled),
+	button.empty.open:focus-visible {
+		background: rgb(12 13 21 / 0.7);
+		outline: var(--px) solid var(--gold-light);
+	}
+	button.empty.open:disabled {
+		cursor: default;
+		opacity: 0.6;
+	}
+	.share {
+		flex: 1 1 100%;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px;
+		padding: 8px;
+	}
+	.share label {
+		flex: 1 1 260px;
+		min-width: 0;
+	}
+	.share input {
+		width: 100%;
+	}
+	.join {
+		display: grid;
+		gap: 10px;
+		justify-items: center;
+		text-align: center;
+		padding: 10px 12px 12px;
+		color: var(--mist);
+	}
+	.buy-in {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		align-items: center;
+		gap: 8px;
+	}
+	.buy-in input {
+		width: 130px;
+		text-align: right;
+	}
+	.join .hint {
+		color: var(--haze);
+		font-size: var(--fs-s);
 	}
 	@keyframes pop {
 		from {

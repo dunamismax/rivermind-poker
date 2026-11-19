@@ -10,6 +10,9 @@ published, and stored, before the next snapshot is taken.
 A snapshot holds every hole card and the deck, so it is as private as the
 server. Turn times are seconds since the epoch, so a deadline saved before a
 restart still means the same moment after it.
+
+Format 2 (P4.3) adds held seats and the waitlist. Format 1 documents, saved
+before them, still load, with neither.
 """
 
 from __future__ import annotations
@@ -20,9 +23,10 @@ from typing import Any
 
 from rivermind.engine.history import FormatError, state_from_dict, state_to_dict
 
-from .table import Player, Table, TableConfig, Turn
+from .table import Player, Reservation, Table, TableConfig, Turn, Waiting
 
-FORMAT = 1
+FORMAT = 2
+READABLE = frozenset({1, 2})
 KIND = "table"
 
 _CONFIG_FIELDS = (
@@ -102,14 +106,32 @@ def table_to_dict(table: Table) -> dict[str, Any]:
         "button": table.button,
         "seq": table.seq,
         "turn": None if turn is None else {name: getattr(turn, name) for name in _TURN_FIELDS},
+        "reservations": [
+            {"seat": seat, "player_id": hold.player_id, "name": hold.name, "until": hold.until, "bot": hold.bot}
+            for seat, hold in sorted(table.reservations.items())
+        ],
+        "waitlist": [{"player_id": w.player_id, "name": w.name} for w in table.waitlist],
     }
+
+
+def _reservation(data: Mapping[str, Any], seat_count: int) -> tuple[int, Reservation]:
+    seat, until, bot = data["seat"], data["until"], data["bot"]
+    if type(seat) is not int or not 0 <= seat < seat_count:
+        raise ValueError("a held seat is out of range")
+    if not isinstance(data["player_id"], str) or not isinstance(data["name"], str):
+        raise ValueError("a held seat needs a player id and a name")
+    if until is not None and (isinstance(until, bool) or not isinstance(until, (int, float))):
+        raise ValueError("a held seat's time has the wrong type")
+    if bot is not None and not isinstance(bot, str):
+        raise ValueError("a held seat's bot has the wrong type")
+    return seat, Reservation(data["player_id"], data["name"], until, bot)
 
 
 def table_from_dict(data: Mapping[str, Any], clock: Callable[[], float] = time.time) -> Table:
     """Rebuild a table from ``table_to_dict``. Raises ``FormatError`` for a bad document."""
     if not isinstance(data, Mapping):
         raise FormatError("a table snapshot must be a JSON object")
-    if data.get("format") != FORMAT:
+    if data.get("format") not in READABLE:
         raise FormatError(f"unknown table snapshot format {data.get('format')!r}")
     if data.get("kind") != KIND:
         raise FormatError(f"expected a {KIND} document, got {data.get('kind')!r}")
@@ -129,9 +151,12 @@ def table_from_dict(data: Mapping[str, Any], clock: Callable[[], float] = time.t
         table.seq = int(data["seq"])
         turn = data["turn"]
         table.turn = None if turn is None else Turn(**{name: turn[name] for name in _TURN_FIELDS})
+        if data["format"] >= 2:
+            table.reservations = dict(_reservation(r, config.seat_count) for r in data["reservations"])
+            table.waitlist = [Waiting(str(w["player_id"]), str(w["name"])) for w in data["waitlist"]]
     except (KeyError, TypeError, ValueError) as error:
         raise FormatError(f"bad table snapshot: {error}") from error
     return table
 
 
-__all__ = ["FORMAT", "config_from_dict", "config_to_dict", "table_from_dict", "table_to_dict"]
+__all__ = ["FORMAT", "READABLE", "config_from_dict", "config_to_dict", "table_from_dict", "table_to_dict"]

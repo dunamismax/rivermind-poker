@@ -2,7 +2,9 @@
 
 The randomized test plays several people at several bot tables through the
 app's ``Server``: they visit (and come back days later for top-ups), start
-tables, sit down, rebuy beyond their means, sit out, act and leave. After
+tables, take seats from the lobby (quick seat, held seats, the waitlist and
+bots giving up their seats, P4.3), sit down, rebuy beyond their means, sit
+out, act and leave. After
 every step each wallet's ledger adds up to its balance and nothing is
 negative. At the end, once everyone has left and every table has closed,
 every chip is accounted for: the wallets hold exactly what grants and
@@ -63,6 +65,8 @@ class BotChips:
 
     injected: int = 0
     held: dict[str, int] = field(default_factory=dict)
+    left: int = 0
+    """Chips bots took away when they gave up a seat to a person (P4.3)."""
     bot_seats: dict[str, set[int]] = field(default_factory=dict)
 
     async def __call__(self, runner: TableRunner, events: Sequence[Event]) -> None:
@@ -78,6 +82,8 @@ class BotChips:
             elif event.kind == "rebought" and seat in seats:
                 self.injected += event.data["amount"]
             elif event.kind == "left":
+                if seat in seats:
+                    self.left += event.data["stack"]
                 seats.discard(seat)
         table = runner.table
         if not table.hand_in_progress:
@@ -177,7 +183,7 @@ async def random_play(
                     big_blind=rng.choice((50, 100, 200)),
                     buy_in=rng.choice((None, None, 2_000, 4_000, 20_000)),
                 )
-                table_id, _ = await server.create_table(records[player_id], request)
+                table_id, _, _ = await server.create_table(records[player_id], request)
                 await server.join(connection, table_id)
             elif roll < 0.22 and tables:
                 kind = "sit"
@@ -190,17 +196,40 @@ async def random_play(
                 config = runner.table.config
                 amount = rng.choice((config.min_buy_in, config.max_buy_in, config.max_buy_in * 3))
                 await server.handle(connection, p.SitMessage(type="sit", table_id=table_id, seat=rng.choice(free), buy_in=amount))
-            elif roll < 0.32 and mine:
+            elif roll < 0.28 and tables:
+                table_id = rng.choice(tables)
+                runner = server.tables.get(table_id)
+                if runner is None:
+                    raise RequestError(p.ErrorCode.UNKNOWN_TABLE, "the table closed")
+                config = runner.table.config
+                record = records[player_id]
+                pick = rng.random()
+                if pick < 0.4:
+                    kind = "take_seat"
+                    amount = rng.choice((None, config.min_buy_in, config.max_buy_in * 3))
+                    await server.take_seat(record, runner, None, amount, False)
+                elif pick < 0.6:
+                    kind = "quick_seat"
+                    quick = p.QuickSeatRequest(seats=rng.choice((None, 2, 6)), big_blind=rng.choice((None, 100)))
+                    table_id = (await server.quick_seat(record, quick)).table_id
+                elif pick < 0.8:
+                    kind = "hold"
+                    await server.take_seat(record, runner, rng.randrange(config.seat_count), None, True)
+                else:
+                    kind = "waitlist"
+                    await server.join_waitlist(record, runner)
+                await server.join(connection, table_id)
+            elif roll < 0.38 and mine:
                 kind = "rebuy"
                 table_id = rng.choice(mine)
                 config = server.tables.tables[table_id].table.config
                 amount = rng.choice((config.big_blind, config.min_buy_in, config.max_buy_in, 5 * config.max_buy_in))
                 await server.handle(connection, p.RebuyMessage(type="rebuy", table_id=table_id, amount=amount))
-            elif roll < 0.38 and mine:
+            elif roll < 0.44 and mine:
                 kind = "leave"
                 table_id = rng.choice(mine)
                 await server.handle(connection, p.LeaveTableMessage(type="leave_table", table_id=table_id))
-            elif roll < 0.42 and mine:
+            elif roll < 0.48 and mine:
                 kind = "sit_out"
                 table_id = rng.choice(mine)
                 if rng.random() < 0.5:
@@ -220,6 +249,9 @@ async def random_play(
     # Everyone leaves every seat, followed or not (a player follows at most
     # eight tables, but creating a table seats them without following it).
     for runner in list(server.tables.tables.values()):
+        for player_id in people:
+            await runner.cancel_reservation(player_id)
+            await runner.leave_waitlist(player_id)
         for _, seated in list(runner.table.players()):
             if seated.player_id in people:
                 try:
@@ -249,7 +281,7 @@ async def random_play(
         "balances": balances,
         "paid_in": paid_in,
         "bots_injected": bots.injected,
-        "bots_held": sum(bots.held.values()),
+        "bots_held": sum(bots.held.values()) + bots.left,
         "refunds": kinds.count("refund"),
         "top_ups": kinds.count("top_up"),
     }
@@ -261,10 +293,10 @@ def check_outcome(outcome: dict[str, Any]) -> None:
     # plus what the bots brought to the tables minus what the bots kept.
     assert sum(outcome["balances"].values()) == outcome["paid_in"] + outcome["bots_injected"] - outcome["bots_held"]
     # The random play reached the interesting cases.
-    for kind in ("new_table", "rebuy", "leave", "act", "visit"):
+    for kind in ("new_table", "rebuy", "leave", "act", "visit", "take_seat", "quick_seat", "hold"):
         assert counts.get(kind, 0) > 0, (kind, sorted(counts.items()))
-    # Until the lobby (P4.3) every seat but the creator's holds a bot, so most
-    # sits are refused after being paid for: the payment must come back.
+    # Sitting in a seat a bot or a hold has is refused after being paid for:
+    # the payment must come back.
     assert counts.get("sit:TableError", 0) > 0, sorted(counts.items())
     assert any("RequestError" in k for k in counts), counts  # someone could not afford something
     assert outcome["refunds"] > 0 and outcome["top_ups"] > 0
@@ -317,7 +349,7 @@ def test_an_idle_table_pays_back_the_people_still_seated() -> None:
         await server.start()
         record = await asyncio.to_thread(server.players.create)
         server.wallet.visit(record.player_id, 0)
-        table_id, _ = await server.create_table(record, p.NewTableRequest(seats=2, bots="calling_station", buy_in=4_000))
+        table_id, _, _ = await server.create_table(record, p.NewTableRequest(seats=2, bots="calling_station", buy_in=4_000))
         assert server.wallet.balance(record.player_id) == STARTING_GRANT - 4_000
         runner = server.tables.tables[table_id]
         await runner.sit_out(record.player_id)

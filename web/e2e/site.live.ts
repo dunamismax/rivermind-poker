@@ -3,6 +3,7 @@ import type { Page } from '@playwright/test';
 import {
 	expect,
 	handNumber,
+	newTableForm,
 	noOverflow,
 	playUntil,
 	playUntilHand,
@@ -21,7 +22,7 @@ test.afterEach(({ cspViolations }) => {
 
 async function leave(page: Page): Promise<void> {
 	await page.getByRole('button', { name: 'Leave table' }).click();
-	await expect(page.getByRole('button', { name: 'Sit down' })).toBeVisible();
+	await expect(newTableForm(page).getByRole('button', { name: 'Sit down' })).toBeVisible();
 }
 
 async function myCards(page: Page): Promise<(string | null)[]> {
@@ -50,7 +51,7 @@ test('serves the client with the site headers', async ({ page, request }) => {
 	expect((await config.json()).protocol).toBe(2);
 	await page.goto('/');
 	await expect(page.getByRole('heading', { name: 'No-limit hold’em' })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Sit down' })).toBeVisible();
+	await expect(newTableForm(page).getByRole('button', { name: 'Sit down' })).toBeVisible();
 });
 
 for (const seats of [2, 6, 9]) {

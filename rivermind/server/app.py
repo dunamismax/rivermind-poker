@@ -21,6 +21,13 @@ paid from it before they reach the table and refunded if the table refuses
 them; chips come back when the player leaves or a waiting rebuy no longer
 fits, and when a table closes with them still seated.
 
+The lobby (P4.3) lists the public tables with filters and seats people at
+them. Bots keep the seats warm: a person who wants a seat at a table full of
+bots takes a bot's, at once between hands or when the bot's hand ends, and a
+seat a person leaves goes to the first player on the waitlist or else back
+to a bot. A seat is held for its player while they buy in (rule 2.4). A
+private table is unlisted and needs its invite code.
+
 With a ``TableStore`` (P3.5) every table is saved to PostgreSQL after each
 change and before any socket hears of it, and the open tables are restored
 when the app starts. Nobody is connected to a restored table yet, so its
@@ -56,14 +63,18 @@ from .wallet import PLAY_MONEY_NOTICE, Credit, DatabaseWallet, InsufficientChips
 from .runner import BOT_LABELS, RunnerOptions, TableManager, TableRunner, default_bots
 from .snapshot import table_from_dict
 from .store import TableSaver, TableStore
+from .table import ErrorCode as TableErrorCode
 from .table import Event, TableConfig, TableError
-from .views import table_events, table_view
+from .views import table_events, table_summary, table_view, your_hold
 
 log = logging.getLogger("rivermind.server")
 
 STAKES = ((25, 50), (50, 100), (100, 200), (500, 1000))
 MAX_SUBSCRIPTIONS = 8
 QUEUE_LIMIT = 512
+LIST_LIMIT = 100
+DEFAULT_BIG_BLIND = 100
+GONE = "That table no longer exists."
 
 # Mirrors deploy/rivermindpoker.com.caddy, so the built client is tested
 # locally under the policy it gets in production.
@@ -189,7 +200,7 @@ class Server:
         for saved in await asyncio.to_thread(store.load_open):
             try:
                 table = table_from_dict(saved.state, self.options.clock.now)
-                runner = self.tables.restore(saved.table_id, table, name=saved.name)
+                runner = self.tables.restore(saved.table_id, table, name=saved.name, lobby=saved.state.get("lobby"))
             except (FormatError, ValueError):
                 log.exception("Could not restore table %s; closing it", saved.table_id)
                 await asyncio.to_thread(store.close, saved.table_id)
@@ -236,28 +247,37 @@ class Server:
             if not watched and now - runner.last_active > self.idle_seconds:
                 self._schedule_close(table_id, "The table closed after being idle.")
 
-    async def create_table(self, player: PlayerRecord, request: p.NewTableRequest) -> tuple[str, int]:
-        if request.bots not in self.bots:
-            raise HTTPException(400, f"bots must be one of {sorted(self.bots)}")
+    async def buy_in_for(self, player_id: str, config: TableConfig, requested: int | None) -> int:
+        """The buy-in asked for, or as much of the maximum as the wallet holds."""
+        if requested is None:
+            balance = await asyncio.to_thread(self.wallet.balance, player_id)
+            buy_in = min(config.max_buy_in, balance)
+            if buy_in < config.min_buy_in:
+                raise HTTPException(400, f"You have {balance:,} chips; this table needs at least {config.min_buy_in:,}.")
+            return buy_in
+        if not config.min_buy_in <= requested <= config.max_buy_in:
+            raise HTTPException(400, f"buy_in must be {config.min_buy_in} to {config.max_buy_in}")
+        return requested
+
+    async def create_table(self, player: PlayerRecord, request: p.NewTableRequest) -> tuple[str, int, str | None]:
+        """Start a table with the player in seat 0. Returns its id, the seat and any invite code."""
+        if request.bots is not None and request.bots not in self.bots:
+            raise HTTPException(400, f"bots must be one of {sorted(self.bots)} or null")
         stakes = dict((big, small) for small, big in STAKES)
         if request.big_blind not in stakes:
             raise HTTPException(400, f"big_blind must be one of {sorted(stakes)}")
         config = TableConfig(request.seats, stakes[request.big_blind], request.big_blind)
-        if request.buy_in is None:
-            # As much of the maximum as the wallet holds.
-            balance = await asyncio.to_thread(self.wallet.balance, player.player_id)
-            buy_in = min(config.max_buy_in, balance)
-            if buy_in < config.min_buy_in:
-                raise HTTPException(400, f"You have {balance:,} chips; this table needs at least {config.min_buy_in:,}.")
-        else:
-            buy_in = request.buy_in
-        if not config.min_buy_in <= buy_in <= config.max_buy_in:
-            raise HTTPException(400, f"buy_in must be {config.min_buy_in} to {config.max_buy_in}")
+        buy_in = await self.buy_in_for(player.player_id, config, request.buy_in)
         self._evict()
         if len(self.tables.tables) >= self.max_tables:
             raise HTTPException(503, "Every table is in use; try again later.")
-        label = BOT_LABELS.get(request.bots, request.bots)
-        runner = self.tables.create(config, name=f"{request.seats}-seat table with {label}s")
+        if request.bots is None:
+            name = f"{request.seats}-seat table"
+        else:
+            name = f"{request.seats}-seat table with {BOT_LABELS.get(request.bots, request.bots)}s"
+        invite = secrets.token_urlsafe(12) if request.private else None
+        lobby = {"fill": request.bots, "private": request.private, "invite": invite}
+        runner = self.tables.create(config, name=name, lobby=lobby)
         try:
             await self.pay_in(player.player_id, buy_in, "buy_in", runner.table_id)
         except RequestError as error:
@@ -265,18 +285,132 @@ class Server:
             raise HTTPException(400, str(error)) from None
         try:
             # Bots first: with require_person, nothing is dealt until the person sits.
-            for seat in range(1, request.seats):
-                await runner.seat_bot(seat, request.bots)
+            if request.bots is not None:
+                for seat in range(1, request.seats):
+                    await runner.seat_bot(seat, request.bots)
             await runner.sit(0, player.player_id, player.handle, buy_in)
         except BaseException:
             await self.refund(player.player_id, buy_in, runner.table_id)
             self._schedule_close(runner.table_id, "The table could not be set up.")
             raise
-        return runner.table_id, 0
+        return runner.table_id, 0, invite
+
+    # The lobby (P4.3)
+
+    def open_tables(self) -> list[TableRunner]:
+        return [runner for table_id, runner in self.tables.tables.items() if table_id not in self._closing]
+
+    def lobby_runner(self, table_id: str, player_id: str, invite: str | None = None) -> TableRunner:
+        """A table the player may see: public, one they are at, or private with its invite code."""
+        runner = self.tables.get(table_id)
+        if runner is None or table_id in self._closing:
+            raise HTTPException(404, GONE)
+        if runner.private and not runner.is_member(player_id) and not _invite_matches(runner, invite):
+            raise HTTPException(404, GONE)
+        return runner
+
+    def list_tables(
+        self, player_id: str, seats: int | None, big_blind: int | None, open_only: bool
+    ) -> list[p.TableSummary]:
+        summaries = []
+        for runner in self.open_tables():
+            if runner.private and not runner.is_member(player_id):
+                continue
+            config = runner.table.config
+            if seats is not None and config.seat_count != seats:
+                continue
+            if big_blind is not None and config.big_blind != big_blind:
+                continue
+            summary = table_summary(runner, player_id)
+            if open_only and not (summary.free_seats or summary.bot_seats):
+                continue
+            summaries.append(summary)
+        summaries.sort(key=lambda t: (-t.people, t.free_seats + t.bot_seats == 0, t.big_blind, t.seat_count, t.table_id))
+        return summaries[:LIST_LIMIT]
+
+    def find_invite(self, code: str) -> TableRunner | None:
+        for runner in self.open_tables():
+            if runner.private and _invite_matches(runner, code):
+                return runner
+        return None
+
+    async def take_seat(
+        self, player: PlayerRecord, runner: TableRunner, seat: int | None, buy_in: int | None, hold_only: bool
+    ) -> p.SeatResponse:
+        """Hold a seat and, unless ``hold_only``, buy in and sit in it if it is free now."""
+        table_id, player_id = runner.table_id, player.player_id
+        amount = None if hold_only else await self.buy_in_for(player_id, runner.table.config, buy_in)
+        try:
+            held, ready = await runner.reserve(player_id, player.handle, seat)
+        except TableError as error:
+            raise _http_error(error) from None
+        if amount is None or not ready:
+            return p.SeatResponse(table_id=table_id, seat=held, seated=False, hold=your_hold(runner.table, player_id))
+        try:
+            await self.pay_in(player_id, amount, "buy_in", table_id)
+        except RequestError as error:
+            raise HTTPException(400, str(error)) from None
+        try:
+            await runner.sit(held, player_id, player.handle, amount)
+        except TableError as error:
+            await self.refund(player_id, amount, table_id)
+            raise _http_error(error) from None
+        return p.SeatResponse(table_id=table_id, seat=held, seated=True, hold=None)
+
+    async def quick_seat(self, player: PlayerRecord, request: p.QuickSeatRequest) -> p.SeatResponse:
+        """A seat at the busiest matching public table, or a new table with bots."""
+        player_id = player.player_id
+        balance = await asyncio.to_thread(self.wallet.balance, player_id)
+        candidates: list[tuple[tuple[int, int, bool], TableRunner]] = []
+        for runner in self.open_tables():
+            table = runner.table
+            config = table.config
+            if runner.private and not runner.is_member(player_id):
+                continue
+            if request.seats is not None and config.seat_count != request.seats:
+                continue
+            if request.big_blind is not None and config.big_blind != request.big_blind:
+                continue
+            seat = table.seat_of(player_id)
+            if seat is not None:
+                return p.SeatResponse(table_id=runner.table_id, seat=seat, seated=True, hold=None)
+            mine = table.reservation_of(player_id) is not None
+            if not mine and not (table.free_seats() or table.bot_seats()):
+                continue
+            if request.buy_in is not None and not config.min_buy_in <= request.buy_in <= config.max_buy_in:
+                continue
+            if (request.buy_in or config.min_buy_in) > balance:
+                continue
+            now = bool(table.free_seats()) or any(not table.in_hand(s) for s in table.bot_seats())
+            candidates.append(((int(mine), table.people(), now), runner))
+        for _, runner in sorted(candidates, key=lambda c: c[0], reverse=True):
+            try:
+                return await self.take_seat(player, runner, None, request.buy_in, False)
+            except HTTPException as error:
+                if error.status_code != 409:
+                    raise
+        big_blind = request.big_blind
+        if big_blind is None:
+            # The usual stakes if the wallet covers them, else the largest it does.
+            affordable = [big for _, big in STAKES if TableConfig(2, big // 2, big).min_buy_in <= balance]
+            big_blind = DEFAULT_BIG_BLIND if DEFAULT_BIG_BLIND in affordable else max(affordable, default=STAKES[0][1])
+        new = p.NewTableRequest(seats=request.seats or 6, big_blind=big_blind, buy_in=request.buy_in)
+        table_id, seat, _ = await self.create_table(player, new)
+        return p.SeatResponse(table_id=table_id, seat=seat, seated=True, hold=None)
+
+    async def join_waitlist(self, player: PlayerRecord, runner: TableRunner) -> int:
+        balance = await asyncio.to_thread(self.wallet.balance, player.player_id)
+        minimum = runner.table.config.min_buy_in
+        if balance < minimum:
+            raise HTTPException(400, f"You have {balance:,} chips; this table needs at least {minimum:,}.")
+        try:
+            return await runner.join_waitlist(player.player_id, player.handle)
+        except TableError as error:
+            raise _http_error(error) from None
 
     async def _watch_table(self, runner: TableRunner, events: Sequence[Event]) -> None:
-        """Close a table once no person holds a seat."""
-        if any(event.kind == "left" for event in events) and not runner.has_people():
+        """Close a table once no person is seated or has a seat held."""
+        if any(event.kind in ("left", "reservation_ended") for event in events) and not runner.has_people():
             self._schedule_close(runner.table_id, "Everyone has left the table.")
 
     def _schedule_close(self, table_id: str, message: str) -> None:
@@ -322,11 +456,14 @@ class Server:
     def _runner(self, table_id: str) -> TableRunner:
         runner = self.tables.get(table_id)
         if runner is None or table_id in self._closing:
-            raise RequestError(p.ErrorCode.UNKNOWN_TABLE, "That table no longer exists.")
+            raise RequestError(p.ErrorCode.UNKNOWN_TABLE, GONE)
         return runner
 
     async def join(self, connection: Connection, table_id: str) -> None:
         runner = self._runner(table_id)
+        if runner.private and table_id not in connection.tables and not runner.is_member(connection.player_id):
+            # Only its people may follow a private table; to others it does not exist.
+            raise RequestError(p.ErrorCode.UNKNOWN_TABLE, GONE)
         if table_id not in connection.tables and len(connection.tables) >= MAX_SUBSCRIPTIONS:
             raise RequestError(p.ErrorCode.BAD_REQUEST, f"follow at most {MAX_SUBSCRIPTIONS} tables")
         player_id = connection.player_id
@@ -380,6 +517,9 @@ class Server:
         elif isinstance(message, p.LeaveTableMessage):
             if runner.table.seat_of(player_id) is not None:
                 await runner.leave(player_id)
+            if runner.table.reservation_of(player_id) is not None:
+                # A seat held for someone who walked away goes to the next player.
+                await runner.cancel_reservation(player_id)
             await self.unfollow(connection, table_id)
             connection.send(p.LeftTableMessage(type="left_table", table_id=table_id))
         elif isinstance(message, p.SitMessage):
@@ -411,6 +551,16 @@ class Server:
         self.connections.discard(connection)
         for table_id in list(connection.tables):
             await self.unfollow(connection, table_id)
+
+
+def _invite_matches(runner: TableRunner, invite: str | None) -> bool:
+    return runner.invite is not None and invite is not None and secrets.compare_digest(runner.invite, invite)
+
+
+def _http_error(error: TableError) -> HTTPException:
+    """A seating refusal over HTTP: 409 when someone else has the seat, else 400."""
+    status = 409 if error.code in (TableErrorCode.SEAT_TAKEN, TableErrorCode.ALREADY_SEATED) else 400
+    return HTTPException(status, str(error))
 
 
 def _error(code: object, message: str, table_id: str | None = None) -> p.ErrorMessage:
@@ -598,8 +748,62 @@ def create_app(
     )
     async def new_table(body: p.NewTableRequest, request: Request) -> p.NewTableResponse:
         player = await player_of(request)
-        table_id, seat = await server.create_table(player, body)
-        return p.NewTableResponse(table_id=table_id, seat=seat)
+        table_id, seat, invite = await server.create_table(player, body)
+        return p.NewTableResponse(table_id=table_id, seat=seat, invite=invite)
+
+    @app.get("/api/tables", response_model=p.TableListResponse, responses={401: {"model": p.HttpError}})
+    async def list_tables(
+        request: Request, seats: int | None = None, big_blind: int | None = None, open: bool = False
+    ) -> p.TableListResponse:
+        player = await player_of(request)
+        return p.TableListResponse(tables=server.list_tables(player.player_id, seats, big_blind, open))
+
+    @app.get("/api/invites/{code}", response_model=p.TableSummary, responses={401: {"model": p.HttpError}, 404: {"model": p.HttpError}})
+    async def invite(code: str, request: Request) -> p.TableSummary:
+        player = await player_of(request)
+        runner = server.find_invite(code)
+        if runner is None:
+            raise HTTPException(404, "That invite has expired: its table has closed.")
+        return table_summary(runner, player.player_id)
+
+    seating_errors = {code: {"model": p.HttpError} for code in (400, 401, 404, 409)}
+
+    @app.post("/api/tables/{table_id}/seat", response_model=p.SeatResponse, responses=seating_errors)
+    async def take_seat(table_id: str, body: p.SeatRequest, request: Request) -> p.SeatResponse:
+        player = await player_of(request)
+        runner = server.lobby_runner(table_id, player.player_id, body.invite)
+        return await server.take_seat(player, runner, body.seat, body.buy_in, body.hold_only)
+
+    @app.delete("/api/tables/{table_id}/seat", status_code=204, responses=seating_errors)
+    async def give_up_seat(table_id: str, request: Request) -> Response:
+        """Give up a held seat (not a seat already sat in: leave the table for that)."""
+        player = await player_of(request)
+        runner = server.lobby_runner(table_id, player.player_id)
+        await runner.cancel_reservation(player.player_id)
+        return Response(status_code=204)
+
+    @app.post("/api/tables/{table_id}/waitlist", response_model=p.WaitlistResponse, responses=seating_errors)
+    async def join_waitlist(table_id: str, body: p.WaitlistRequest, request: Request) -> p.WaitlistResponse:
+        player = await player_of(request)
+        runner = server.lobby_runner(table_id, player.player_id, body.invite)
+        position = await server.join_waitlist(player, runner)
+        return p.WaitlistResponse(table_id=table_id, position=position)
+
+    @app.delete("/api/tables/{table_id}/waitlist", status_code=204, responses=seating_errors)
+    async def leave_waitlist(table_id: str, request: Request) -> Response:
+        player = await player_of(request)
+        runner = server.lobby_runner(table_id, player.player_id)
+        await runner.leave_waitlist(player.player_id)
+        return Response(status_code=204)
+
+    @app.post(
+        "/api/quick-seat",
+        response_model=p.SeatResponse,
+        responses={code: {"model": p.HttpError} for code in (400, 401, 503)},
+    )
+    async def quick_seat(body: p.QuickSeatRequest, request: Request) -> p.SeatResponse:
+        player = await player_of(request)
+        return await server.quick_seat(player, body)
 
     @app.exception_handler(HTTPException)
     async def http_error(request: Request, exc: HTTPException) -> JSONResponse:

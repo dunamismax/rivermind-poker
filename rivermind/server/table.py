@@ -31,6 +31,13 @@ that is free and folds otherwise. A player who is absent for a full orbit
 (dealt into as many hands as there were players, each time disconnected or
 timed out without acting for themselves) is sat out. The table reads the
 time from the ``clock`` it is given, so tests control it.
+
+Seats can be held (P4.3, rule 2.4). ``reserve`` holds a seat for a player
+for ``RESERVE_SECONDS`` while they buy in: an empty seat, or a bot's seat,
+which the bot gives up at once between hands or when the hand it is playing
+ends. Only the holder can sit in a held seat. When no seat is free or held
+by a bot, a player can join the table's ``waitlist``; ``settle_seats``
+expires old holds and offers each free seat to the first player waiting.
 """
 
 from __future__ import annotations
@@ -59,6 +66,8 @@ from rivermind.engine.view import SeatView, seat_view
 
 DEFAULT_MIN_BUY_IN_BB = 40
 DEFAULT_MAX_BUY_IN_BB = 100
+RESERVE_SECONDS = 60.0
+"""How long a held seat waits for its player to buy in (rule 2.4)."""
 
 
 class ErrorCode(StrEnum):
@@ -178,6 +187,30 @@ class Turn:
     """When the time bank runs out too and the player is timed out."""
 
 
+@dataclass(slots=True)
+class Reservation:
+    """A seat held for a player while they buy in (rule 2.4)."""
+
+    player_id: str
+    name: str
+    until: float | None
+    """When the hold runs out; ``None`` while a bot plays out the hand before giving up the seat."""
+    bot: str | None = None
+    """The bot that gives up the seat when the current hand ends."""
+
+    @property
+    def ready(self) -> bool:
+        return self.until is not None
+
+
+@dataclass(frozen=True, slots=True)
+class Waiting:
+    """A player on the waitlist."""
+
+    player_id: str
+    name: str
+
+
 @dataclass(frozen=True, slots=True)
 class Departure:
     """Chips that went back from the table to a player's wallet (P4.2).
@@ -218,6 +251,10 @@ class Table:
         """Finished hands (hand number, final state) not yet taken with ``drain_finished``."""
         self.departures: list[Departure] = []
         """Players who left, not yet taken with ``drain_departures``."""
+        self.reservations: dict[int, Reservation] = {}
+        """Held seats by seat number (rule 2.4)."""
+        self.waitlist: list[Waiting] = []
+        """Players waiting for a seat, first come first served."""
 
     # Reading the table
 
@@ -292,8 +329,16 @@ class Table:
             raise TableError(ErrorCode.ALREADY_SEATED, f"{player_id} already has a seat here")
         if self.seats[seat] is not None:
             raise TableError(ErrorCode.SEAT_TAKEN, f"S{seat} is taken")
+        held = self.reservations.get(seat)
+        if held is not None and held.player_id != player_id:
+            raise TableError(ErrorCode.SEAT_TAKEN, f"S{seat} is held for another player")
         self._check_buy_in(buy_in, 0)
         self.seats[seat] = Player(player_id, name, buy_in, bot=bot, time_bank=self.config.time_bank_seconds)
+        # A player who sits anywhere gives up any other hold and their place in line.
+        for other, hold in list(self.reservations.items()):
+            if hold.player_id == player_id:
+                del self.reservations[other]
+        self.waitlist = [w for w in self.waitlist if w.player_id != player_id]
         self._emit("seated", seat=seat, name=name, bot=bot, stack=buy_in)
 
     def _check_buy_in(self, amount: int, stack: int) -> None:
@@ -391,6 +436,130 @@ class Table:
         self.departures.append(departure)
         self._emit("left", seat=seat, stack=chips)
         return departure
+
+    # Held seats and the waitlist (rule 2.4)
+
+    def reservation_of(self, player_id: str) -> int | None:
+        """The seat held for ``player_id``, if any."""
+        for seat, hold in self.reservations.items():
+            if hold.player_id == player_id:
+                return seat
+        return None
+
+    def waitlist_position(self, player_id: str) -> int | None:
+        """The player's place on the waitlist, counting from 1."""
+        for place, waiting in enumerate(self.waitlist, 1):
+            if waiting.player_id == player_id:
+                return place
+        return None
+
+    def free_seats(self) -> list[int]:
+        """Empty seats nobody holds."""
+        return [seat for seat, player in enumerate(self.seats) if player is None and seat not in self.reservations]
+
+    def bot_seats(self) -> list[int]:
+        """Bots' seats nobody holds, which a player can claim."""
+        return [seat for seat, player in self.players() if player.is_bot and seat not in self.reservations]
+
+    def people(self) -> int:
+        return sum(1 for _, player in self.players() if not player.is_bot)
+
+    def reservation_deadline(self) -> float | None:
+        """When the next hold runs out."""
+        return min((hold.until for hold in self.reservations.values() if hold.until is not None), default=None)
+
+    def reserve(self, player_id: str, name: str, seat: int | None = None) -> int:
+        """Hold a seat for ``player_id`` while they buy in. Returns the seat.
+
+        Without a ``seat``, a seat the player already holds, else an empty
+        seat, else a bot's. A bot gives up its seat at once between hands and
+        when its hand ends otherwise; the hold's time starts then. Holding a
+        new seat gives up the player's old hold and their place in line.
+        """
+        if not player_id or not name:
+            raise TableError(ErrorCode.BAD_REQUEST, "a player needs an id and a name")
+        if self.seat_of(player_id) is not None:
+            raise TableError(ErrorCode.ALREADY_SEATED, f"{player_id} already has a seat here")
+        current = self.reservation_of(player_id)
+        if seat is None:
+            if current is not None:
+                return current
+            free, bots = self.free_seats(), self.bot_seats()
+            if not free and not bots:
+                raise TableError(ErrorCode.SEAT_TAKEN, "every seat is taken; join the waitlist")
+            # Prefer a bot that is not in the hand, so the player can sit at once.
+            idle = [s for s in bots if not self.in_hand(s)]
+            seat = free[0] if free else (idle or bots)[0]
+        if type(seat) is not int or not 0 <= seat < self.config.seat_count:
+            raise TableError(ErrorCode.UNKNOWN_SEAT, f"there is no seat {seat!r}")
+        if seat == current:
+            return seat
+        held = self.reservations.get(seat)
+        if held is not None:
+            raise TableError(ErrorCode.SEAT_TAKEN, f"S{seat} is held for another player")
+        occupant = self.seats[seat]
+        if occupant is not None and not occupant.is_bot:
+            raise TableError(ErrorCode.SEAT_TAKEN, f"S{seat} is taken")
+        if current is not None:
+            self._release(current, "moved")
+        self.waitlist = [w for w in self.waitlist if w.player_id != player_id]
+        hold = Reservation(player_id, name, None)
+        self.reservations[seat] = hold
+        self._emit("reserved", seat=seat, name=name)
+        if occupant is not None and self.in_hand(seat):
+            hold.bot = occupant.player_id
+        else:
+            if occupant is not None:
+                self._remove(seat)
+            hold.until = self.clock() + RESERVE_SECONDS
+        return seat
+
+    def cancel_reservation(self, player_id: str) -> None:
+        """Give up the player's hold, if any. A bot that was to leave stays."""
+        seat = self.reservation_of(player_id)
+        if seat is not None:
+            self._release(seat, "cancelled")
+
+    def _release(self, seat: int, reason: str) -> None:
+        del self.reservations[seat]
+        self._emit("reservation_ended", seat=seat, reason=reason)
+
+    def join_waitlist(self, player_id: str, name: str) -> int:
+        """Wait for a seat at a full table. Returns the player's place in line."""
+        if not player_id or not name:
+            raise TableError(ErrorCode.BAD_REQUEST, "a player needs an id and a name")
+        if self.seat_of(player_id) is not None:
+            raise TableError(ErrorCode.ALREADY_SEATED, f"{player_id} already has a seat here")
+        if self.reservation_of(player_id) is not None:
+            raise TableError(ErrorCode.BAD_REQUEST, "a seat is already held for you")
+        place = self.waitlist_position(player_id)
+        if place is not None:
+            return place
+        if self.free_seats() or self.bot_seats():
+            raise TableError(ErrorCode.BAD_REQUEST, "a seat is free; take it instead")
+        self.waitlist.append(Waiting(player_id, name))
+        self._emit("waitlist", count=len(self.waitlist))
+        return len(self.waitlist)
+
+    def leave_waitlist(self, player_id: str) -> None:
+        if self.waitlist_position(player_id) is None:
+            return
+        self.waitlist = [w for w in self.waitlist if w.player_id != player_id]
+        self._emit("waitlist", count=len(self.waitlist))
+
+    def settle_seats(self) -> None:
+        """Expire holds whose time ran out and offer free seats to the waitlist, in order."""
+        now = self.clock()
+        for seat, hold in sorted(self.reservations.items()):
+            if hold.until is not None and now >= hold.until:
+                self._release(seat, "expired")
+        for seat in self.free_seats():
+            if not self.waitlist:
+                break
+            waiting = self.waitlist.pop(0)
+            self.reservations[seat] = Reservation(waiting.player_id, waiting.name, now + RESERVE_SECONDS)
+            self._emit("reserved", seat=seat, name=waiting.name)
+            self._emit("waitlist", count=len(self.waitlist))
 
     # Hands
 
@@ -599,6 +768,13 @@ class Table:
             if player.leaving:
                 self._remove(seat)
                 continue
+            hold = self.reservations.get(seat)
+            if hold is not None and hold.bot == player.player_id:
+                # The bot gives up the seat it was holding for a player (rule 2.4).
+                self._remove(seat)
+                hold.bot = None
+                hold.until = self.clock() + RESERVE_SECONDS
+                continue
             if player.pending_rebuy:
                 requested = amount = player.pending_rebuy
                 player.pending_rebuy = 0
@@ -649,8 +825,11 @@ __all__ = [
     "ErrorCode",
     "Event",
     "Player",
+    "RESERVE_SECONDS",
+    "Reservation",
     "Table",
     "TableConfig",
     "TableError",
     "Turn",
+    "Waiting",
 ]

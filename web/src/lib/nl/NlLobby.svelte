@@ -1,24 +1,32 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import PlayingCard from '../components/PlayingCard.svelte';
-	import type { ConfigResponse, NewTableRequest } from '../protocol-v2.ts';
-	import { fetchConfig } from './api.ts';
+	import type { ConfigResponse, TableSummary } from '../protocol-v2.ts';
+	import { fetchConfig, fetchInvite } from './api.ts';
+	import type { NlConnection } from './connection.svelte.ts';
 	import { avatarClass } from './faces.ts';
+	import LobbyTables from './LobbyTables.svelte';
 
 	let {
+		connection,
 		message = '',
-		balance = null,
-		onstart
+		invite = null,
+		oninvited
 	}: {
+		connection: NlConnection;
 		message?: string;
-		/** Play chips in the wallet, once known. */
-		balance?: number | null;
-		onstart: (request: NewTableRequest) => Promise<void>;
+		/** An invite code from the page's link, for a private table. */
+		invite?: string | null;
+		/** The invite was used or turned out to be stale. */
+		oninvited?: () => void;
 	} = $props();
 
+	const balance = $derived(connection.balance);
 	let config = $state<ConfigResponse | null>(null);
 	let seats = $state(6);
+	/** A bot kind, or `none` to leave the other seats for people. */
 	let bots = $state('heuristic');
+	let privateTable = $state(false);
 	let bigBlind = $state(100);
 	// Buy-ins run from 40 to 100 big blinds, the server's default range.
 	const BUY_INS = [40, 70, 100];
@@ -32,6 +40,10 @@
 	});
 	let starting = $state(false);
 	let error = $state('');
+
+	let invited = $state<TableSummary | null>(null);
+	let inviteError = $state('');
+	let joining = $state(false);
 
 	const BOT_NOTES: Record<string, string> = {
 		heuristic: 'Plays its cards with a plan.',
@@ -48,6 +60,14 @@
 			.catch((e: unknown) => {
 				error = `Could not reach the table server: ${e instanceof Error ? e.message : String(e)}`;
 			});
+		if (invite) {
+			fetchInvite(invite)
+				.then((table) => (invited = table))
+				.catch((e: unknown) => {
+					inviteError = e instanceof Error ? e.message : String(e);
+					oninvited?.();
+				});
+		}
 	});
 
 	async function start(event: SubmitEvent) {
@@ -55,11 +75,36 @@
 		starting = true;
 		error = '';
 		try {
-			await onstart({ seats, bots, big_blind: bigBlind, buy_in: buyInBlinds * bigBlind });
+			await connection.newTable({
+				seats,
+				bots: bots === 'none' ? null : bots,
+				big_blind: bigBlind,
+				buy_in: buyInBlinds * bigBlind,
+				private: privateTable
+			});
 		} catch (e) {
 			error = `Could not start a table: ${e instanceof Error ? e.message : String(e)}`;
 		} finally {
 			starting = false;
+		}
+	}
+
+	async function accept(table: TableSummary) {
+		joining = true;
+		inviteError = '';
+		try {
+			if (table.free_seats + table.bot_seats > 0 || table.hold) {
+				await connection.takeSeat(table.table_id, { invite });
+			} else {
+				await connection.joinWaitlist(table.table_id, invite);
+				invited = await fetchInvite(invite ?? '');
+				return;
+			}
+			oninvited?.();
+		} catch (e) {
+			inviteError = e instanceof Error ? e.message : String(e);
+		} finally {
+			joining = false;
 		}
 	}
 </script>
@@ -89,77 +134,129 @@
 			</p>
 		{/if}
 		{#if message}<p class="closed px-panel" role="status">{message}</p>{/if}
+		{#if invited}
+			<section class="invite px-gold" aria-labelledby="invite-title">
+				<h3 id="invite-title">You are invited</h3>
+				<p>
+					{invited.name}: blinds {invited.small_blind}/{invited.big_blind}, {invited.people}
+					{invited.people === 1 ? 'person' : 'people'} seated.
+				</p>
+				{#if invited.waitlist_position !== null}
+					<p>You are number {invited.waitlist_position} in line for a seat.</p>
+				{:else}
+					<button
+						type="button"
+						class="px-btn amber"
+						disabled={joining || (balance !== null && balance < invited.min_buy_in)}
+						onclick={() => accept(invited!)}
+					>
+						{joining
+							? 'Seating…'
+							: invited.free_seats + invited.bot_seats > 0 || invited.hold
+								? 'Take a seat'
+								: 'Join the waitlist'}
+					</button>
+				{/if}
+			</section>
+		{/if}
+		{#if inviteError}<p class="error" role="alert">{inviteError}</p>{/if}
 	</section>
 
-	<section class="setup px-panel" aria-label="New table">
-		<form onsubmit={start}>
-			<fieldset>
-				<legend>Seats</legend>
-				<div class="choices seats">
-					{#each config?.seat_counts ?? [2, 3, 4, 5, 6, 7, 8, 9] as count (count)}
-						<label class="pick">
-							<input type="radio" name="seats" value={count} bind:group={seats} />
-							<span class="px-btn">{count}</span>
-						</label>
-					{/each}
-				</div>
-			</fieldset>
-			<fieldset>
-				<legend>Opponents</legend>
-				<div class="choices bots">
-					{#each config?.bots ?? [] as bot (bot.kind)}
+	<div class="side">
+		<LobbyTables {connection} {config} {balance} />
+
+		<section class="setup px-panel" aria-labelledby="setup-title">
+			<h2 id="setup-title" class="setup-title">Start a table</h2>
+			<form onsubmit={start}>
+				<fieldset>
+					<legend>Seats</legend>
+					<div class="choices seats">
+						{#each config?.seat_counts ?? [2, 3, 4, 5, 6, 7, 8, 9] as count (count)}
+							<label class="pick">
+								<input type="radio" name="seats" value={count} bind:group={seats} />
+								<span class="px-btn">{count}</span>
+							</label>
+						{/each}
+					</div>
+				</fieldset>
+				<fieldset>
+					<legend>Opponents</legend>
+					<div class="choices bots">
+						{#each config?.bots ?? [] as bot (bot.kind)}
+							<label class="pick bot">
+								<input type="radio" name="bots" value={bot.kind} bind:group={bots} />
+								<span class="px-btn">
+									<span
+										class="sprite avatar {avatarClass({ kind: 'bot', bot: bot.kind, name: '' })}"
+										aria-hidden="true"
+									></span>
+									<span class="text">
+										<span class="name">{bot.label}</span>
+										{#if BOT_NOTES[bot.kind]}<span class="note">{BOT_NOTES[bot.kind]}</span>{/if}
+									</span>
+								</span>
+							</label>
+						{/each}
 						<label class="pick bot">
-							<input type="radio" name="bots" value={bot.kind} bind:group={bots} />
+							<input type="radio" name="bots" value="none" bind:group={bots} />
 							<span class="px-btn">
 								<span
-									class="sprite avatar {avatarClass({ kind: 'bot', bot: bot.kind, name: '' })}"
+									class="sprite avatar {avatarClass({ kind: 'human', bot: null, name: 'You' })}"
 									aria-hidden="true"
 								></span>
 								<span class="text">
-									<span class="name">{bot.label}</span>
-									{#if BOT_NOTES[bot.kind]}<span class="note">{BOT_NOTES[bot.kind]}</span>{/if}
+									<span class="name">No bots</span>
+									<span class="note">Seats wait for people.</span>
 								</span>
 							</span>
 						</label>
-					{/each}
+					</div>
+					<p class="field-note">Bots give up their seats when people want them.</p>
+				</fieldset>
+				<label class="private">
+					<input type="checkbox" bind:checked={privateTable} />
+					<span>
+						Private table
+						<span class="note">Not listed; share its invite link.</span>
+					</span>
+				</label>
+				<div class="stakes">
+					<label>
+						<span class="field-label">Blinds</span>
+						<select class="px-field" bind:value={bigBlind}>
+							{#each config?.stakes ?? [] as stakes (stakes.big_blind)}
+								<option value={stakes.big_blind}>{stakes.small_blind}/{stakes.big_blind}</option>
+							{/each}
+						</select>
+					</label>
+					<label>
+						<span class="field-label">Buy-in</span>
+						<select class="px-field" bind:value={buyInBlinds}>
+							{#each BUY_INS as blinds (blinds)}
+								<option value={blinds} disabled={!affordable.includes(blinds)}>
+									{blinds * bigBlind} ({blinds} big blinds)
+								</option>
+							{/each}
+						</select>
+					</label>
 				</div>
-			</fieldset>
-			<div class="stakes">
-				<label>
-					<span class="field-label">Blinds</span>
-					<select class="px-field" bind:value={bigBlind}>
-						{#each config?.stakes ?? [] as stakes (stakes.big_blind)}
-							<option value={stakes.big_blind}>{stakes.small_blind}/{stakes.big_blind}</option>
-						{/each}
-					</select>
-				</label>
-				<label>
-					<span class="field-label">Buy-in</span>
-					<select class="px-field" bind:value={buyInBlinds}>
-						{#each BUY_INS as blinds (blinds)}
-							<option value={blinds} disabled={!affordable.includes(blinds)}>
-								{blinds * bigBlind} ({blinds} big blinds)
-							</option>
-						{/each}
-					</select>
-				</label>
-			</div>
-			{#if !affordable.length}
-				<p class="short" role="status">
-					Not enough play chips for these blinds. Pick lower blinds, or come back tomorrow for a
-					top-up.
-				</p>
-			{/if}
-			<button
-				type="submit"
-				class="px-btn amber start"
-				disabled={starting || !config || !affordable.length}
-			>
-				{starting ? 'Dealing…' : 'Sit down'}
-			</button>
-		</form>
-		{#if error}<p class="error" role="alert">{error}</p>{/if}
-	</section>
+				{#if !affordable.length}
+					<p class="short" role="status">
+						Not enough play chips for these blinds. Pick lower blinds, or come back tomorrow for a
+						top-up.
+					</p>
+				{/if}
+				<button
+					type="submit"
+					class="px-btn amber start"
+					disabled={starting || !config || !affordable.length}
+				>
+					{starting ? 'Dealing…' : 'Sit down'}
+				</button>
+			</form>
+			{#if error}<p class="error" role="alert">{error}</p>{/if}
+		</section>
+	</div>
 </div>
 
 <style>
@@ -195,7 +292,7 @@
 		margin-left: -40px;
 		transform: rotate(8deg);
 	}
-	h2 {
+	.hero h2 {
 		font-size: var(--fs-xl);
 		color: var(--gold);
 		text-shadow:
@@ -234,8 +331,51 @@
 		font-size: var(--fs-s);
 	}
 
+	.side {
+		display: grid;
+		gap: 16px;
+		min-width: 0;
+	}
 	.setup {
 		padding: 12px 14px 14px;
+	}
+	.setup-title {
+		font-size: var(--fs-l);
+		color: var(--gold);
+		text-shadow: var(--shadow-text);
+		margin-bottom: 12px;
+	}
+	.field-note {
+		margin-top: 6px;
+		color: var(--haze);
+		font-size: var(--fs-s);
+	}
+	.private {
+		display: flex;
+		align-items: flex-start;
+		gap: 10px;
+		color: var(--paper-shade);
+		cursor: pointer;
+	}
+	.private input {
+		width: 20px;
+		height: 20px;
+		margin-top: 2px;
+		accent-color: var(--gold);
+	}
+	.private .note {
+		display: block;
+		color: var(--mist);
+		font-size: var(--fs-s);
+	}
+	.invite {
+		display: grid;
+		gap: 10px;
+		padding: 10px 12px 12px;
+		color: var(--ink);
+	}
+	.invite h3 {
+		font-size: var(--fs-l);
 	}
 	form {
 		display: grid;
@@ -325,6 +465,9 @@
 		color: var(--danger);
 		margin-top: 10px;
 	}
+	.hero .error {
+		margin-top: 0;
+	}
 
 	@media (max-width: 799px) {
 		.lobby {
@@ -340,7 +483,7 @@
 		.fan :global(.card:nth-child(n + 2)) {
 			margin-left: -28px;
 		}
-		h2 {
+		.hero h2 {
 			font-size: var(--fs-l);
 			text-align: center;
 		}

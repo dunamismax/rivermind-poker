@@ -8,17 +8,34 @@
 // After a dropped connection or a server restart the socket says hello again
 // and rejoins with backoff. The table is kept in localStorage so a reload
 // rejoins it; the player lives in the cookie, which the page cannot read.
+//
+// The lobby (P4.3) seats the player over HTTP: quick seat, a seat at a listed
+// or invited table, or a place on a waitlist. A seat that is not free yet (a
+// bot is finishing its hand) is held, and the page sits in it as soon as the
+// table says it is ready.
 
 import type {
 	ActMessage,
 	ActionKind,
 	ClientMessage,
 	NewTableRequest,
+	QuickSeatRequest,
+	SeatRequest,
+	SeatResponse,
 	ServerMessage,
 	TableEvent,
 	TableView
 } from '../protocol-v2.ts';
-import { createTable, fetchWallet, startSession } from './api.ts';
+import {
+	createTable,
+	fetchWallet,
+	giveUpSeat,
+	joinWaitlist,
+	leaveWaitlist,
+	quickSeat,
+	startSession,
+	takeSeat
+} from './api.ts';
 
 /** Where a Phase 3 page kept its player and bearer token, until P4.1. */
 export const LEGACY_PLAYER_KEY = 'rivermind.nl.player';
@@ -30,6 +47,12 @@ export const CLOSED_TABLE_MESSAGE = 'That table has closed. Start a new one.';
 export const LEGACY_SEAT_KEY = 'rivermind.seat';
 export const LEGACY_CLOSED_MESSAGE =
 	'The short-deck tables have closed. RiverMind Poker now plays no-limit hold’em: start a table below.';
+
+/**
+ * A logged event with the name of the player in its seat when it happened, so
+ * the log still names a player who has since left and someone else sat down.
+ */
+export type LoggedEvent = TableEvent & { who: string | null };
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'open' | 'closed';
 
@@ -87,6 +110,13 @@ function legacyToken(value: unknown): value is { token: string } {
 	);
 }
 
+/** The name in the event's seat when it happened: before this change, unless it is the arrival. */
+function whoWas(event: TableEvent, before: TableView | null, after: TableView): string | null {
+	if (event.seat === null || event.seat === undefined) return null;
+	if (event.kind === 'seated' && event.name) return event.name;
+	return before?.seats[event.seat]?.name ?? after.seats[event.seat]?.name ?? null;
+}
+
 export class NlConnection {
 	player = $state<Player | null>(null);
 	/** Play chips in the wallet, not counting chips at the table (P4.2). */
@@ -94,7 +124,7 @@ export class NlConnection {
 	tableId = $state<string | null>(null);
 	view = $state<TableView | null>(null);
 	/** Recent public events at the table, oldest first. */
-	log = $state<TableEvent[]>([]);
+	log = $state<LoggedEvent[]>([]);
 	status = $state<ConnectionStatus>('idle');
 	connected = $state(false);
 	/** An action was sent and the table has not answered yet. */
@@ -105,6 +135,8 @@ export class NlConnection {
 	clockOffset = $state(0);
 	retries = 0;
 
+	/** Sit as soon as the held seat is ready, with this buy-in (null: as much as fits). */
+	#autoSit: { buyIn: number | null } | null = null;
 	#socket: SocketLike | null = null;
 	#timer: unknown = null;
 	#notices = 0;
@@ -147,18 +179,84 @@ export class NlConnection {
 
 	/** Start a table with bots and sit at it. */
 	async newTable(request: NewTableRequest): Promise<void> {
+		const created = await this.#withSession(() => createTable(request, this.#fetch));
+		this.#autoSit = null;
+		this.#follow(created.table_id);
+		void this.refreshBalance();
+	}
+
+	/** A seat at the busiest matching table, or a new table with bots. */
+	async quickSeat(request: QuickSeatRequest): Promise<void> {
+		const seat = await this.#withSession(() => quickSeat(request, this.#fetch));
+		this.#arrive(seat, request.buy_in ?? null);
+	}
+
+	/**
+	 * Take a seat at a listed or invited table. A seat that is not free yet is
+	 * held, and taken as soon as it is ready; `hold_only` just holds it.
+	 */
+	async takeSeat(tableId: string, request: SeatRequest = {}): Promise<void> {
+		const seat = await this.#withSession(() => takeSeat(tableId, request, this.#fetch));
+		if (request.hold_only) {
+			if (this.tableId !== tableId) this.#follow(tableId);
+			return;
+		}
+		this.#arrive(seat, request.buy_in ?? null);
+	}
+
+	/** Follow a table without a seat, or go back to the one the player has. */
+	watch(tableId: string): void {
+		this.#autoSit = null;
+		this.#follow(tableId);
+	}
+
+	/** From the table: hold an empty seat, to buy in with `sit`. */
+	async holdSeat(seat: number): Promise<void> {
+		const tableId = this.tableId;
+		if (tableId)
+			await this.#withSession(() => takeSeat(tableId, { seat, hold_only: true }, this.#fetch));
+	}
+
+	/** Sit in the seat held for the player, buying in for `buyIn`. */
+	sit(seat: number, buyIn: number): boolean {
+		const tableId = this.tableId;
+		if (!tableId) return false;
+		const sent = this.#send({ type: 'sit', table_id: tableId, seat, buy_in: buyIn }, false);
+		if (sent) setTimeout(() => void this.refreshBalance(), 500);
+		return sent;
+	}
+
+	/** Give up the seat held at `tableId` (the current table by default). */
+	async giveUpHold(tableId: string | null = this.tableId): Promise<void> {
+		this.#autoSit = null;
+		if (tableId) await giveUpSeat(tableId, this.#fetch);
+	}
+
+	async joinWaitlist(tableId: string, invite: string | null = null): Promise<number> {
+		return (await this.#withSession(() => joinWaitlist(tableId, invite, this.#fetch))).position;
+	}
+
+	async leaveWaitlist(tableId: string): Promise<void> {
+		await leaveWaitlist(tableId, this.#fetch);
+	}
+
+	#arrive(seat: SeatResponse, buyIn: number | null): void {
+		this.#autoSit = seat.seated ? null : { buyIn };
+		this.#follow(seat.table_id);
+		void this.refreshBalance();
+	}
+
+	/** Run an HTTP call, starting a new session once if the old one ended. */
+	async #withSession<T>(call: () => Promise<T>): Promise<T> {
 		if (!this.player) await this.#session();
-		let created;
 		try {
-			created = await createTable(request, this.#fetch);
+			return await call();
 		} catch (error) {
 			if ((error as { status?: number }).status !== 401) throw error;
 			// The session ended (it expired, or the server's secret changed): start a new one.
 			await this.#session();
-			created = await createTable(request, this.#fetch);
+			return await call();
 		}
-		this.#follow(created.table_id);
-		void this.refreshBalance();
 	}
 
 	async #session(): Promise<void> {
@@ -207,6 +305,11 @@ export class NlConnection {
 			: false;
 	}
 
+	/** Show a short message, as for a refused request. */
+	notify(text: string): void {
+		this.notice = { id: ++this.#notices, text };
+	}
+
 	/** Close the socket without leaving, as a page unload does. */
 	disconnect(): void {
 		this.#closeSocket();
@@ -224,6 +327,7 @@ export class NlConnection {
 	}
 
 	#stop(): void {
+		this.#autoSit = null;
 		this.#closeSocket();
 		this.#remove(TABLE_KEY);
 		this.tableId = null;
@@ -287,9 +391,17 @@ export class NlConnection {
 				this.retries = 0;
 				this.status = 'open';
 				this.pending = false;
+				const before = this.view?.table_id === message.table_id ? this.view : null;
 				this.view = message.view;
 				this.clockOffset = this.#now() - message.view.server_time;
-				if (message.events.length) this.log = [...this.log, ...message.events].slice(-LOG_LIMIT);
+				this.#sitWhenReady(message.view);
+				if (message.events.length) {
+					const logged = message.events.map((event) => ({
+						...event,
+						who: whoWas(event, before, message.view)
+					}));
+					this.log = [...this.log, ...logged].slice(-LOG_LIMIT);
+				}
 				return;
 			}
 			case 'left_table':
@@ -317,6 +429,22 @@ export class NlConnection {
 				if (this.tableId) this.#send({ type: 'refresh', table_id: this.tableId }, false);
 				return;
 		}
+	}
+
+	#sitWhenReady(view: TableView): void {
+		const auto = this.#autoSit;
+		if (!auto) return;
+		const hold = view.you.hold;
+		if (view.you.seat !== null || !hold) {
+			// Seated, or the hold is gone (it ran out, or was given up).
+			this.#autoSit = null;
+			return;
+		}
+		if (!hold.ready) return;
+		this.#autoSit = null;
+		const most = view.settings.max_buy_in;
+		const amount = auto.buyIn ?? Math.min(most, this.balance ?? most);
+		this.sit(hold.seat, amount);
 	}
 
 	#closeSocket(): void {

@@ -34,6 +34,7 @@ from rivermind.engine.history import FORMAT as HISTORY_FORMAT
 from rivermind.engine.history import hand_record
 
 from .snapshot import FORMAT as SNAPSHOT_FORMAT
+from .snapshot import READABLE as READABLE_FORMATS
 from .snapshot import table_to_dict
 from .table import Event, Table
 from .wallet import Credit, UnknownPlayer, apply_entry, credits_for
@@ -194,7 +195,7 @@ class TableStore:
             ).all()
         saved = []
         for table_id, name, state, state_format in rows:
-            if state_format != SNAPSHOT_FORMAT:
+            if state_format not in READABLE_FORMATS:
                 log.warning("Table %s has snapshot format %s, which this server cannot restore", table_id, state_format)
                 continue
             saved.append(SavedTable(table_id, name, state))
@@ -237,6 +238,7 @@ class TableSaver:
             self.pending.append(FinishedHand(hand_no, final.button, hand_record(final)))
         self.credits.extend(credits_for(runner.table_id, table.drain_departures()))
         state = table_to_dict(table)
+        state["lobby"] = runner.lobby_state()
         current = (table.hand_no, table.hand.button) if table.hand is not None else None
         finished = list(self.pending)
         credits = list(self.credits)

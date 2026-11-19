@@ -7,8 +7,14 @@ import type {
 	HttpError,
 	NewTableRequest,
 	NewTableResponse,
+	QuickSeatRequest,
+	SeatRequest,
+	SeatResponse,
 	SessionRequest,
 	SessionResponse,
+	TableListResponse,
+	TableSummary,
+	WaitlistResponse,
 	WalletResponse
 } from '../protocol-v2.ts';
 
@@ -98,4 +104,112 @@ export async function fetchWallet(fetcher: typeof fetch = fetch): Promise<Wallet
 		throw new ApiError('Unexpected /api/wallet response', 200);
 	}
 	return value as unknown as WalletResponse;
+}
+
+/** The lobby's filters (P4.3). Unset filters match every table. */
+export interface TableFilters {
+	seats?: number | null;
+	big_blind?: number | null;
+	/** Only tables with a seat to take. */
+	open?: boolean;
+}
+
+function isSummary(value: unknown): value is TableSummary {
+	return isRecord(value) && typeof value.table_id === 'string' && typeof value.people === 'number';
+}
+
+/** The public tables, and private ones this player is at, most people first. */
+export async function listTables(
+	filters: TableFilters = {},
+	fetcher: typeof fetch = fetch
+): Promise<TableSummary[]> {
+	const query = new URLSearchParams();
+	if (filters.seats) query.set('seats', String(filters.seats));
+	if (filters.big_blind) query.set('big_blind', String(filters.big_blind));
+	if (filters.open) query.set('open', 'true');
+	const search = query.size ? `?${query}` : '';
+	const value = await body(await fetcher(`/api/tables${search}`, { credentials: 'same-origin' }));
+	const tables = isRecord(value) ? (value as Partial<TableListResponse>).tables : undefined;
+	if (!Array.isArray(tables) || !tables.every(isSummary)) {
+		throw new ApiError('Unexpected /api/tables response', 200);
+	}
+	return tables;
+}
+
+/** The private table an invite code opens. */
+export async function fetchInvite(
+	code: string,
+	fetcher: typeof fetch = fetch
+): Promise<TableSummary> {
+	const value = await body(
+		await fetcher(`/api/invites/${encodeURIComponent(code)}`, { credentials: 'same-origin' })
+	);
+	if (!isSummary(value)) throw new ApiError('Unexpected /api/invites response', 200);
+	return value;
+}
+
+function isSeat(value: unknown): value is SeatResponse {
+	return isRecord(value) && typeof value.table_id === 'string' && typeof value.seated === 'boolean';
+}
+
+async function post(path: string, request: unknown, fetcher: typeof fetch): Promise<unknown> {
+	return body(
+		await fetcher(path, {
+			method: 'POST',
+			credentials: 'same-origin',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(request)
+		})
+	);
+}
+
+/** Hold a seat at a table and, unless `hold_only`, buy in and sit in it. */
+export async function takeSeat(
+	tableId: string,
+	request: SeatRequest,
+	fetcher: typeof fetch = fetch
+): Promise<SeatResponse> {
+	const value = await post(`/api/tables/${encodeURIComponent(tableId)}/seat`, request, fetcher);
+	if (!isSeat(value)) throw new ApiError('Unexpected seat response', 200);
+	return value;
+}
+
+/** A seat at the busiest matching table, or a new table with bots. */
+export async function quickSeat(
+	request: QuickSeatRequest,
+	fetcher: typeof fetch = fetch
+): Promise<SeatResponse> {
+	const value = await post('/api/quick-seat', request, fetcher);
+	if (!isSeat(value)) throw new ApiError('Unexpected /api/quick-seat response', 200);
+	return value;
+}
+
+export async function joinWaitlist(
+	tableId: string,
+	invite: string | null = null,
+	fetcher: typeof fetch = fetch
+): Promise<WaitlistResponse> {
+	const value = await post(
+		`/api/tables/${encodeURIComponent(tableId)}/waitlist`,
+		invite ? { invite } : {},
+		fetcher
+	);
+	if (!isRecord(value) || typeof value.position !== 'number') {
+		throw new ApiError('Unexpected waitlist response', 200);
+	}
+	return value as unknown as WaitlistResponse;
+}
+
+async function remove(path: string, fetcher: typeof fetch): Promise<void> {
+	const response = await fetcher(path, { method: 'DELETE', credentials: 'same-origin' });
+	if (!response.ok) await body(response);
+}
+
+export function leaveWaitlist(tableId: string, fetcher: typeof fetch = fetch): Promise<void> {
+	return remove(`/api/tables/${encodeURIComponent(tableId)}/waitlist`, fetcher);
+}
+
+/** Give up a held seat. */
+export function giveUpSeat(tableId: string, fetcher: typeof fetch = fetch): Promise<void> {
+	return remove(`/api/tables/${encodeURIComponent(tableId)}/seat`, fetcher);
 }

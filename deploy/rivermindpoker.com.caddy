@@ -43,6 +43,17 @@ rivermindpoker.com {
 			events 30
 			window 1m
 		}
+		# The lobby (P4.3): quick seat can start a table; seats and the
+		# waitlist change tables other people are at.
+		zone seating {
+			match {
+				method POST DELETE
+				path /api/quick-seat /api/tables/*
+			}
+			key {remote_host}
+			events 60
+			window 1m
+		}
 	}
 
 	handle /api/* {

@@ -87,8 +87,14 @@ function view(seq: number, legal = true): TableView {
 			time_bank: 30,
 			pending_rebuy: 0,
 			sitting_out: false,
-			sitting_out_next: false
-		}
+			sitting_out_next: false,
+			hold: null,
+			waitlist_position: null
+		},
+		private: false,
+		invite: null,
+		holds: [],
+		waitlist: 0
 	};
 }
 
@@ -103,6 +109,10 @@ function setup(saved = true, tableStatus = 201) {
 		if (url === '/api/session') return new Response(JSON.stringify(SESSION), { status: 200 });
 		if (url === '/api/wallet') {
 			return new Response(JSON.stringify({ balance: 12000, notice: 'Play money', entries: [] }));
+		}
+		if (url === '/api/quick-seat') {
+			const hold = { seat: 1, name: 'Quiet Heron 42', ready: false, until: null };
+			return new Response(JSON.stringify({ table_id: 't3', seat: 1, seated: false, hold }));
 		}
 		if (tableStatus === 401) {
 			tableStatus = 201; // the retry after a new session succeeds
@@ -126,6 +136,39 @@ function setup(saved = true, tableStatus = 201) {
 }
 
 describe('NlConnection', () => {
+	it('quick-seats, and sits as soon as the held seat is ready', async () => {
+		const { connection, sockets, requests } = setup(false);
+		await connection.start();
+		await connection.quickSeat({ seats: 6, big_blind: null, buy_in: null });
+		const quick = requests.find((r) => r.url === '/api/quick-seat');
+		expect(JSON.parse(String(quick?.init?.body))).toEqual({
+			seats: 6,
+			big_blind: null,
+			buy_in: null
+		});
+		expect(connection.tableId).toBe('t3');
+		const socket = sockets[0];
+		socket.open();
+		const watching = (ready: boolean, seat: number | null = null): TableView => {
+			const v = { ...view(3, false), table_id: 't3' };
+			v.you = {
+				...v.you,
+				seat,
+				hold: seat === null ? { seat: 1, name: 'Q', ready, until: ready ? 1060 : null } : null
+			};
+			return v;
+		};
+		// A bot finishes its hand first: nothing is sent yet.
+		socket.receive({ type: 'table', table_id: 't3', view: watching(false), events: [] });
+		expect(socket.sent.map((m) => m.type)).toEqual(['hello', 'join_table']);
+		// Ready: the page buys in for as much as fits (the 10,000 maximum here) and sits.
+		socket.receive({ type: 'table', table_id: 't3', view: watching(true), events: [] });
+		expect(socket.sent.at(-1)).toEqual({ type: 'sit', table_id: 't3', seat: 1, buy_in: 10000 });
+		socket.receive({ type: 'table', table_id: 't3', view: watching(false, 1), events: [] });
+		socket.receive({ type: 'table', table_id: 't3', view: watching(true), events: [] });
+		expect(socket.sent.filter((m) => m.type === 'sit')).toHaveLength(1); // only once
+	});
+
 	it('starts a session, says hello and joins the saved table, then keeps the newest view', async () => {
 		const { connection, sockets, requests } = setup();
 		expect(await connection.start()).toBe(true);
@@ -155,6 +198,42 @@ describe('NlConnection', () => {
 		expect(connection.clockOffset).toBe(2.5);
 		socket.receive({ type: 'table', table_id: 'other', view: view(9), events: [] });
 		expect(connection.view?.seq).toBe(5); // another table's message is ignored
+	});
+
+	it('logs each event with the name in its seat at the time', async () => {
+		const { connection, sockets } = setup();
+		await connection.start();
+		const socket = sockets[0];
+		socket.open();
+		const seat = (name: string, kind: 'human' | 'bot') => ({
+			...{ seat: 1, name, kind, bot: kind === 'bot' ? 'random' : null, stack: 5000, bet: 0 },
+			...{ in_hand: false, folded: false, all_in: false, sitting_out: false, leaving: false },
+			...{ connected: true, has_cards: false, cards: null }
+		});
+		const withSeat = (seq: number, info: ReturnType<typeof seat>): TableView => ({
+			...view(seq, false),
+			seats: [null, info]
+		});
+		socket.receive({
+			type: 'table',
+			table_id: 't1',
+			view: withSeat(4, seat('Bot 2', 'bot')),
+			events: []
+		});
+		// The bot gives up its seat and a person sits down in it.
+		socket.receive({
+			type: 'table',
+			table_id: 't1',
+			view: withSeat(6, seat('Quiet Heron 42', 'human')),
+			events: [
+				{ seq: 5, kind: 'left', seat: 1, amount: 5000 },
+				{ seq: 6, kind: 'seated', seat: 1, name: 'Quiet Heron 42', amount: 5000 }
+			]
+		});
+		expect(connection.log.map((e) => [e.kind, e.who])).toEqual([
+			['left', 'Bot 2'],
+			['seated', 'Quiet Heron 42']
+		]);
 	});
 
 	it('sends actions with the view seq, one at a time', async () => {

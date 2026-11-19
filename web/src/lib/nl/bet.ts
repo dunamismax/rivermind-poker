@@ -91,6 +91,12 @@ export function describeEvent(event: TableEvent, nameOf: (seat: number) => strin
 			return `${who} disconnected`;
 		case 'connected':
 			return `${who} reconnected`;
+		case 'reserved':
+			return `Seat ${(event.seat ?? 0) + 1} is held for ${event.name ?? 'a player'}`;
+		case 'reservation_ended':
+			return event.reason === 'expired'
+				? `The hold on seat ${(event.seat ?? 0) + 1} ran out`
+				: null;
 		default:
 			return null;
 	}

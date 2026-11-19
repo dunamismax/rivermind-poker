@@ -131,6 +131,9 @@ def test_tables_are_saved_before_publishing_and_restored_at_startup(engine: Engi
         )
         before = copy.deepcopy(saved_state(engine, table_id))
         live = table_to_dict(runner.table)
+    assert before is not None
+    # The table's lobby settings (P4.3) are saved beside its snapshot.
+    assert before.pop("lobby") == {"fill": "calling_station", "private": False, "invite": None}
     assert published and all(seq == saved for seq, saved in published)  # nothing was shown before it was saved
     assert before == live  # the app stopped with the table saved as it was
 
@@ -307,3 +310,39 @@ def test_a_server_killed_mid_hand_restores_the_table_identically(
     assert record is not None
     final = replay_record(record)
     assert final.result is not None and final.hole_cards[0] is not None
+
+
+def test_lobby_settings_held_seats_and_the_waitlist_survive_a_restart(engine: Engine) -> None:
+    """Private tables keep their invite, bots keep filling and people keep their places (P4.3)."""
+    store = TableStore(engine)
+    with TestClient(make_app(store, 5)) as client:
+        alice, bob, carol = Player(client), Player(client), Player(client)
+        made = client.post(
+            "/api/tables", json={"seats": 2, "bots": None, "private": True}, headers=alice.headers()
+        ).json()
+        full, code = made["table_id"], made["invite"]
+        assert client.post(f"/api/tables/{full}/seat", json={"invite": code}, headers=bob.headers()).json()["seated"]
+        assert client.post(f"/api/tables/{full}/waitlist", json={"invite": code}, headers=carol.headers()).json() == {
+            "table_id": full,
+            "position": 1,
+        }
+        bots = client.post("/api/tables", json={"seats": 3, "bots": "random"}, headers=alice.headers()).json()["table_id"]
+        hold = client.post(f"/api/tables/{bots}/seat", json={"hold_only": True}, headers=carol.headers()).json()
+        assert hold["hold"]["ready"] is False  # Alice's hand is under way; the bot finishes it first
+        runners = {t: server_runner(client, t) for t in (full, bots)}
+        wait_for(lambda: all((saved_state(engine, t) or {}).get("seq") == r.table.seq for t, r in runners.items()))
+        before = {t: (table_to_dict(r.table), r.lobby_state()) for t, r in runners.items()}
+    assert before[full][1] == {"fill": None, "private": True, "invite": code}
+    assert before[bots][1] == {"fill": "random", "private": False, "invite": None}
+
+    with TestClient(make_app(store, 6)) as client:
+        for table_id, (state, lobby) in before.items():
+            runner = server_runner(client, table_id)
+            assert runner.lobby_state() == lobby
+            restored = table_to_dict(runner.table)
+            assert restored["reservations"] == state["reservations"] and restored["waitlist"] == state["waitlist"]
+        carol.client = client
+        found = client.get(f"/api/invites/{code}", headers=carol.headers())
+        assert found.status_code == 200 and found.json()["waitlist_position"] == 1
+        listed = client.get("/api/tables", headers=carol.headers()).json()["tables"]
+        assert {t["table_id"] for t in listed} == {full, bots}  # Carol waits at the private one

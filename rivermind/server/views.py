@@ -15,7 +15,7 @@ from rivermind.engine.state import legal_actions
 
 from . import protocol as p
 from .runner import TableRunner
-from .table import Event
+from .table import Event, Reservation, Table
 
 _SUITS = (p.Suit.CLUBS, p.Suit.DIAMONDS, p.Suit.HEARTS, p.Suit.SPADES)
 
@@ -26,6 +26,42 @@ def to_card(c: int) -> p.Card:
 
 def _cards(cs: Sequence[int]) -> list[p.Card]:
     return [to_card(c) for c in cs]
+
+
+def seat_hold(seat: int, hold: Reservation) -> p.SeatHold:
+    return p.SeatHold(seat=seat, name=hold.name, ready=hold.ready, until=hold.until)
+
+
+def your_hold(table: Table, player_id: str) -> p.SeatHold | None:
+    seat = table.reservation_of(player_id)
+    return None if seat is None else seat_hold(seat, table.reservations[seat])
+
+
+def table_summary(runner: TableRunner, player_id: str) -> p.TableSummary:
+    """The table as the lobby lists it, for ``player_id`` (P4.3)."""
+    table = runner.table
+    config = table.config
+    people = table.people()
+    return p.TableSummary(
+        table_id=runner.table_id,
+        name=runner.name,
+        seat_count=config.seat_count,
+        small_blind=config.small_blind,
+        big_blind=config.big_blind,
+        min_buy_in=config.min_buy_in,
+        max_buy_in=config.max_buy_in,
+        private=runner.private,
+        people=people,
+        bots=sum(1 for _ in table.players()) - people,
+        free_seats=len(table.free_seats()),
+        bot_seats=len(table.bot_seats()),
+        holds=len(table.reservations),
+        waitlist=len(table.waitlist),
+        hand_no=table.hand_no,
+        seated=table.seat_of(player_id) is not None,
+        hold=your_hold(table, player_id),
+        waitlist_position=table.waitlist_position(player_id),
+    )
 
 
 def table_view(runner: TableRunner, player_id: str) -> p.TableView:
@@ -153,7 +189,13 @@ def table_view(runner: TableRunner, player_id: str) -> p.TableView:
             pending_rebuy=you_player.pending_rebuy if you_player is not None else 0,
             sitting_out=you_player.sitting_out if you_player is not None else False,
             sitting_out_next=you_player.sit_out_next if you_player is not None else False,
+            hold=your_hold(table, player_id),
+            waitlist_position=table.waitlist_position(player_id),
         ),
+        private=runner.private,
+        invite=runner.invite,
+        holds=[seat_hold(seat, hold) for seat, hold in sorted(table.reservations.items())],
+        waitlist=len(table.waitlist),
     )
 
 
@@ -177,6 +219,12 @@ def table_events(events: Sequence[Event]) -> list[p.TableEvent]:
             fields.update(hand_no=data["hand_no"], seat=data["button"])
         elif kind == "hand_ended":
             fields["hand_no"] = data["hand_no"]
+        elif kind == "reserved":
+            fields["name"] = data["name"]
+        elif kind == "reservation_ended":
+            fields["reason"] = data["reason"]
+        elif kind == "waitlist":
+            fields["count"] = data["count"]
         elif kind == "action":
             fields.update(
                 action=p.ActionKind(data["action"]),

@@ -20,6 +20,12 @@ that has not decided by its deadline is timed out the same way.
 
 Live tables shuffle with ``secrets.SystemRandom`` (D-8). Tests pass a seeded
 generator, an instant ``sleep`` and a ``ManualClock``.
+
+Each runner also keeps the table's lobby settings (P4.3): whether it is
+private, its invite code, and the kind of bot that ``fill`` puts in empty
+seats. After every change the runner settles held seats (rule 2.4) and, while
+a person is at the table, fills each free seat nobody is waiting for with a
+bot. It wakes when a hold runs out as it does for a turn's deadline.
 """
 
 from __future__ import annotations
@@ -75,10 +81,20 @@ class TableRunner:
         options: RunnerOptions | None = None,
         *,
         name: str = "",
+        fill: str | None = None,
+        private: bool = False,
+        invite: str | None = None,
     ) -> None:
         self.table_id = table_id
         self.table = table
         self.name = name or table_id
+        if fill is not None and fill not in bots:
+            raise ValueError(f"no bot called {fill!r}")
+        self.fill = fill
+        """The kind of bot that takes free seats, or ``None`` to leave them for people."""
+        self.private = private
+        """Private tables are not listed; people join them with ``invite``."""
+        self.invite = invite
         self.bots = dict(bots)
         self.options = options or RunnerOptions()
         self.rng = self.options.rng_factory()
@@ -122,6 +138,19 @@ class TableRunner:
     def running(self) -> bool:
         return self._task is not None and not self._task.done()
 
+    def lobby_state(self) -> dict[str, object]:
+        """The lobby settings, saved with the table's snapshot (P4.3)."""
+        return {"fill": self.fill, "private": self.private, "invite": self.invite}
+
+    def is_member(self, player_id: str) -> bool:
+        """Whether the player is seated, holds a seat or is waiting here."""
+        table = self.table
+        return (
+            table.seat_of(player_id) is not None
+            or table.reservation_of(player_id) is not None
+            or table.waitlist_position(player_id) is not None
+        )
+
     def adopt_bots(self) -> None:
         """Number new bots after those already seated, so bot ids stay unique."""
         for _, player in self.table.players():
@@ -141,12 +170,40 @@ class TableRunner:
         if kind not in self.bots:
             raise TableError(ErrorCode.BAD_REQUEST, f"no bot called {kind!r}")
         async with self.lock:
-            self._bot_count += 1
-            player_id = f"bot:{kind}:{self._bot_count}"
-            label = BOT_LABELS.get(kind, kind)
-            self.table.sit(seat, player_id, f"{label} {seat + 1}", buy_in or self.table.config.max_buy_in, bot=kind)
+            player_id = self._sit_bot(seat, kind, buy_in)
             await self._changed()
             return player_id
+
+    def _sit_bot(self, seat: int, kind: str, buy_in: int | None = None) -> str:
+        self._bot_count += 1
+        player_id = f"bot:{kind}:{self._bot_count}"
+        label = BOT_LABELS.get(kind, kind)
+        self.table.sit(seat, player_id, f"{label} {seat + 1}", buy_in or self.table.config.max_buy_in, bot=kind)
+        return player_id
+
+    async def reserve(self, player_id: str, name: str, seat: int | None = None) -> tuple[int, bool]:
+        """Hold a seat (rule 2.4). Returns the seat and whether it is free to sit in now."""
+        async with self.lock:
+            held = self.table.reserve(player_id, name, seat)
+            await self._changed()
+            hold = self.table.reservations.get(held)
+            return held, hold is not None and hold.ready
+
+    async def cancel_reservation(self, player_id: str) -> None:
+        async with self.lock:
+            self.table.cancel_reservation(player_id)
+            await self._changed()
+
+    async def join_waitlist(self, player_id: str, name: str) -> int:
+        async with self.lock:
+            place = self.table.join_waitlist(player_id, name)
+            await self._changed()
+            return self.table.waitlist_position(player_id) or place
+
+    async def leave_waitlist(self, player_id: str) -> None:
+        async with self.lock:
+            self.table.leave_waitlist(player_id)
+            await self._changed()
 
     async def leave(self, player_id: str) -> Departure | None:
         async with self.lock:
@@ -190,6 +247,10 @@ class TableRunner:
 
     async def _changed(self) -> None:
         """Publish the table's new events. Call with the lock held."""
+        self.table.settle_seats()
+        if self.fill is not None and self.table.people():
+            for seat in self.table.free_seats():
+                self._sit_bot(seat, self.fill)
         if self.options.bot_rebuy:
             for seat, player in list(self.table.players()):
                 if player.is_bot and player.stack == 0 and not self.table.in_hand(seat):
@@ -230,8 +291,8 @@ class TableRunner:
         return any(not self._is_bot(seat) for seat in table.dealt_in_next())
 
     def has_people(self) -> bool:
-        """Whether any person holds a seat."""
-        return any(not player.is_bot for _, player in self.table.players())
+        """Whether any person is seated or has a seat held for them."""
+        return self.table.people() > 0 or bool(self.table.reservations)
 
     async def _step(self) -> None:
         table = self.table
@@ -248,11 +309,13 @@ class TableRunner:
             await self._bot_turn(seat)
             return
         turn = table.turn if seat is not None else None
-        if await self.options.clock.wait(self._wake, turn.final if turn is not None else None):
+        deadlines = [t for t in (turn.final if turn is not None else None, table.reservation_deadline()) if t is not None]
+        if await self.options.clock.wait(self._wake, min(deadlines, default=None)):
             return  # something changed; look again
         async with self.lock:
-            if table.turn is turn and table.check_clock():
-                await self._changed()
+            if table.turn is turn:
+                table.check_clock()
+            await self._changed()  # also lets a hold that ran out go
 
     async def _bot_turn(self, seat: int) -> None:
         table = self.table
@@ -329,18 +392,42 @@ class TableManager:
         self.setup = setup
         self.tables: dict[str, TableRunner] = {}
 
-    def create(self, config: TableConfig, *, name: str = "", table_id: str | None = None) -> TableRunner:
+    def create(
+        self,
+        config: TableConfig,
+        *,
+        name: str = "",
+        table_id: str | None = None,
+        lobby: Mapping[str, object] | None = None,
+    ) -> TableRunner:
         """Make a table and start its task. Call from inside the event loop."""
-        return self.restore(table_id or secrets.token_urlsafe(9), Table(config, self.options.clock.now), name=name)
+        table = Table(config, self.options.clock.now)
+        return self.restore(table_id or secrets.token_urlsafe(9), table, name=name, lobby=lobby)
 
-    def restore(self, table_id: str, table: Table, *, name: str = "") -> TableRunner:
-        """Run an existing table, such as one loaded from the database (P3.5)."""
+    def restore(
+        self, table_id: str, table: Table, *, name: str = "", lobby: Mapping[str, object] | None = None
+    ) -> TableRunner:
+        """Run an existing table, such as one loaded from the database (P3.5).
+
+        ``lobby`` holds the settings of ``TableRunner.lobby_state``.
+        """
         if table_id in self.tables:
             raise ValueError(f"table {table_id} exists")
         missing = {p.bot for _, p in table.players() if p.bot is not None and p.bot not in self.bots}
         if missing:
             raise ValueError(f"table {table_id} has bots this server does not run: {sorted(missing)}")
-        runner = TableRunner(table_id, table, self.bots, self.options, name=name)
+        lobby = lobby or {}
+        fill, invite = lobby.get("fill"), lobby.get("invite")
+        runner = TableRunner(
+            table_id,
+            table,
+            self.bots,
+            self.options,
+            name=name,
+            fill=fill if isinstance(fill, str) else None,
+            private=lobby.get("private") is True,
+            invite=invite if isinstance(invite, str) else None,
+        )
         runner.adopt_bots()
         self.tables[table_id] = runner
         if self.setup is not None:

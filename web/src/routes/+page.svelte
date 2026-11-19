@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { replaceState } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import ConnectionStatus from '#lib/components/ConnectionStatus.svelte';
 	import SiteHeader from '#lib/components/SiteHeader.svelte';
 	import { NlConnection } from '#lib/nl/connection.svelte.ts';
@@ -10,6 +12,13 @@
 	// It replaced the short-deck prototype at the Phase 3 cutover (P3.7, D-11).
 	const connection = new NlConnection();
 	let ready = $state(false);
+	/** A private table's invite code, from a link such as `/?invite=…` (P4.3). */
+	let invite = $state<string | null>(null);
+
+	function inviteUsed() {
+		invite = null;
+		replaceState(resolve('/'), {});
+	}
 
 	let toast = $state<string | null>(null);
 	let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -31,6 +40,7 @@
 	});
 
 	onMount(() => {
+		invite = new URLSearchParams(location.search).get('invite');
 		void connection.start().finally(() => (ready = true));
 		return () => {
 			clearTimeout(toastTimer);
@@ -59,9 +69,10 @@
 		{/if}
 	{:else}
 		<NlLobby
+			{connection}
 			message={connection.closedMessage ?? ''}
-			balance={connection.balance}
-			onstart={(request) => connection.newTable(request)}
+			{invite}
+			oninvited={inviteUsed}
 		/>
 	{/if}
 </main>

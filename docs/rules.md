@@ -42,7 +42,11 @@ Cards for streets that are never reached are not dealt. A hand uses at most 2*n*
 
 2.3. A player can leave or sit out between hands. A player who leaves during a hand forfeits it: they fold when their turn comes, and their chips already in the pot stay there.
 
+2.4. A seat can be **held** for a player while they buy in, for 60 seconds; only that player can sit in it. A player who wants a seat where bots sit can take a bot's: between hands the bot leaves at once, and during a hand it plays the hand out and leaves when the hand ends, when the 60 seconds start. When no seat is empty or held by a bot, a player can join the table's **waitlist**. A seat that comes free is held for the first player in line, and passes to the next if they do not sit in time. At a table with bots, a free seat nobody is waiting for goes back to a bot. Holding a seat or waiting changes nothing at the table: a player who sits is dealt in from the next hand (rule 2.2).
+
 **Example.** A nine-seat table has players in S1 and S6 only, so the hand is played heads-up. If S6 sits out, no hand starts until another player is dealt in. When a third player sits down in S3 during a hand, they are dealt in from the next hand.
+
+**Example (held seats).** A six-seat table has one person, in S0, and five bots. During a hand, a second person asks for a seat: the bot in S1 plays the hand out, leaves when it ends, and S1 is held for the newcomer for 60 seconds. At a two-seat table of two people, a third joins the waitlist; when one of the two leaves, their seat is held for the third when that hand ends.
 
 ## 3. Blinds and antes
 
@@ -218,4 +222,5 @@ These are the points where card rooms differ, with the option this game uses.
 | Burn cards | Burned before each street (rule 1.3) | No burn cards | Matches live dealing, so a deck order replays exactly as a dealer would deal it. |
 | Timeout action | Check if possible, otherwise fold (rule 13.1) | Always fold | The plan’s default; never folds a free hand. |
 | Time bank | 30 seconds, regaining 2 per hand; not used while disconnected (rule 13.1 and 13.2) | A fixed bank per session, or none | Lets players think on big decisions without letting a missing player stall the table. |
+| Bots and people | Bots fill the seats people leave and give them up to people who want them (rule 2.4) | Separate tables for bots and people; bots only on request | There is always a game to join, and a table of people never waits on a bot. Bots are always labelled (D-7). |
 | Straddles, run it twice, insurance, rake | None | Various | Not part of 1.0; play money has no rake. |

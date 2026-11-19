@@ -94,7 +94,7 @@ def test_snapshots_round_trip_mid_hand_with_a_turn() -> None:
     table.start_hand(random.Random(3))
     drain(table)
     snapshot = table_to_dict(table)
-    assert snapshot["format"] == 1 and snapshot["kind"] == "table" and snapshot["turn"] is not None
+    assert snapshot["format"] == 2 and snapshot["kind"] == "table" and snapshot["turn"] is not None
     again = table_from_dict(json.loads(json.dumps(snapshot)))
     assert table_to_dict(again) == snapshot
     assert again.turn == table.turn and again.hand == table.hand and again.seats == table.seats
@@ -110,7 +110,7 @@ def test_a_snapshot_needs_drained_events() -> None:
 @pytest.mark.parametrize(
     "change",
     [
-        lambda d: d.update(format=2),
+        lambda d: d.update(format=3),
         lambda d: d.update(kind="hand_state"),
         lambda d: d.pop("seats"),
         lambda d: d.update(seats=d["seats"][:1]),
