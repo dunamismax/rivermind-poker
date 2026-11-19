@@ -56,3 +56,18 @@ export async function playHand(page: Page): Promise<string> {
 	await expect(result).toHaveText(/wins? \d+/);
 	return (await result.textContent()) ?? '';
 }
+
+// The no-limit server (serve-nl, protocol v2), one per worker on its own port.
+export const testNl = withCsp.extend<object, { nlServer: TableServer }>({
+	nlServer: [
+		// eslint-disable-next-line no-empty-pattern
+		async ({}, use, workerInfo) => {
+			const server = new TableServer(8800 + workerInfo.parallelIndex, 'serve-nl');
+			await server.start();
+			await use(server);
+			await server.dispose();
+		},
+		{ scope: 'worker', timeout: 90_000 }
+	],
+	baseURL: async ({ nlServer }, use) => use(nlServer.url)
+});

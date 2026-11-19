@@ -15,27 +15,35 @@ export class TableServer {
 	#process: ChildProcess | null = null;
 	#output = '';
 
-	constructor(readonly port: number) {
+	/** `serve` runs the short-deck game; `serve-nl` the no-limit server (P3.6). */
+	constructor(
+		readonly port: number,
+		readonly kind: 'serve' | 'serve-nl' = 'serve'
+	) {
 		this.url = `http://127.0.0.1:${port}`;
+	}
+
+	#args(): string[] {
+		const common = ['--port', String(this.port), '--client_dir', 'web/build'];
+		if (this.kind === 'serve-nl') {
+			// Quick bots and hands; tables live in memory (P3.5 is tested in pytest).
+			return ['serve-nl', ...common, '--hand_pause', '0.4', '--bot_delay', '0.05'];
+		}
+		return ['serve', ...common, '--state_path', join(this.#dir, 'tables.sqlite3')];
 	}
 
 	async start(): Promise<void> {
 		const child = spawn(
 			'uv',
-			[
-				'run',
-				'--locked',
-				'rivermind-poker',
-				'serve',
-				'--port',
-				String(this.port),
-				'--client_dir',
-				'web/build',
-				'--state_path',
-				join(this.#dir, 'tables.sqlite3')
-			],
+			['run', '--locked', 'rivermind-poker', ...this.#args()],
 			// Its own process group, so a kill reaches the Python process under uv.
-			{ cwd: REPO, stdio: ['ignore', 'pipe', 'pipe'], detached: true }
+			{
+				cwd: REPO,
+				stdio: ['ignore', 'pipe', 'pipe'],
+				detached: true,
+				// Never a developer's database: these tables live in memory.
+				env: { ...process.env, DATABASE_URL: '' }
+			}
 		);
 		this.#process = child;
 		child.stdout?.on('data', (chunk) => (this.#output += chunk));
@@ -50,7 +58,7 @@ export class TableServer {
 			}
 			await new Promise((r) => setTimeout(r, 250));
 		}
-		throw new Error(`serve did not start on ${this.port}:\n${this.#output}`);
+		throw new Error(`${this.kind} did not start on ${this.port}:\n${this.#output}`);
 	}
 
 	/** Kill the process outright (no graceful shutdown), as a crash would. */
