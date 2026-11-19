@@ -8,7 +8,7 @@ This file is the single source of truth for project status, from today’s worki
 | --- | --- |
 | **Current phase** | Phase 1 · SvelteKit client |
 | **Next step** | **P1.4** Unit and browser tests |
-| **In progress** | _None_ |
+| **In progress** | **P1.4** Vitest for wording and the socket store; Playwright flows in three browsers (claimed 2026-11-19) |
 | **Blockers** | _None_ |
 | **Live site** | https://rivermindpoker.com runs the Phase 0 prototype: a three-seat, fixed-limit, 20-card game against random bots or the RM-06 checkpoint. It uses FastAPI, WebSockets and a vanilla JavaScript client. Tables survive restarts. |
 | **`main`** | Phase 0, the P1.1 scaffold, the P1.2 typed protocol and the P1.3 SvelteKit table UI are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python suite on every push. |
