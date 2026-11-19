@@ -1,0 +1,145 @@
+# RiverMind interface art: chips, the dealer button, player avatars and the
+# logo emblem. scripts/pixel-art/ui.js colors them and draws the frames.
+
+# --- A chip seen from above, 11 × 11. @chip is its color, with a darker inner
+# ring and a lighter face; the edge stripes are white.
+
+legend
+. clear
+K ink
+C @chip
+d @chip-dark
+L @chip-light
+W @stripe
+
+sprite chip
+...KKKKK...
+.KKCWWWCKK.
+.KCCCCCCCK.
+KCCdddddCCK
+KWCdLLLdCWK
+KWCdLLLdCWK
+KWCdLLLdCWK
+KCCdddddCCK
+.KCCCCCCCK.
+.KKCWWWCKK.
+...KKKKK...
+
+# --- A chip seen edge-on, for stacks: 11 × 4.
+
+sprite chip-edge
+.KKKKKKKKK.
+KCWCCWCCWCK
+KdddddddddK
+.KKKKKKKKK.
+
+# --- The dealer button, 11 × 11.
+
+legend
+. clear
+K ink
+W paper
+w paper shade
+H white
+
+sprite dealer
+...KKKKK...
+.KKHHHHHKK.
+.KHWWWWWwK.
+KHWWKKWWWwK
+KHWWKWKWWwK
+KHWWKWKWWwK
+KHWWKWKWWwK
+KHWWKKWWWwK
+.KWWWWWWwK.
+.KKwwwwwKK.
+...KKKKK...
+
+# --- Avatars, 16 × 16, outlined in ink by ui.js. People take a skin, hair
+# and shirt; bots take a metal and an eye color.
+
+legend
+. clear
+K ink
+B @hair
+b @hair-dark
+S @skin
+s @skin-dark
+C @shirt
+c @shirt-dark
+
+sprite person
+................
+.....BBBBBB.....
+....BBBBBBBB....
+...BBBBBBBBBB...
+...BBSSSSSSBb...
+...BSSSSSSSSb...
+...BSKSSSSKSb...
+...SSKSSSSKSs...
+...SSSSSSSSSs...
+....SSSSSSSs....
+....SSsssSSs....
+......SSSs......
+....CCCSSCCC....
+..CCCCCCCCCCcc..
+.CCCCCCCCCCCCcc.
+.CCCCCCCCCCCCcc.
+
+legend
+. clear
+K ink
+M @metal
+m @metal-dark
+L @metal-light
+E @eye
+d deep slate
+
+sprite bot
+.......EE.......
+.......dd.......
+..MMMMMMMMMMMm..
+.MLLLLLLLLLLMMm.
+.MLKKKKKKKKKKMm.
+.MLKEEKKKKEEKMm.
+.MLKEEKKKKEEKMm.
+.MLKKKKKKKKKKMm.
+.MMMMMMMMMMMMMm.
+.MMMdMdMdMdMMMm.
+.mMMMMMMMMMMMmm.
+..mmmmmmmmmmmm..
+......dddd......
+..MMMMMMMMMMMm..
+.MMMMLMMMMLMMMm.
+.MMMMMMMMMMMMMm.
+
+# --- The RiverMind emblem: a gold spade crossed by a river, 15 × 17. Used for
+# the logo and the favicon.
+
+legend
+. clear
+K ink
+G gold
+y gold light
+g amber dark
+b blue light
+B blue
+
+sprite emblem
+.......K.......
+......KyK......
+.....KyGGK.....
+....KyGGGGK....
+...KyGGGGGGK...
+..KyGGGGGGGGK..
+.KyGGGGGGGGGgK.
+KyGbbGGGGGGGGgK
+KbbGGbbGGGGbbbK
+KBGGGGGbbbbBGgK
+KGGGGGGGGGGGGgK
+.KgGGgKGKgGGgK.
+..KKKKKGKKKKK..
+......KGK......
+.....KGGGK.....
+....KgggggK....
+....KKKKKKK....

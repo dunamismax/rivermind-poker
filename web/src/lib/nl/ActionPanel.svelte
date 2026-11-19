@@ -26,52 +26,33 @@
 		}
 	});
 
+	// Short faces for the preset buttons; their accessible names stay in full.
+	const SHORT: Record<string, string> = { '½ pot': '1/2', '¾ pot': '3/4' };
 	const sizes = $derived(presets(legal, hand));
 	const target = $derived(clampAmount(amount, legal));
 	const canRaise = $derived(legal.raise_kind !== null && legal.max_to >= legal.min_to);
 </script>
 
-<div class="panel" role="group" aria-label="Your action">
-	<div class="main">
-		{#if legal.can_fold}
-			<button type="button" class="fold" {disabled} onclick={() => onact('fold')}>Fold</button>
-		{/if}
-		<button
-			type="button"
-			class="call"
-			{disabled}
-			onclick={() => onact(legal.can_check ? 'check' : 'call')}
-		>
-			{callLabel(legal)}
-		</button>
-		{#if canRaise}
-			<button
-				type="button"
-				class="raise"
-				{disabled}
-				onclick={() => onact(legal.raise_kind ?? 'bet', target)}
-			>
-				{raiseLabel(legal, target)}
-			</button>
-		{/if}
-	</div>
+<div class="panel px-panel" role="group" aria-label="Your action">
 	{#if canRaise && legal.max_to > legal.min_to}
 		<div class="sizing">
 			<div class="presets">
 				{#each sizes as preset (preset.label)}
 					<button
 						type="button"
-						class:chosen={preset.amount === target}
+						class="px-btn small"
+						aria-pressed={preset.amount === target}
 						aria-label={`${preset.label}: ${preset.amount}`}
 						{disabled}
 						onclick={() => (amount = preset.amount)}
 					>
-						{preset.label}
+						{SHORT[preset.label] ?? preset.label}
 					</button>
 				{/each}
 			</div>
 			<div class="slider">
 				<input
+					class="px-range"
 					type="range"
 					min={legal.min_to}
 					max={legal.max_to}
@@ -81,7 +62,9 @@
 					{disabled}
 				/>
 				<input
+					class="px-field amount"
 					type="number"
+					inputmode="numeric"
 					min={legal.min_to}
 					max={legal.max_to}
 					step="1"
@@ -93,15 +76,39 @@
 			</div>
 		</div>
 	{/if}
+	<div class="main">
+		{#if legal.can_fold}
+			<button type="button" class="px-btn red" {disabled} onclick={() => onact('fold')}>
+				Fold
+			</button>
+		{/if}
+		<button
+			type="button"
+			class="px-btn blue"
+			{disabled}
+			onclick={() => onact(legal.can_check ? 'check' : 'call')}
+		>
+			{callLabel(legal)}
+		</button>
+		{#if canRaise}
+			<button
+				type="button"
+				class="px-btn amber"
+				{disabled}
+				onclick={() => onact(legal.raise_kind ?? 'bet', target)}
+			>
+				{raiseLabel(legal, target)}
+			</button>
+		{/if}
+	</div>
 </div>
 
 <style>
 	.panel {
 		display: grid;
-		gap: 10px;
-		background: var(--panel);
-		border-radius: var(--radius);
-		padding: 12px;
+		gap: 8px;
+		padding: 4px;
+		animation: slide 0.18s steps(3, end);
 	}
 	.main {
 		display: grid;
@@ -109,69 +116,58 @@
 		grid-auto-columns: 1fr;
 		gap: 8px;
 	}
-	.main button {
-		padding: 12px 8px;
-		border-radius: 10px;
-		border: none;
-		font-weight: 600;
-		color: var(--text);
-		background: var(--panel-2);
-		min-height: 48px;
-	}
-	.main .raise {
-		background: var(--accent);
-		color: var(--accent-text);
-	}
-	.main .fold {
-		background: #3a1f1c;
+	.main .px-btn {
+		min-height: 60px;
+		padding: 0 4px;
+		white-space: normal;
+		text-align: center;
+		line-height: 1.1;
 	}
 	.sizing {
 		display: grid;
-		gap: 8px;
+		gap: 4px;
 	}
 	.presets {
 		display: grid;
 		grid-template-columns: repeat(5, 1fr);
 		gap: 6px;
 	}
-	.presets button {
-		padding: 8px 2px;
-		border-radius: 8px;
-		border: 1px solid var(--panel-2);
-		background: transparent;
-		color: var(--text);
-		font-size: 0.85rem;
+	.presets .px-btn {
+		padding: 0;
+		font-size: var(--fs-s);
 	}
-	.presets button.chosen {
-		border-color: var(--accent);
-		color: var(--accent);
+	.presets .px-btn[aria-pressed='true'] {
+		--btn-down: url('../art/ui/button-gold-down.png');
+		color: var(--ink);
+		text-shadow: none;
 	}
 	.slider {
 		display: grid;
-		grid-template-columns: 1fr 96px;
-		gap: 10px;
+		grid-template-columns: 1fr 104px;
+		gap: 12px;
 		align-items: center;
 	}
-	input[type='range'] {
+	.amount {
 		width: 100%;
-		accent-color: var(--accent);
+		text-align: right;
 	}
-	input[type='number'] {
-		width: 100%;
-		padding: 8px;
-		border-radius: 8px;
-		border: 1px solid var(--panel-2);
-		background: var(--bg);
-		color: var(--text);
-		font: inherit;
-		font-variant-numeric: tabular-nums;
+	@keyframes slide {
+		from {
+			transform: translateY(8px);
+			opacity: 0;
+		}
 	}
-	@media (max-width: 420px) {
-		.presets button {
-			font-size: 0.75rem;
+	@media (max-width: 639px) {
+		.main .px-btn {
+			min-height: 56px;
+			font-size: var(--fs-s);
 		}
 		.slider {
-			grid-template-columns: 1fr 80px;
+			grid-template-columns: 1fr 96px;
+			gap: 8px;
+		}
+		.presets {
+			gap: 4px;
 		}
 	}
 </style>

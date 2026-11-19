@@ -66,7 +66,7 @@ for (const seats of [2, 6, 9]) {
 
 test('sits out, comes back and rebuys', async ({ page }) => {
 	await sitDown(page, 3, { bots: /Calling bot/, buyIn: /40 big blinds/ });
-	await expect(page.locator('.seat.acting .ring')).toHaveCount(1); // a turn clock is running
+	await expect(page.locator('.seat.acting .clock')).toHaveCount(1); // a turn clock is running
 	await page.getByRole('button', { name: 'Sit out next hand' }).click();
 	const sittingOut = page.getByText('You are sitting out.');
 	await playUntil(page, () => sittingOut.isVisible(), LIVE_HAND_MS);

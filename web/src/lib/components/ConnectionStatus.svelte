@@ -11,24 +11,38 @@
 </script>
 
 <span class="status" data-state={status} title={LABELS[status]}>
+	<span class="light" aria-hidden="true"></span>
 	<span class="visually-hidden">{LABELS[status]}</span>
 </span>
 
 <style>
 	.status {
-		width: 10px;
-		height: 10px;
-		border-radius: 50%;
-		background: var(--muted);
-		display: inline-block;
+		display: inline-flex;
+		align-items: center;
 	}
-	.status[data-state='open'] {
-		background: var(--win);
+	/* A square signal lamp, outlined in ink, lit from the top-left. */
+	.light {
+		width: calc(5 * var(--px));
+		height: calc(5 * var(--px));
+		background: var(--haze);
+		box-shadow:
+			0 0 0 var(--px) var(--ink),
+			inset var(--px) var(--px) 0 rgb(255 255 255 / 0.35);
 	}
-	.status[data-state='connecting'] {
-		background: var(--accent);
+	[data-state='open'] .light {
+		background: var(--green);
 	}
-	.status[data-state='closed'] {
-		background: var(--danger);
+	[data-state='connecting'] .light {
+		background: var(--gold);
+		animation: blink 0.8s steps(2, end) infinite;
+	}
+	[data-state='closed'] .light {
+		background: var(--red);
+		animation: blink 0.8s steps(2, end) infinite;
+	}
+	@keyframes blink {
+		50% {
+			opacity: 0.35;
+		}
 	}
 </style>

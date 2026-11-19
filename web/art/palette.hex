@@ -1,0 +1,59 @@
+; RiverMind Poker palette. Every pixel of the site's art is one of these colors,
+; referred to by name in the sources. Ramps run dark to light.
+; web/src/lib/art/palette.css is generated from this file, so the page's CSS
+; colors and the art always agree.
+;
+; Ink and night
+0c0d15 ; ink
+171a28 ; night
+222739 ; deep slate
+30364d ; slate
+454d6a ; dusk
+69739a ; haze
+a3aac6 ; mist
+; Felt
+0b2a26 ; felt deep
+113b33 ; felt dark
+185241 ; felt
+226b52 ; felt light
+328a68 ; felt glow
+; Wood and brass
+24130c ; wood deep
+3f2414 ; wood dark
+603820 ; wood
+86542c ; wood light
+b8823c ; brass
+; Paper
+a89c86 ; paper deep
+d6ccb8 ; paper shade
+f4eee0 ; paper
+ffffff ; white
+; Red
+4f101b ; red deep
+93202f ; red dark
+d93d3d ; red
+ff7a5e ; red light
+; Blue
+10224f ; blue deep
+1c4596 ; blue dark
+3474dd ; blue
+79b2ff ; blue light
+; Green
+0c3d23 ; green deep
+17703b ; green dark
+2ea457 ; green
+7fdc86 ; green light
+; Amber and gold
+5a2c0c ; amber deep
+a3561a ; amber dark
+ec8a2a ; amber
+ffc340 ; gold
+ffe58c ; gold light
+; Violet
+251a4c ; violet deep
+45309a ; violet
+7d64dc ; violet light
+; Skin
+6e3a2c ; skin deep
+b8704f ; skin
+eeb48c ; skin light

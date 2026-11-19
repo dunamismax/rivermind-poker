@@ -1,0 +1,417 @@
+# RiverMind card art: the corner indices, the suit pips and the court
+# portraits. scripts/pixel-art/cards.js lays them out on a 33 × 45 card.
+# Hand-drawn, one character per pixel; see palette.hex for the colors.
+
+# --- Rank indices: 5 × 7, two-pixel stems so they read at a glance. "10" is
+# 7 wide. Drawn in the suit's ink (@ink).
+
+legend
+. clear
+R @ink
+
+sprite rank-2
+RRRR.
+...RR
+...RR
+.RRR.
+RR...
+RR...
+RRRRR
+
+sprite rank-3
+RRRR.
+...RR
+...RR
+.RRR.
+...RR
+...RR
+RRRR.
+
+sprite rank-4
+RR.RR
+RR.RR
+RR.RR
+RRRRR
+...RR
+...RR
+...RR
+
+sprite rank-5
+RRRRR
+RR...
+RR...
+RRRR.
+...RR
+...RR
+RRRR.
+
+sprite rank-6
+.RRR.
+RR...
+RR...
+RRRR.
+RR.RR
+RR.RR
+.RRR.
+
+sprite rank-7
+RRRRR
+...RR
+...RR
+..RR.
+..RR.
+.RR..
+.RR..
+
+sprite rank-8
+.RRR.
+RR.RR
+RR.RR
+.RRR.
+RR.RR
+RR.RR
+.RRR.
+
+sprite rank-9
+.RRR.
+RR.RR
+RR.RR
+.RRRR
+...RR
+...RR
+.RRR.
+
+sprite rank-10
+RR..RR.
+RR.R..R
+RR.R..R
+RR.R..R
+RR.R..R
+RR.R..R
+RR..RR.
+
+sprite rank-11
+..RRR
+...RR
+...RR
+...RR
+RR.RR
+RR.RR
+.RRR.
+
+sprite rank-12
+.RRR.
+RR.RR
+RR.RR
+RR.RR
+RR.RR
+.RRR.
+...RR
+
+sprite rank-13
+RR.RR
+RR.RR
+RRRR.
+RRR..
+RRRR.
+RR.RR
+RR.RR
+
+sprite rank-14
+.RRR.
+RR.RR
+RR.RR
+RRRRR
+RR.RR
+RR.RR
+RR.RR
+
+# --- Small pips: 5 wide, for the corner index and the number cards. Spades
+# and clubs take a sixth row for the stem. Upright; the lower half of a card
+# uses them rotated 180°.
+
+legend
+. clear
+S @suit
+
+sprite pip-spades
+..S..
+.SSS.
+SSSSS
+SSSSS
+..S..
+.SSS.
+
+
+sprite pip-hearts
+.S.S.
+SSSSS
+SSSSS
+.SSS.
+..S..
+
+sprite pip-diamonds
+..S..
+.SSS.
+SSSSS
+.SSS.
+..S..
+
+sprite pip-clubs
+.SSS.
+.SSS.
+SSSSS
+SSSSS
+S.S.S
+..S..
+
+
+# --- Large pips: up to 15 × 15, for the aces. Lit from the top-left (@light) with a
+# shadow on the lower right (@dark).
+
+legend
+. clear
+S @suit
+H @light
+D @dark
+
+sprite ace-spades
+.......S.......
+......SSS......
+.....SHSSS.....
+....SHSSSSS....
+...SHSSSSSSS...
+..SHSSSSSSSSS..
+.SHSSSSSSSSSSS.
+SHSSSSSSSSSSSSS
+SHSSSSSSSSSSSSD
+SSSSSSSSSSSSSSD
+.SSSSSSSSSSSSD.
+..SSSD.S.SDDD..
+......SSS......
+.....SSSSSD....
+....SSSSSSSD...
+
+
+sprite ace-hearts
+...............
+..SSS.....SSS..
+.SHHSS...SSSSS.
+SHHSSSS.SSSSSSS
+SHSSSSSSSSSSSSS
+SSSSSSSSSSSSSSS
+SSSSSSSSSSSSSSD
+SSSSSSSSSSSSSSD
+.SSSSSSSSSSSSD.
+..SSSSSSSSSSD..
+...SSSSSSSSD...
+....SSSSSSD....
+.....SSSSD.....
+......SSD......
+.......S.......
+
+
+sprite ace-diamonds
+.....H.....
+....HSS....
+....HSS....
+...HSSSS...
+..HSSSSSS..
+..HSSSSSS..
+.HSSSSSSSS.
+HSSSSSSSSSD
+.SSSSSSSSD.
+..SSSSSSD..
+..SSSSSSD..
+...SSSSD...
+....SSD....
+....SSD....
+.....D.....
+
+
+sprite ace-clubs
+......SSS......
+.....SHSSS.....
+.....HSSSS.....
+.....SSSSD.....
+..SSS.SSS.SSS..
+.SHSSSSSSSSSSS.
+SHSSSSSSSSSSSSS
+SSSSSSSSSSSSSSD
+.SSSSSSSSSSSSD.
+..SSSD.S.SSDD..
+.......S.......
+......SSS......
+....SSSSSSD....
+...............
+...............
+
+
+# --- Court portraits: 15 × 37, inside a framed window. The robe (@robe,
+# @robe-dark, @robe-light) and hair (@hair, @hair-dark) take the suit's
+# colors; cards.js outlines each figure in ink and stamps the suit on the chest.
+
+legend
+. clear
+K ink
+W white
+G gold
+y gold light
+g amber dark
+a amber
+S skin
+s skin deep
+l skin light
+f green
+o wood light
+O wood
+B @hair
+b @hair-dark
+R @robe
+r @robe-dark
+h @robe-light
+
+sprite court-13
+...G...G...G...
+...GG.GGG.GG...
+...GGGGaGGGG...
+...GyGGGGGyG...
+...ggggggggg...
+..BBlllllllBB..
+..BlSSSSSSSSB..
+..BlSKSSSKSSB..
+..BSSSSSSSSSB..
+..BSSSSsSSSSB..
+..BBSSSSSSSBB..
+..BBBBSsSBBBB..
+..BBBBBBBBBBB..
+...BBBbbbBBB...
+....BBbbbBB....
+.WWWWWBbBWWWWW.
+WWKWWWWBWWWWKWW
+hhRRRRRGRRRRRrr
+hRRRRRRGRRRRRRr
+hRRRRRRGRRRRRRr
+hRRRRRRGRRRRRRr
+hRRRRRRGRRRRRRr
+hRRRRRRGRRRRRRr
+hRRRRRRGRRRRRRr
+hRRRRRRGRRRRRRr
+hhSSRRRGRRRSSrr
+hhSSRRRGRRRSSrr
+gggggggaggggggg
+hRRRRRRGRRRRRRr
+hRRRRRRGRRRRRRr
+hRRRRRRGRRRRRRr
+hRRRRRRGRRRRRRr
+hRRRRRRGRRRRRRr
+hRRRRRRGRRRRRRr
+hhRRRRRGRRRRRrr
+WWKWWWWGWWWWKWW
+WWWWWWWWWWWWWWW
+
+sprite court-12
+.......y.......
+......GGG......
+...G.GGaGG.G...
+...GGGGGGGGG...
+...ggggggggg...
+..BBlllllllBB..
+.BBlSSSSSSSlBB.
+.BBlSKSSSKSSBB.
+.BBSSSSSSSSSBB.
+.BBSSSSsSSSSBB.
+.BBSSSSSSSSSBB.
+.BBBSSrrrSSBBB.
+.BBBBSSSSSBBBB.
+.BBBBBSSSBBBBB.
+.BBBBBSSSBBBBb.
+.BByhRGyGRrBBb.
+BByayRRGRRRrBbb
+BBhyRRRRRRRRrbb
+BBhfRRRRRRRRrbb
+BhRfRRRRRRRRRrb
+BhRfRRRRRRRRRrb
+hhRfRRRRRRRRRrr
+hRRfRRRRRRRRRRr
+hRRfRRRRRRRRRRr
+hRSSSRRRRRRRRRr
+hRSSSRRRRRRRRRr
+hRRRRRRRRRRRRRr
+hRRRWWWWWWWRRRr
+hRRRWRWRWRWRRRr
+hhRRRRRRRRRRRrr
+hRRRRRRRRRRRRRr
+hRRRRRRRRRRRRRr
+hRRRRRRRRRRRRRr
+hRRRRRRRRRRRRRr
+hRRRRRRRRRRRRRr
+hhRRRRRRRRRRRrr
+ggggggggggggggg
+
+sprite court-11
+...........hh..
+..........hhh..
+....RRRRRRhh...
+...RRRRRRRRh...
+..RhRRRRRRRRR..
+..ggggggggggg..
+.o.BlllllllB...
+ooOBSSSSSSSB...
+ooOBSKSSSKSB...
+ooOSSSSSSSSS...
+ooOSSSSsSSSS...
+ooOBSSSSSSSB...
+.o..SSsssSS....
+.O...SSSSS.....
+.O....SSS......
+.O.WWWWWWWWW...
+.OhWWWWWWWWWr..
+.OhRRRRRRRRRrr.
+hORRRRRRRRRRRrr
+hORRRRRRRRRRRRr
+hORRRRRRRRRRRRr
+hORRRRRRRRRRRRr
+hORRRRRRRRRRRRr
+hORRRRRRRRRRRRr
+SSSRRRRRRRRRRRr
+SSSRRRRRRRRRRRr
+hORRRRRRRRRRRRr
+gOgggggaggggggg
+hORRRRRRRRRRRRr
+hORRRRRRRRRRRRr
+hORRRRRRRRRRRRr
+hORRRRRRRRRRRRr
+hORRRRRRRRRRRRr
+hORRRRRRRRRRRRr
+hORRRRRRRRRRRRr
+hORRRRRRRRRRRrr
+hOhRRRRRRRRRrrr
+
+# --- The RiverMind back's emblem: a gold diamond with a river bend inside,
+# 13 × 17. It looks the same turned 180°, like the rest of every back.
+
+legend
+. clear
+G gold
+B @base
+W blue light
+
+sprite back-emblem
+......G......
+.....GGG.....
+....GGBGG....
+...GGBBBGG...
+..GGBBWWWGG..
+.GGBBWWBBBGG.
+GGBBWWBBBBBGG
+GBBBBWWBBBBBG
+GBBBBWWWBBBBG
+GBBBBBWWBBBBG
+GGBBBBBWWBBGG
+.GGBBBWWBBGG.
+..GGWWWBBGG..
+...GGBBBGG...
+....GGBGG....
+.....GGG.....
+......G......

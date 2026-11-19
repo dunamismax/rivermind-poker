@@ -1,16 +1,39 @@
+/*
+ * RiverMind's look: hand-drawn pixel art on a night-blue room, a felt table,
+ * one pixel font. The palette (palette.css) is generated from web/art/; the
+ * frames and buttons in pixel.css are nine-slice images drawn from it.
+ * See docs/design.md.
+ */
+@import './lib/art/palette.css';
+@import './styles/pixel.css';
+
+@font-face {
+	font-family: 'RiverMind Pixel';
+	src: url('./lib/art/fonts/rivermind-pixel.woff') format('woff');
+	font-display: swap;
+}
+
 :root {
-	--bg: #0b1f17;
-	--felt: #0f5132;
-	--felt-edge: #0a3a24;
-	--panel: #13261e;
-	--panel-2: #1a3328;
-	--text: #eef4f0;
-	--muted: #9db5a8;
-	--accent: #f2c14e;
-	--accent-text: #1d1600;
-	--danger: #e5675c;
-	--win: #6fdc8c;
-	--radius: 12px;
+	/* One art pixel on screen. Frames, buttons and icons draw at 2x. */
+	--px: 2px;
+	/* The font is pixel-exact at multiples of 10px. */
+	--fs: 20px;
+	--fs-l: 30px;
+	--fs-xl: 40px;
+	--fs-s: 15px;
+	--font: 'RiverMind Pixel', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+	--bg: var(--night);
+	--surface: var(--deep-slate);
+	--surface-2: var(--slate);
+	--text: var(--paper);
+	--muted: var(--mist);
+	--accent: var(--gold);
+	--accent-text: var(--ink);
+	--danger: var(--red-light);
+	--win: var(--green-light);
+	--shadow-text: 0 var(--px) 0 var(--ink);
+	--radius: 0;
 	color-scheme: dark;
 }
 
@@ -23,32 +46,69 @@ body {
 	margin: 0;
 }
 
-body {
+html {
 	background: var(--bg);
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
+}
+
+body {
+	background: var(--bg) url('./lib/art/ui/wallpaper.png') repeat;
+	background-size: calc(32 * var(--px)) calc(32 * var(--px));
+	image-rendering: pixelated;
 	color: var(--text);
-	font:
-		16px/1.4 system-ui,
-		-apple-system,
-		'Segoe UI',
-		Roboto,
-		sans-serif;
+	font-family: var(--font);
+	font-size: var(--fs);
+	line-height: 1.4;
 	min-height: 100vh;
+	min-height: 100dvh;
 	padding-bottom: env(safe-area-inset-bottom);
+	-webkit-font-smoothing: none;
+	-moz-osx-font-smoothing: unset;
+	font-synthesis: none;
+	font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3 {
+	font-weight: normal;
+	line-height: 1.2;
+	margin: 0;
+}
+
+p {
+	margin: 0;
+}
+
+button,
+input,
+select {
+	font: inherit;
+	color: inherit;
 }
 
 button {
-	font: inherit;
 	cursor: pointer;
 }
 
 button:disabled {
 	cursor: default;
-	opacity: 0.5;
+}
+
+a {
+	color: var(--gold);
+	text-underline-offset: 4px;
 }
 
 :focus-visible {
-	outline: 2px solid var(--accent);
-	outline-offset: 2px;
+	outline: var(--px) solid var(--gold);
+	outline-offset: var(--px);
+}
+
+::selection {
+	background: var(--gold);
+	color: var(--ink);
 }
 
 .visually-hidden {
@@ -73,4 +133,14 @@ button:disabled {
 	white-space: nowrap;
 	width: 1px;
 	height: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
 }

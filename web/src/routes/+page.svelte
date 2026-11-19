@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import ConnectionStatus from '#lib/components/ConnectionStatus.svelte';
+	import SiteHeader from '#lib/components/SiteHeader.svelte';
 	import { NlConnection } from '#lib/nl/connection.svelte.ts';
 	import NlLobby from '#lib/nl/NlLobby.svelte';
 	import NlTable from '#lib/nl/NlTable.svelte';
@@ -42,17 +43,14 @@
 	<title>No-limit hold’em · RiverMind Poker</title>
 </svelte:head>
 
-<header class="topbar">
-	<h1>RiverMind Poker</h1>
-	<div class="topbar-right">
-		{#if connection.player}<span class="me">{connection.player.name}</span>{/if}
-		<ConnectionStatus status={connection.status} />
-	</div>
-</header>
+<SiteHeader>
+	{#if connection.player}<span class="me">{connection.player.name}</span>{/if}
+	<ConnectionStatus status={connection.status} />
+</SiteHeader>
 
-<main>
+<main class:at-table={connection.tableId !== null}>
 	{#if !ready}
-		<!-- Deciding between the lobby and a saved table. -->
+		<p class="joining" role="status">Shuffling up…</p>
 	{:else if connection.tableId}
 		{#if connection.view}
 			<NlTable view={connection.view} {connection} />
@@ -69,55 +67,64 @@
 </main>
 
 {#if toast}
-	<div class="toast" role="alert">{toast}</div>
+	<div class="toast px-danger" role="alert">{toast}</div>
 {/if}
 
 <style>
-	.topbar {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 12px 16px;
-		border-bottom: 1px solid var(--panel-2);
-	}
-	h1 {
-		font-size: 1.1rem;
-		margin: 0;
-		letter-spacing: 0.02em;
-	}
-	.topbar-right {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-	}
 	.me {
-		color: var(--muted);
+		color: var(--paper-shade);
+		text-shadow: var(--shadow-text);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	main {
-		max-width: 960px;
+		max-width: 1080px;
 		margin: 0 auto;
 		padding: 16px;
 	}
+	main.at-table {
+		max-width: 1440px;
+	}
 	.joining {
-		color: var(--muted);
+		color: var(--mist);
 		text-align: center;
-		margin-top: 8vh;
+		margin-top: 12vh;
+		text-shadow: var(--shadow-text);
+		animation: blink 1s steps(2, end) infinite;
+	}
+	@keyframes blink {
+		50% {
+			opacity: 0.5;
+		}
 	}
 	.toast {
 		position: fixed;
 		left: 50%;
 		bottom: calc(20px + env(safe-area-inset-bottom));
 		transform: translateX(-50%);
-		background: var(--danger);
-		color: #fff;
-		padding: 10px 16px;
-		border-radius: var(--radius);
+		padding: 6px 12px;
 		max-width: calc(100vw - 32px);
-		z-index: 2;
+		z-index: 20;
+		text-shadow: var(--shadow-text);
+		animation: drop 0.2s steps(3, end);
 	}
-	@media (max-width: 420px) {
+	@keyframes drop {
+		from {
+			transform: translate(-50%, 12px);
+			opacity: 0;
+		}
+	}
+	@media (max-width: 639px) {
 		main {
-			padding: 12px 8px;
+			padding: 8px 8px 12px;
+		}
+		main.at-table {
+			padding: 4px 4px 0;
+		}
+		.me {
+			font-size: var(--fs-s);
+			max-width: 46vw;
 		}
 	}
 </style>

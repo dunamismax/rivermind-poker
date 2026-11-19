@@ -16,7 +16,7 @@ for (const seats of [2, 6, 9]) {
 		await expect(page.locator('.seat[data-seat]')).toHaveCount(seats);
 		await expect(page.locator('.seat .bot')).toHaveCount(seats - 1); // every bot is labelled
 		await expect(page.getByRole('group', { name: /^Your seat/ }).locator('img')).toHaveCount(2);
-		await expect(page.locator('.seat.acting .ring')).toHaveCount(1); // someone's clock is running
+		await expect(page.locator('.seat.acting .clock')).toHaveCount(1); // someone's clock is running
 		await noOverflow(page); // the ring stays inside the page at the edge seats too
 		await playUntilHand(page, 3);
 		await expect(page.getByRole('region', { name: 'Hand log' })).toContainText(

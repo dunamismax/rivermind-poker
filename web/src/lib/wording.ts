@@ -25,8 +25,11 @@ export function rankLabel(rank: number): string {
 	return RANK_LABELS[rank] ?? String(rank);
 }
 
+const RANK_NAMES: Record<number, string> = { 11: 'Jack', 12: 'Queen', 13: 'King', 14: 'Ace' };
+
+/** "Ace of spades", "10 of hearts": the card's name, for alt text. */
 export function cardName(card: Card): string {
-	return `${rankLabel(card.rank)} of ${card.suit}`;
+	return `${RANK_NAMES[card.rank] ?? String(card.rank)} of ${card.suit}`;
 }
 
 /** "Fold", "Check", "Call 150", "Bet 100" or "Raise 250" for an action button. */

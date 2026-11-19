@@ -1,6 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { clockLeft, placeClass, placeOf, places, placesCss } from './layout.ts';
+import {
+	betClass,
+	betSpot,
+	clockLeft,
+	placeClass,
+	placeOf,
+	places,
+	placesCss,
+	sideClass,
+	sideOf
+} from './layout.ts';
 
 describe('seat places', () => {
 	it('puts the viewer at the bottom and the others clockwise in seat order', () => {
@@ -9,29 +19,68 @@ describe('seat places', () => {
 		expect(placeClass(1, 0, 2)).toBe('at-2-1');
 	});
 
-	it('spreads the places around the rail, apart from each other', () => {
-		for (let count = 2; count <= 9; count += 1) {
-			const spots = places(count);
-			expect(spots).toHaveLength(count);
-			expect(spots[0]).toEqual({ left: 50, top: 100 }); // the viewer, bottom centre
-			for (const { left, top } of spots) {
-				expect(Math.min(left, top)).toBeGreaterThanOrEqual(0);
-				expect(Math.max(left, top)).toBeLessThanOrEqual(100);
-			}
-			// Clockwise: left side first, then across the top, then the right side.
-			const half = spots.slice(1, Math.ceil(count / 2));
-			expect(half.every((s) => s.left <= 50)).toBe(true);
-			// No two seats closer than a seat box on the smallest (phone) felt, 279 × 418 px, with seats about 78 × 120.
-			for (let a = 0; a < count; a += 1) {
-				for (let b = a + 1; b < count; b += 1) {
-					const dx = (Math.abs(spots[a].left - spots[b].left) * 279) / 100;
-					const dy = (Math.abs(spots[a].top - spots[b].top) * 418) / 100;
-					expect(dx >= 78 || dy >= 120, `${count} seats: places ${a} and ${b} overlap`).toBe(true);
+	// The smallest felt and the largest seat box for each map: a tablet held
+	// sideways and a 360 px wide phone.
+	const FELTS = {
+		wide: { width: 600, height: 375, seat: { width: 150, height: 135 } },
+		tall: { width: 344, height: 420, seat: { width: 84, height: 62 } }
+	} as const;
+
+	for (const shape of ['wide', 'tall'] as const) {
+		it(`spreads the ${shape} places around the table, apart from each other`, () => {
+			const felt = FELTS[shape];
+			for (let count = 2; count <= 9; count += 1) {
+				const spots = places(count, shape);
+				expect(spots).toHaveLength(count);
+				expect(spots[0]).toEqual({ left: 50, top: 100 }); // the viewer, bottom centre
+				for (const { left, top } of spots) {
+					expect(Math.min(left, top)).toBeGreaterThanOrEqual(0);
+					expect(Math.max(left, top)).toBeLessThanOrEqual(100);
+				}
+				// Clockwise: left side first, then across the top, then the right side.
+				const half = spots.slice(1, Math.ceil(count / 2));
+				expect(half.every((s) => s.left <= 50)).toBe(true);
+				for (let a = 0; a < count; a += 1) {
+					for (let b = a + 1; b < count; b += 1) {
+						const dx = (Math.abs(spots[a].left - spots[b].left) * felt.width) / 100;
+						const dy = (Math.abs(spots[a].top - spots[b].top) * felt.height) / 100;
+						const apart = dx >= felt.seat.width || dy >= felt.seat.height;
+						expect(apart, `${count} ${shape} seats: places ${a} and ${b} overlap`).toBe(true);
+					}
 				}
 			}
+			expect(places(2, shape)[1].left).toBe(50); // heads-up: straight across
+			expect(() => places(10, shape)).toThrow(RangeError);
+		});
+	}
+
+	it('keeps the phone seats clear of the board across the middle', () => {
+		for (let count = 2; count <= 9; count += 1) {
+			for (const { top } of places(count, 'tall').slice(1)) {
+				expect(Math.abs(top - 50), `${count} seats`).toBeGreaterThanOrEqual(22);
+			}
 		}
-		expect(places(2)[1]).toEqual({ left: 50, top: 0 }); // heads-up: straight across
-		expect(() => places(10)).toThrow(RangeError);
+	});
+
+	it('knows which way each place faces', () => {
+		expect(sideOf({ left: 50, top: 100 }, 0)).toBe('bottom');
+		expect(sideOf({ left: 34, top: 9 }, 4)).toBe('top');
+		expect(sideOf({ left: 13, top: 27 }, 3)).toBe('left');
+		expect(sideOf({ left: 87, top: 72 }, 7)).toBe('right');
+		expect(sideClass(2, 0, 9)).toBe('side-left');
+	});
+
+	it('puts each bet between its seat and the pot', () => {
+		for (const shape of ['wide', 'tall'] as const) {
+			for (let count = 2; count <= 9; count += 1) {
+				places(count, shape).forEach((spot, place) => {
+					const bet = betSpot(spot, place, shape);
+					expect(Math.abs(bet.left - 50)).toBeLessThanOrEqual(Math.abs(spot.left - 50));
+					expect(Math.abs(bet.top - 50)).toBeLessThan(Math.abs(spot.top - 50) + 2);
+				});
+			}
+		}
+		expect(betClass(1, 0, 6)).toBe('bet-6-1');
 	});
 
 	it('has current generated CSS', () => {

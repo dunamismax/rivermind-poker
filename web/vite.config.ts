@@ -43,6 +43,11 @@ export default defineConfig({
 			adapter: adapter({ fallback: '200.html' })
 		})
 	],
+	build: {
+		// The CSP allows data: images but not data: fonts, so the font is
+		// always its own hashed file.
+		assetsInlineLimit: (file) => (file.endsWith('.woff') ? false : undefined)
+	},
 	server: { proxy },
 	preview: { proxy },
 	test: {

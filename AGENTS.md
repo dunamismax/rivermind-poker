@@ -54,6 +54,8 @@ pnpm check && pnpm lint && pnpm test && pnpm build
 pnpm e2e    # Chromium, Firefox and WebKit against a real `serve-nl`
 ```
 
+The site’s art is pixel art drawn as text: the palette, sprites and font are in `web/art/`, and `pnpm art` (from `web/`) renders them into `web/src/lib/art/` and `web/static/`. Never edit a generated PNG, the font or `palette.css` by hand; change the source, run `pnpm art --preview <dir outside the repo>`, look at the contact sheets, and commit both. Draw only with palette names, keep art at whole-number scales, and size text in multiples of 10px. [The design notes](docs/design.md) and the `/style` page describe the kit.
+
 After changing `poker_ai/web/protocol.py` or `rivermind/server/protocol.py`, run `pnpm protocol` and commit the regenerated `web/src/lib/protocol.ts` and `protocol-v2.ts`. Keep the client free of inline script and style: the site CSP blocks them and `pnpm build` fails on them.
 
 Socket tests of the table server (`test/server/test_protocol_v2.py`) run with a `ManualClock`, so nobody times out, and a `TestClient` receive has no timeout. Check the last message already received before waiting for a turn (the snapshot after joining is often one), and keep playing your own turns while waiting for a later hand, or the test hangs.

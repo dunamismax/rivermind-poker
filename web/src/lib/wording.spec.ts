@@ -83,7 +83,9 @@ describe('describe', () => {
 describe('cards', () => {
 	it('names ranks and cards', () => {
 		expect([10, 11, 12, 13, 14].map(rankLabel)).toEqual(['10', 'J', 'Q', 'K', 'A']);
-		expect(cardName({ rank: 14, suit: 'spades' })).toBe('A of spades');
+		expect(cardName({ rank: 14, suit: 'spades' })).toBe('Ace of spades');
+		expect(cardName({ rank: 11, suit: 'hearts' })).toBe('Jack of hearts');
+		expect(cardName({ rank: 10, suit: 'clubs' })).toBe('10 of clubs');
 	});
 });
 

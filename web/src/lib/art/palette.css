@@ -1,0 +1,47 @@
+/* Generated from web/art/palette.hex by pnpm art; do not edit. */
+:root {
+	--ink: #0c0d15;
+	--night: #171a28;
+	--deep-slate: #222739;
+	--slate: #30364d;
+	--dusk: #454d6a;
+	--haze: #69739a;
+	--mist: #a3aac6;
+	--felt-deep: #0b2a26;
+	--felt-dark: #113b33;
+	--felt: #185241;
+	--felt-light: #226b52;
+	--felt-glow: #328a68;
+	--wood-deep: #24130c;
+	--wood-dark: #3f2414;
+	--wood: #603820;
+	--wood-light: #86542c;
+	--brass: #b8823c;
+	--paper-deep: #a89c86;
+	--paper-shade: #d6ccb8;
+	--paper: #f4eee0;
+	--white: #ffffff;
+	--red-deep: #4f101b;
+	--red-dark: #93202f;
+	--red: #d93d3d;
+	--red-light: #ff7a5e;
+	--blue-deep: #10224f;
+	--blue-dark: #1c4596;
+	--blue: #3474dd;
+	--blue-light: #79b2ff;
+	--green-deep: #0c3d23;
+	--green-dark: #17703b;
+	--green: #2ea457;
+	--green-light: #7fdc86;
+	--amber-deep: #5a2c0c;
+	--amber-dark: #a3561a;
+	--amber: #ec8a2a;
+	--gold: #ffc340;
+	--gold-light: #ffe58c;
+	--violet-deep: #251a4c;
+	--violet: #45309a;
+	--violet-light: #7d64dc;
+	--skin-deep: #6e3a2c;
+	--skin: #b8704f;
+	--skin-light: #eeb48c;
+}

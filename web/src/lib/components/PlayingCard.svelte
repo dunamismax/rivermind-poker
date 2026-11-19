@@ -1,10 +1,18 @@
 <script lang="ts">
-	import { asset } from '$app/paths';
-	import { cardBackPath, cardFacePath, type CardBack, type CardTreatment } from '../card-assets.ts';
+	import {
+		CARD_SLOT,
+		cardBackPath,
+		cardFacePath,
+		type CardBack,
+		type CardTreatment
+	} from '../card-assets.ts';
 	import type { Card } from '../protocol.ts';
 	import { cardName } from '../wording.ts';
 
-	/** A card face, `null` for a face-down card, `undefined` for an empty slot. */
+	/**
+	 * A card face, `null` for a face-down card, `undefined` for an empty slot.
+	 * Its size is 33 × 45 art pixels times `--k` (2 unless a parent sets it).
+	 */
 	let {
 		card,
 		large = false,
@@ -12,6 +20,7 @@
 		back
 	}: {
 		card: Card | null | undefined;
+		/** Older layouts: one size up. */
 		large?: boolean;
 		treatment?: CardTreatment;
 		back?: CardBack;
@@ -19,39 +28,49 @@
 </script>
 
 {#if card === undefined}
-	<div class="card slot" class:large aria-hidden="true"></div>
+	<img class="card slot" class:large src={CARD_SLOT} alt="" aria-hidden="true" draggable="false" />
 {:else if card === null}
-	<img class="card back" class:large src={asset(cardBackPath(back))} alt="Face-down card" />
+	<img
+		class="card back"
+		class:large
+		src={cardBackPath(back)}
+		alt="Face-down card"
+		draggable="false"
+	/>
 {:else}
-	<img class="card" class:large src={asset(cardFacePath(card, treatment))} alt={cardName(card)} />
+	<img
+		class="card face"
+		class:large
+		src={cardFacePath(card, treatment)}
+		alt={cardName(card)}
+		draggable="false"
+	/>
 {/if}
 
 <style>
 	.card {
-		width: 42px;
-		height: 58px;
-		border-radius: 6px;
+		--card-k: var(--k, 2);
 		display: block;
-		box-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
 		flex: none;
+		width: calc(33px * var(--card-k));
+		height: calc(45px * var(--card-k));
+		image-rendering: pixelated;
+		filter: drop-shadow(0 calc(1px * var(--card-k)) 0 rgb(0 0 0 / 0.4));
+		animation: deal 0.24s steps(4, end);
+		user-select: none;
+		-webkit-user-select: none;
 	}
 	.slot {
-		border: 2px dashed rgb(255 255 255 / 0.18);
-		box-shadow: none;
+		filter: none;
+		animation: none;
 	}
 	.large {
-		width: 54px;
-		height: 74px;
+		--card-k: calc(var(--k, 2) + 1);
 	}
-
-	@media (max-width: 420px) {
-		.card {
-			width: 34px;
-			height: 48px;
-		}
-		.large {
-			width: 46px;
-			height: 64px;
+	@keyframes deal {
+		from {
+			transform: translateY(calc(-6px * var(--card-k))) rotate(-4deg);
+			opacity: 0;
 		}
 	}
 </style>
