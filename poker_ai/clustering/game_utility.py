@@ -45,9 +45,9 @@ class GameUtility:
         """
         our_hand_rank = self.evaluate_hand(self.our_hand)
         opp_hand_rank = self.evaluate_hand(self.opp_hand)
-        if our_hand_rank > opp_hand_rank:
+        if our_hand_rank < opp_hand_rank:
             return 0
-        elif our_hand_rank < opp_hand_rank:
+        elif our_hand_rank > opp_hand_rank:
             return 1
         else:
             return 2

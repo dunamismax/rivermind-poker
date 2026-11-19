@@ -1,8 +1,36 @@
 import math
 
+import numpy as np
 import pytest
 
 from poker_ai.clustering.card_combos import CardCombos
+from poker_ai.clustering.card_info_lut_builder import CardInfoLutBuilder
+from poker_ai.clustering.game_utility import GameUtility
+from poker_ai.poker.evaluation.eval_card import EvaluationCard
+
+
+@pytest.mark.parametrize(
+    "hero, opponent, board, expected_index, expected_vector",
+    [
+        ("As Ah", "Ks Kh", "Ac Ad Kc Kd Ts", 0, [1, 0, 0]),
+        ("Ks Kh", "As Ah", "Ac Ad Kc Kd Ts", 1, [0, 1, 0]),
+        ("As Ah", "Ks Kh", "Tc Jc Qc Kc Ac", 2, [0, 0, 1]),
+    ],
+    ids=["hero-quads-win", "hero-quads-loss", "royal-flush-on-board"],
+)
+def test_river_hand_strength(hero, opponent, board, expected_index, expected_vector):
+    def cards(hand):
+        return np.array([EvaluationCard.new(card) for card in hand.split()])
+
+    # Once the hero and board are dealt, only the specified opponent hand remains.
+    game = GameUtility(cards(hero), cards(board), cards(f"{hero} {board} {opponent}"))
+    # Exercise the river simulation without enumerating every board in the deck.
+    builder = CardInfoLutBuilder.__new__(CardInfoLutBuilder)
+    builder.n_simulations_river = 1
+
+    index = game.get_winner()
+    vector = builder.simulate_get_ehs(game)
+    assert (index, vector.tolist()) == (expected_index, expected_vector)
 
 
 def _get_num_combos(n: int, r: int):
