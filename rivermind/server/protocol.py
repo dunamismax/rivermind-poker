@@ -25,6 +25,13 @@ the new public events, numbered by `seq` without gaps. Views and events
 never contain another seat's hidden cards. An `act` carries the `seq` of
 the view it answers; an action sent for an earlier turn is refused as
 `stale`.
+
+Safety (P4.5). Seated people send preset reactions (`react`, shown to the
+table as `reaction` messages; no free text, Q-4). `POST /api/reports`
+reports the person in a seat for review, and `/api/relations` mutes or
+blocks them: their reactions are hidden, and quick seat keeps blocked
+players apart. People are named by a public `ref`, never their player id.
+Requests over the app's rate limits get HTTP 429 or a `rate_limited` error.
 """
 
 from __future__ import annotations
@@ -33,6 +40,8 @@ from enum import StrEnum
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, StrictInt
+
+from .safety import Reaction, RelationKind, ReportReason
 
 PROTOCOL_VERSION = 2
 
@@ -105,6 +114,7 @@ class ErrorCode(StrEnum):
     BAD_BUY_IN = "bad_buy_in"
     NOT_SUBSCRIBED = "not_subscribed"
     INSUFFICIENT_CHIPS = "insufficient_chips"
+    RATE_LIMITED = "rate_limited"
 
 
 class EventKind(StrEnum):
@@ -186,6 +196,9 @@ class SeatInfo(_Model):
     seat: int = Field(ge=0, le=8)
     name: str
     kind: SeatKind
+    ref: str | None = Field(
+        description="A person's public reference, the same at every table, for mutes and blocks; null for bots."
+    )
     bot: str | None = Field(description="The bot kind for a bot seat (bots are always labelled).")
     stack: int = Field(description="Chips behind right now.")
     bet: int = Field(description="Chips put in on the current street.")
@@ -329,6 +342,11 @@ class Stakes(_Model):
     big_blind: int
 
 
+class ReactionOption(_Model):
+    kind: Reaction
+    text: str
+
+
 class ConfigResponse(_Model):
     """`GET /api/config`."""
 
@@ -336,6 +354,7 @@ class ConfigResponse(_Model):
     bots: list[BotOption]
     seat_counts: list[int]
     stakes: list[Stakes]
+    reactions: list[ReactionOption] = Field(description="The preset reactions, in the order to offer them.")
 
 
 class SessionRequest(_Model):
@@ -427,6 +446,7 @@ class TableSummary(_Model):
     seated: bool = Field(description="Whether the viewer has a seat here.")
     hold: SeatHold | None = Field(description="The seat held for the viewer here, if any.")
     waitlist_position: int | None = Field(description="The viewer's place on the waitlist here, from 1.")
+    blocked: bool = Field(description="Someone the viewer blocked, or who blocked the viewer, is seated here.")
 
 
 class TableListResponse(_Model):
@@ -475,6 +495,40 @@ class QuickSeatRequest(_Model):
     seats: StrictInt | None = Field(default=None, ge=2, le=9)
     big_blind: StrictInt | None = None
     buy_in: StrictInt | None = Field(default=None, description="Defaults to as much of the maximum as the wallet holds.")
+
+
+class ReportRequest(_Model):
+    """`POST /api/reports`: report the person in a seat, for review."""
+
+    table_id: str = Field(max_length=64)
+    seat: StrictInt = Field(ge=0, le=8)
+    reason: ReportReason
+
+
+class ReportResponse(_Model):
+    """`POST /api/reports`, status 201."""
+
+    recorded: bool = Field(description="False when the same report was already made today; it counts once.")
+
+
+class RelationRequest(_Model):
+    """`PUT /api/relations`: mute or block the person in a seat."""
+
+    table_id: str = Field(max_length=64)
+    seat: StrictInt = Field(ge=0, le=8)
+    kind: RelationKind
+
+
+class RelationItem(_Model):
+    ref: str
+    name: str
+    kind: RelationKind
+
+
+class RelationsResponse(_Model):
+    """`GET /api/relations`, and `PUT` and `DELETE /api/relations/{ref}`: everyone the viewer muted or blocked."""
+
+    players: list[RelationItem]
 
 
 class HttpError(_Model):
@@ -543,6 +597,14 @@ class RefreshMessage(_Model):
     table_id: str
 
 
+class ReactMessage(_Model):
+    """A preset reaction from a seated person (P4.5)."""
+
+    type: Literal["react"]
+    table_id: str
+    reaction: Reaction
+
+
 class ClientMessage(
     RootModel[
         Annotated[
@@ -553,7 +615,8 @@ class ClientMessage(
             | SitInMessage
             | RebuyMessage
             | ActMessage
-            | RefreshMessage,
+            | RefreshMessage
+            | ReactMessage,
             Field(discriminator="type"),
         ]
     ]
@@ -591,6 +654,18 @@ class TableClosedMessage(_Model):
     message: str
 
 
+class ReactionMessage(_Model):
+    """A seated person's reaction, not sent to anyone who muted or blocked them."""
+
+    type: Literal["reaction"]
+    table_id: str
+    seat: int
+    name: str
+    ref: str
+    reaction: Reaction
+    text: str
+
+
 class ErrorMessage(_Model):
     """A refused message. The table and the view are unchanged."""
 
@@ -603,7 +678,7 @@ class ErrorMessage(_Model):
 class ServerMessage(
     RootModel[
         Annotated[
-            WelcomeMessage | TableMessage | LeftTableMessage | TableClosedMessage | ErrorMessage,
+            WelcomeMessage | TableMessage | LeftTableMessage | TableClosedMessage | ReactionMessage | ErrorMessage,
             Field(discriminator="type"),
         ]
     ]
@@ -625,6 +700,10 @@ MODELS: list[type[BaseModel]] = [
     WaitlistRequest,
     WaitlistResponse,
     QuickSeatRequest,
+    ReportRequest,
+    ReportResponse,
+    RelationRequest,
+    RelationsResponse,
     HttpError,
     HelloMessage,
     ClientMessage,

@@ -14,6 +14,7 @@ from rivermind.engine.cards import rank, suit
 from rivermind.engine.state import legal_actions
 
 from . import protocol as p
+from .auth import public_ref
 from .runner import TableRunner
 from .table import Event, Reservation, Table
 
@@ -37,8 +38,8 @@ def your_hold(table: Table, player_id: str) -> p.SeatHold | None:
     return None if seat is None else seat_hold(seat, table.reservations[seat])
 
 
-def table_summary(runner: TableRunner, player_id: str) -> p.TableSummary:
-    """The table as the lobby lists it, for ``player_id`` (P4.3)."""
+def table_summary(runner: TableRunner, player_id: str, blocks: frozenset[str] | set[str] = frozenset()) -> p.TableSummary:
+    """The table as the lobby lists it, for ``player_id`` (P4.3), who blocked or was blocked by ``blocks``."""
     table = runner.table
     config = table.config
     people = table.people()
@@ -61,6 +62,7 @@ def table_summary(runner: TableRunner, player_id: str) -> p.TableSummary:
         seated=table.seat_of(player_id) is not None,
         hold=your_hold(table, player_id),
         waitlist_position=table.waitlist_position(player_id),
+        blocked=any(player.player_id in blocks for _, player in table.players()),
     )
 
 
@@ -92,6 +94,7 @@ def table_view(runner: TableRunner, player_id: str) -> p.TableView:
                 seat=seat,
                 name=player.name,
                 kind=p.SeatKind.BOT if player.is_bot else p.SeatKind.HUMAN,
+                ref=None if player.is_bot else public_ref(player.player_id),
                 bot=player.bot,
                 stack=table.stack_of(seat),
                 bet=hand.street_bets[seat] if in_progress and dealt and hand is not None else 0,

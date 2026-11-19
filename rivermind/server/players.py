@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import insert
 from rivermind.db import Player
 
 from . import auth
+from .safety import handle_allowed
 
 ADJECTIVES = (
     "Amber", "Arctic", "Bold", "Brave", "Bright", "Calm", "Clever", "Cosmic", "Crimson", "Daring",
@@ -40,8 +41,11 @@ HANDLE_ATTEMPTS = 8
 
 
 def random_handle() -> str:
-    """A handle like ``Quiet Heron 42``: one of 360,000, chosen with ``secrets``."""
-    return f"{secrets.choice(ADJECTIVES)} {secrets.choice(ANIMALS)} {secrets.randbelow(100)}"
+    """A handle like ``Quiet Heron 42``: one of 360,000, chosen with ``secrets``, never a blocked word (P4.5)."""
+    while True:
+        handle = f"{secrets.choice(ADJECTIVES)} {secrets.choice(ANIMALS)} {secrets.randbelow(100)}"
+        if handle_allowed(handle):
+            return handle
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +67,10 @@ class PlayerStore(Protocol):
 
     def seen(self, player_id: str) -> None:
         """Record a visit."""
+        ...
+
+    def rename(self, player_id: str) -> PlayerRecord:
+        """Give a player a new random handle, as moderation does for a reported one (P4.5)."""
         ...
 
 
@@ -111,6 +119,18 @@ class MemoryPlayers:
     def seen(self, player_id: str) -> None:
         return None
 
+    def rename(self, player_id: str) -> PlayerRecord:
+        with self._lock:
+            old = self._players[player_id]
+            for _ in range(HANDLE_ATTEMPTS):
+                handle = random_handle()
+                if handle not in self._handles:
+                    self._handles.discard(old.handle)
+                    self._handles.add(handle)
+                    record = self._players[player_id] = PlayerRecord(player_id, handle)
+                    return record
+        raise RuntimeError("could not find a free handle")
+
 
 class DatabasePlayers:
     """Players in the ``players`` table."""
@@ -152,3 +172,15 @@ class DatabasePlayers:
     def seen(self, player_id: str) -> None:
         with self.engine.begin() as conn:
             conn.execute(update(Player).where(Player.id == player_id).values(last_seen_at=func.now()))
+
+    def rename(self, player_id: str) -> PlayerRecord:
+        if self.get(player_id) is None:
+            raise KeyError(player_id)
+        for _ in range(HANDLE_ATTEMPTS):
+            handle = random_handle()
+            with self.engine.begin() as conn:
+                taken = conn.execute(select(Player.id).where(Player.handle == handle)).first()
+                if taken is None:
+                    conn.execute(update(Player).where(Player.id == player_id).values(handle=handle))
+                    return PlayerRecord(player_id, handle)
+        raise RuntimeError("could not find a free handle")

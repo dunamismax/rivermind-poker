@@ -82,6 +82,11 @@ def read_session(secret: bytes, value: object, now: float) -> tuple[str, int] | 
     return player_id, issued
 
 
+def public_ref(player_id: str) -> str:
+    """The name other players know a player by (P4.5): a hash of the id, which it does not reveal."""
+    return hashlib.sha256(f"ref:{player_id}".encode()).hexdigest()[:16]
+
+
 def guest_name(player_id: str) -> str:
     """The handle a Phase 3 player had, such as ``Guest 4821``, derived from the id."""
     number = int(hashlib.sha256(player_id.encode()).hexdigest()[:8], 16) % 9000 + 1000

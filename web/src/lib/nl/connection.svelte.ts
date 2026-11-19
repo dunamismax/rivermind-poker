@@ -13,12 +13,20 @@
 // or invited table, or a place on a waitlist. A seat that is not free yet (a
 // bot is finishing its hand) is held, and the page sits in it as soon as the
 // table says it is ready.
+//
+// Safety (P4.5): seated people send preset reactions, which show beside their
+// seat for a few seconds, and anyone can mute, block or report the person in
+// a seat. The server leaves out reactions from muted and blocked players.
 
 import type {
 	ActMessage,
 	ActionKind,
 	ClientMessage,
 	NewTableRequest,
+	Reaction,
+	RelationItem,
+	RelationKind,
+	ReportReason,
 	QuickSeatRequest,
 	SeatRequest,
 	SeatResponse,
@@ -28,14 +36,19 @@ import type {
 } from '../protocol-v2.ts';
 import {
 	createTable,
+	fetchRelations,
 	fetchWallet,
 	giveUpSeat,
 	joinWaitlist,
 	leaveWaitlist,
 	quickSeat,
+	removeRelation,
+	reportSeat,
+	setRelation,
 	startSession,
 	takeSeat
 } from './api.ts';
+import { REACTION_MS } from './safety.ts';
 
 /** Where a Phase 3 page kept its player and bearer token, until P4.1. */
 export const LEGACY_PLAYER_KEY = 'rivermind.nl.player';
@@ -53,6 +66,13 @@ export const LEGACY_CLOSED_MESSAGE =
  * the log still names a player who has since left and someone else sat down.
  */
 export type LoggedEvent = TableEvent & { who: string | null };
+
+/** A reaction showing beside a seat. */
+export interface ShownReaction {
+	id: number;
+	ref: string;
+	text: string;
+}
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'open' | 'closed';
 
@@ -133,6 +153,10 @@ export class NlConnection {
 	closedMessage = $state<string | null>(null);
 	/** Local clock minus the server's, in seconds, for the turn timers. */
 	clockOffset = $state(0);
+	/** Seat -> the reaction showing beside it (P4.5). */
+	reactions = $state<Record<number, ShownReaction>>({});
+	/** Everyone this player muted or blocked. */
+	relations = $state<RelationItem[]>([]);
 	retries = 0;
 
 	/** Sit as soon as the held seat is ready, with this buy-in (null: as much as fits). */
@@ -140,6 +164,7 @@ export class NlConnection {
 	#socket: SocketLike | null = null;
 	#timer: unknown = null;
 	#notices = 0;
+	#reactionIds = 0;
 	#connect: () => SocketLike;
 	#storage: Storage | null;
 	#fetch: typeof fetch;
@@ -168,6 +193,7 @@ export class NlConnection {
 		}
 		try {
 			await this.#session();
+			void this.loadRelations();
 		} catch {
 			// The server may be restarting; the socket retries, and its welcome names the player.
 		}
@@ -305,6 +331,46 @@ export class NlConnection {
 			: false;
 	}
 
+	/** Send a preset reaction from the player's seat. */
+	react(reaction: Reaction): boolean {
+		return this.tableId
+			? this.#send({ type: 'react', table_id: this.tableId, reaction }, false)
+			: false;
+	}
+
+	/** Who this player muted or blocked, by public reference. */
+	relationOf(ref: string | null): RelationKind | null {
+		return ref ? (this.relations.find((r) => r.ref === ref)?.kind ?? null) : null;
+	}
+
+	async loadRelations(): Promise<void> {
+		try {
+			this.relations = await fetchRelations(this.#fetch);
+		} catch {
+			// Read again after the next change.
+		}
+	}
+
+	/** Mute or block the person in a seat at this table. */
+	async relate(seat: number, kind: RelationKind): Promise<void> {
+		const tableId = this.tableId;
+		if (!tableId) return;
+		this.relations = await this.#withSession(() => setRelation(tableId, seat, kind, this.#fetch));
+		if (this.reactions[seat]) this.#clearReaction(seat);
+	}
+
+	/** Unmute or unblock someone. */
+	async unrelate(ref: string): Promise<void> {
+		this.relations = await this.#withSession(() => removeRelation(ref, this.#fetch));
+	}
+
+	/** Report the person in a seat at this table. Resolves to false if it was already reported today. */
+	async report(seat: number, reason: ReportReason): Promise<boolean> {
+		const tableId = this.tableId;
+		if (!tableId) return false;
+		return this.#withSession(() => reportSeat(tableId, seat, reason, this.#fetch));
+	}
+
 	/** Show a short message, as for a refused request. */
 	notify(text: string): void {
 		this.notice = { id: ++this.#notices, text };
@@ -321,6 +387,7 @@ export class NlConnection {
 		this.tableId = tableId;
 		this.view = null;
 		this.log = [];
+		this.reactions = {};
 		this.closedMessage = null;
 		this.#save(TABLE_KEY, tableId);
 		this.#open();
@@ -333,6 +400,7 @@ export class NlConnection {
 		this.tableId = null;
 		this.view = null;
 		this.log = [];
+		this.reactions = {};
 		this.status = 'idle';
 	}
 
@@ -404,6 +472,19 @@ export class NlConnection {
 				}
 				return;
 			}
+			case 'reaction': {
+				if (message.table_id !== this.tableId) return;
+				const id = ++this.#reactionIds;
+				const seat = message.seat;
+				this.reactions = {
+					...this.reactions,
+					[seat]: { id, ref: message.ref, text: message.text }
+				};
+				this.#setTimer(() => {
+					if (this.reactions[seat]?.id === id) this.#clearReaction(seat);
+				}, REACTION_MS);
+				return;
+			}
 			case 'left_table':
 				return;
 			case 'table_closed':
@@ -425,10 +506,18 @@ export class NlConnection {
 					return;
 				}
 				this.notice = { id: ++this.#notices, text: message.message };
-				// The view may have moved on while the action was on its way.
-				if (this.tableId) this.#send({ type: 'refresh', table_id: this.tableId }, false);
+				// The view may have moved on while the action was on its way
+				// (but a refused reaction or a flood changed nothing).
+				if (this.tableId && message.code !== 'rate_limited' && message.code !== 'not_seated')
+					this.#send({ type: 'refresh', table_id: this.tableId }, false);
 				return;
 		}
+	}
+
+	#clearReaction(seat: number): void {
+		const rest = { ...this.reactions };
+		delete rest[seat];
+		this.reactions = rest;
 	}
 
 	#sitWhenReady(view: TableView): void {

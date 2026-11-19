@@ -38,7 +38,7 @@ export interface Card {
 }
 
 /** Any message after the hello. */
-export type ClientMessage = JoinTableMessage | LeaveTableMessage | SitMessage | SitOutMessage | SitInMessage | RebuyMessage | ActMessage | RefreshMessage;
+export type ClientMessage = JoinTableMessage | LeaveTableMessage | SitMessage | SitOutMessage | SitInMessage | RebuyMessage | ActMessage | RefreshMessage | ReactMessage;
 
 /** `GET /api/config`. */
 export interface ConfigResponse {
@@ -46,10 +46,12 @@ export interface ConfigResponse {
 	bots: BotOption[];
 	seat_counts: number[];
 	stakes: Stakes[];
+	/** The preset reactions, in the order to offer them. */
+	reactions: ReactionOption[];
 }
 
 /** Stable codes clients branch on. */
-export type ErrorCode = 'bad_request' | 'unauthorized' | 'stale' | 'illegal_action' | 'not_your_turn' | 'hand_over' | 'hand_in_progress' | 'unknown_table' | 'unknown_seat' | 'seat_taken' | 'already_seated' | 'not_seated' | 'bad_buy_in' | 'not_subscribed' | 'insufficient_chips';
+export type ErrorCode = 'bad_request' | 'unauthorized' | 'stale' | 'illegal_action' | 'not_your_turn' | 'hand_over' | 'hand_in_progress' | 'unknown_table' | 'unknown_seat' | 'seat_taken' | 'already_seated' | 'not_seated' | 'bad_buy_in' | 'not_subscribed' | 'insufficient_chips' | 'rate_limited';
 
 /** A refused message. The table and the view are unchanged. */
 export interface ErrorMessage {
@@ -198,6 +200,32 @@ export interface QuickSeatRequest {
 
 export type RaiseKind = 'bet' | 'raise';
 
+/** A preset reaction from a seated person (P4.5). */
+export interface ReactMessage {
+	type: 'react';
+	table_id: string;
+	reaction: Reaction;
+}
+
+/** Preset reactions (Q-4: no free-text chat in 1.0). */
+export type Reaction = 'hello' | 'nice_hand' | 'well_played' | 'good_game' | 'unlucky' | 'thanks' | 'wow' | 'thinking';
+
+/** A seated person's reaction, not sent to anyone who muted or blocked them. */
+export interface ReactionMessage {
+	type: 'reaction';
+	table_id: string;
+	seat: number;
+	name: string;
+	ref: string;
+	reaction: Reaction;
+	text: string;
+}
+
+export interface ReactionOption {
+	kind: Reaction;
+	text: string;
+}
+
 export interface RebuyMessage {
 	type: 'rebuy';
 	table_id: string;
@@ -207,6 +235,41 @@ export interface RebuyMessage {
 export interface RefreshMessage {
 	type: 'refresh';
 	table_id: string;
+}
+
+export interface RelationItem {
+	ref: string;
+	name: string;
+	kind: RelationKind;
+}
+
+export type RelationKind = 'mute' | 'block';
+
+/** `PUT /api/relations`: mute or block the person in a seat. */
+export interface RelationRequest {
+	table_id: string;
+	seat: number;
+	kind: RelationKind;
+}
+
+/** `GET /api/relations`, and `PUT` and `DELETE /api/relations/{ref}`: everyone the viewer muted or blocked. */
+export interface RelationsResponse {
+	players: RelationItem[];
+}
+
+export type ReportReason = 'handle' | 'abuse' | 'collusion' | 'other';
+
+/** `POST /api/reports`: report the person in a seat, for review. */
+export interface ReportRequest {
+	table_id: string;
+	seat: number;
+	reason: ReportReason;
+}
+
+/** `POST /api/reports`, status 201. */
+export interface ReportResponse {
+	/** False when the same report was already made today; it counts once. */
+	recorded: boolean;
 }
 
 /** A seat held for a player while they buy in (rule 2.4). */
@@ -224,6 +287,8 @@ export interface SeatInfo {
 	seat: number;
 	name: string;
 	kind: SeatKind;
+	/** A person's public reference, the same at every table, for mutes and blocks; null for bots. */
+	ref: string | null;
 	/** The bot kind for a bot seat (bots are always labelled). */
 	bot: string | null;
 	/** Chips behind right now. */
@@ -268,7 +333,7 @@ export interface SeatResponse {
 }
 
 /** Any message the server sends. */
-export type ServerMessage = WelcomeMessage | TableMessage | LeftTableMessage | TableClosedMessage | ErrorMessage;
+export type ServerMessage = WelcomeMessage | TableMessage | LeftTableMessage | TableClosedMessage | ReactionMessage | ErrorMessage;
 
 /** `POST /api/session`, with an optional body. */
 export interface SessionRequest {
@@ -393,6 +458,8 @@ export interface TableSummary {
 	hold: SeatHold | null;
 	/** The viewer's place on the waitlist here, from 1. */
 	waitlist_position: number | null;
+	/** Someone the viewer blocked, or who blocked the viewer, is seated here. */
+	blocked: boolean;
 }
 
 /** Everything one player may see at a table. */

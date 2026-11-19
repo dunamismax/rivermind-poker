@@ -110,6 +110,15 @@ function setup(saved = true, tableStatus = 201) {
 		if (url === '/api/wallet') {
 			return new Response(JSON.stringify({ balance: 12000, notice: 'Play money', entries: [] }));
 		}
+		if (url === '/api/relations' || url.startsWith('/api/relations/')) {
+			const players =
+				init?.method === 'PUT'
+					? [{ ref: 'r_bob', name: 'Bold Badger 3', kind: JSON.parse(String(init.body)).kind }]
+					: [];
+			return new Response(JSON.stringify({ players }));
+		}
+		if (url === '/api/reports')
+			return new Response(JSON.stringify({ recorded: true }), { status: 201 });
 		if (url === '/api/quick-seat') {
 			const hold = { seat: 1, name: 'Quiet Heron 42', ready: false, until: null };
 			return new Response(JSON.stringify({ table_id: 't3', seat: 1, seated: false, hold }));
@@ -172,7 +181,7 @@ describe('NlConnection', () => {
 	it('starts a session, says hello and joins the saved table, then keeps the newest view', async () => {
 		const { connection, sockets, requests } = setup();
 		expect(await connection.start()).toBe(true);
-		expect(requests.map((r) => r.url)).toEqual(['/api/session']);
+		expect(requests.map((r) => r.url)).toEqual(['/api/session', '/api/relations']);
 		expect(requests[0].init?.method).toBe('POST');
 		expect(requests[0].init?.credentials).toBe('same-origin');
 		expect(JSON.parse(String(requests[0].init?.body))).toEqual({});
@@ -207,6 +216,7 @@ describe('NlConnection', () => {
 		socket.open();
 		const seat = (name: string, kind: 'human' | 'bot') => ({
 			...{ seat: 1, name, kind, bot: kind === 'bot' ? 'random' : null, stack: 5000, bet: 0 },
+			...{ ref: kind === 'bot' ? null : 'r_1' },
 			...{ in_hand: false, folded: false, all_in: false, sitting_out: false, leaving: false },
 			...{ connected: true, has_cards: false, cards: null }
 		});
@@ -338,12 +348,17 @@ describe('NlConnection', () => {
 		const { connection, sockets, requests, storage } = setup(false);
 		expect(await connection.start()).toBe(false);
 		await connection.newTable({ seats: 6, bots: 'heuristic' });
-		expect(requests.map((r) => r.url)).toEqual(['/api/session', '/api/tables', '/api/wallet']);
+		expect(requests.map((r) => r.url)).toEqual([
+			'/api/session',
+			'/api/relations',
+			'/api/tables',
+			'/api/wallet'
+		]);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(connection.balance).toBe(12000); // the buy-in left the wallet
-		expect(new Headers(requests[1].init?.headers).get('Authorization')).toBeNull();
-		expect(requests[1].init?.credentials).toBe('same-origin');
-		expect(JSON.parse(String(requests[1].init?.body))).toEqual({ seats: 6, bots: 'heuristic' });
+		expect(new Headers(requests[2].init?.headers).get('Authorization')).toBeNull();
+		expect(requests[2].init?.credentials).toBe('same-origin');
+		expect(JSON.parse(String(requests[2].init?.body))).toEqual({ seats: 6, bots: 'heuristic' });
 		expect(connection.tableId).toBe('t2');
 		expect(JSON.parse(storage.getItem(TABLE_KEY) ?? 'null')).toBe('t2');
 		await connection.newTable({ seats: 2 });
@@ -357,6 +372,7 @@ describe('NlConnection', () => {
 		await connection.newTable({ seats: 2 });
 		expect(requests.map((r) => r.url).filter((url) => url !== '/api/wallet')).toEqual([
 			'/api/session',
+			'/api/relations',
 			'/api/tables',
 			'/api/session',
 			'/api/tables'
@@ -382,5 +398,76 @@ describe('NlConnection', () => {
 		expect(sockets[0].closed).toBe(true);
 		expect(storage.getItem(TABLE_KEY)).toBeNull();
 		expect(connection.tableId).toBeNull();
+	});
+
+	it('shows reactions beside their seat for a moment, and sends preset ones', async () => {
+		const { connection, sockets, timers } = setup();
+		await connection.start();
+		const socket = sockets[0];
+		socket.open();
+		socket.receive({ type: 'table', table_id: 't1', view: view(5), events: [] });
+		expect(connection.react('nice_hand')).toBe(true);
+		expect(socket.sent.at(-1)).toEqual({ type: 'react', table_id: 't1', reaction: 'nice_hand' });
+		const reaction = {
+			type: 'reaction',
+			table_id: 't1',
+			name: 'Bob',
+			ref: 'r_bob',
+			reaction: 'wow',
+			text: 'Wow'
+		};
+		socket.receive({ ...reaction, seat: 1 });
+		socket.receive({ ...reaction, table_id: 'other', seat: 0 });
+		expect(Object.keys(connection.reactions)).toEqual(['1']);
+		expect(connection.reactions[1].text).toBe('Wow');
+		// A newer reaction from the same seat outlasts the older one's timer.
+		socket.receive({ ...reaction, seat: 1, reaction: 'thanks', text: 'Thanks' });
+		timers.at(-2)?.();
+		expect(connection.reactions[1].text).toBe('Thanks');
+		timers.at(-1)?.();
+		expect(connection.reactions).toEqual({});
+		// A refused reaction shows its message without asking for the view again.
+		const sent = socket.sent.length;
+		socket.receive({
+			type: 'error',
+			code: 'rate_limited',
+			message: 'Wait a moment.',
+			table_id: 't1'
+		});
+		expect(connection.notice?.text).toBe('Wait a moment.');
+		expect(socket.sent).toHaveLength(sent);
+	});
+
+	it('mutes, blocks and reports the person in a seat', async () => {
+		const { connection, sockets, requests } = setup();
+		await connection.start();
+		sockets[0].open();
+		sockets[0].receive({
+			type: 'reaction',
+			table_id: 't1',
+			seat: 1,
+			name: 'Bob',
+			ref: 'r_bob',
+			reaction: 'wow',
+			text: 'Wow'
+		});
+		await connection.relate(1, 'mute');
+		const put = requests.find((r) => r.init?.method === 'PUT');
+		expect(put?.url).toBe('/api/relations');
+		expect(JSON.parse(String(put?.init?.body))).toEqual({ table_id: 't1', seat: 1, kind: 'mute' });
+		expect(connection.relationOf('r_bob')).toBe('mute');
+		expect(connection.relationOf('r_carol')).toBeNull();
+		expect(connection.reactions).toEqual({}); // the muted player's reaction goes at once
+		await connection.unrelate('r_bob');
+		expect(requests.at(-1)?.url).toBe('/api/relations/r_bob');
+		expect(requests.at(-1)?.init?.method).toBe('DELETE');
+		expect(connection.relations).toEqual([]);
+		expect(await connection.report(1, 'collusion')).toBe(true);
+		const report = requests.find((r) => r.url === '/api/reports');
+		expect(JSON.parse(String(report?.init?.body))).toEqual({
+			table_id: 't1',
+			seat: 1,
+			reason: 'collusion'
+		});
 	});
 });

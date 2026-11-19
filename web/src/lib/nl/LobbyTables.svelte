@@ -135,7 +135,12 @@
 				<li class="row px-inset" data-table={t.table_id}>
 					<div class="info">
 						<span class="name">
-							{t.name}{#if t.private}<span class="tag">Private</span>{/if}
+							{t.name}{#if t.private}<span class="tag">Private</span>{/if}{#if t.blocked}<span
+									class="tag blocked"
+									title="Someone you blocked, or who blocked you, sits here"
+								>
+									Blocked player
+								</span>{/if}
 						</span>
 						<span class="detail">
 							Blinds {t.small_blind}/{t.big_blind} · buy-in {t.min_buy_in.toLocaleString('en-US')} to
@@ -317,6 +322,10 @@
 		color: var(--ink);
 		background: var(--gold);
 		font-size: var(--fs-s);
+	}
+	.tag.blocked {
+		color: var(--white);
+		background: var(--red-dark);
 	}
 	.detail,
 	.seats {

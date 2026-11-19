@@ -7,7 +7,9 @@ migration ``0002``) have a random display handle; their session cookie is
 signed by the server, so no session rows are stored. Each player's play-chip
 balance (P4.2, migration ``0003``) changes only together with a row in
 ``ledger_entries``, so the entries always add up to the balance (D-1: the
-chips have no cash value).
+chips have no cash value). Reports, mutes and blocks between players and
+collusion signals (P4.5, migration ``0004``) are kept for review; signals hold
+keyed hashes of network addresses, never the addresses.
 """
 
 from __future__ import annotations
@@ -91,6 +93,60 @@ class LedgerEntry(Base):
     amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
     balance_after: Mapped[int] = mapped_column(BigInteger, nullable=False)
     table_id: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = _now()
+
+
+REPORT_REASONS = ("handle", "abuse", "collusion", "other")
+
+
+class PlayerReport(Base):
+    """One player reporting another, for review (P4.5)."""
+
+    __tablename__ = "player_reports"
+    __table_args__ = (
+        CheckConstraint("reason IN ('handle', 'abuse', 'collusion', 'other')", name="reason"),
+        CheckConstraint("status IN ('open', 'reviewed')", name="status"),
+        CheckConstraint("reporter_id <> target_id", name="not_self"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    reporter_id: Mapped[str] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_id: Mapped[str] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_handle: Mapped[str] = mapped_column(Text, nullable=False)
+    """The handle when reported, which a rename may change."""
+    reason: Mapped[str] = mapped_column(String(16), nullable=False)
+    table_id: Mapped[str | None] = mapped_column(String(64))
+    hand_no: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="open")
+    created_at: Mapped[datetime] = _now()
+
+
+class PlayerRelation(Base):
+    """A player muting or blocking another (P4.5)."""
+
+    __tablename__ = "player_relations"
+    __table_args__ = (
+        CheckConstraint("kind IN ('mute', 'block')", name="kind"),
+        CheckConstraint("player_id <> target_id", name="not_self"),
+    )
+
+    player_id: Mapped[str] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"), primary_key=True)
+    target_id: Mapped[str] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"), primary_key=True, index=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = _now()
+
+
+class SafetySignal(Base):
+    """Something worth reviewing for collusion, such as two people at a table from one address (P4.5)."""
+
+    __tablename__ = "safety_signals"
+    __table_args__ = (CheckConstraint("kind IN ('same_address')", name="kind"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    table_id: Mapped[str | None] = mapped_column(String(64))
+    player_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    detail: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
     created_at: Mapped[datetime] = _now()
 
 

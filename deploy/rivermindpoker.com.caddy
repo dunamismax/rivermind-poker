@@ -54,6 +54,16 @@ rivermindpoker.com {
 			events 60
 			window 1m
 		}
+		# Reports, mutes and blocks (P4.5); the app also limits reports per player.
+		zone safety {
+			match {
+				method POST PUT DELETE
+				path /api/reports /api/relations /api/relations/*
+			}
+			key {remote_host}
+			events 30
+			window 1m
+		}
 	}
 
 	handle /api/* {

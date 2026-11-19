@@ -96,3 +96,74 @@ def serve_nl(
         allowed_origins=allowed_origins,
     )
     uvicorn.run(app, host=host, port=port, log_level="info", ws_max_size=64 * 1024, server_header=False)
+
+
+@click.group()
+def moderation() -> None:
+    """Review reports and collusion signals, and rename reported players (P4.5).
+
+    Reads DATABASE_URL, like serve-nl. On ubuntu-vm, load the service's
+    environment first, for example `set -a; . /etc/rivermind-poker/web.env`.
+    """
+
+
+def _safety(database_url: str | None):  # type: ignore[no-untyped-def]
+    if not database_url:
+        raise click.UsageError("Set DATABASE_URL (or --database_url) to the site's database.")
+    from rivermind.db import make_engine
+
+    from .safety import DatabaseSafety
+
+    return DatabaseSafety(make_engine(database_url))
+
+
+def _when(at: float) -> str:
+    from datetime import UTC, datetime
+
+    return datetime.fromtimestamp(at, UTC).strftime("%Y-%m-%d %H:%M UTC")
+
+
+_database = click.option("--database_url", envvar="DATABASE_URL", default=None, help="PostgreSQL URL (default: DATABASE_URL).")
+
+
+@moderation.command()
+@_database
+@click.option("--limit", default=50, show_default=True)
+def reports(database_url: str | None, limit: int) -> None:
+    """List the newest reports."""
+    for report in _safety(database_url).reports(limit):
+        where = f" at table {report.table_id}" if report.table_id else ""
+        hand = f", hand {report.hand_no}" if report.hand_no else ""
+        click.echo(
+            f"{_when(report.at)}  {report.reason:<9}  {report.target_handle} ({report.target_id})"
+            f"  by {report.reporter_id}{where}{hand}"
+        )
+
+
+@moderation.command()
+@_database
+@click.option("--limit", default=50, show_default=True)
+def signals(database_url: str | None, limit: int) -> None:
+    """List the newest collusion signals."""
+    for signal in _safety(database_url).signals(limit):
+        players = ", ".join(signal.player_ids)
+        click.echo(f"{_when(signal.at)}  {signal.kind}  table {signal.table_id}  {players}  {signal.detail}")
+
+
+@moderation.command()
+@_database
+@click.argument("player_id")
+def rename(database_url: str | None, player_id: str) -> None:
+    """Give PLAYER_ID a new random handle. Tables they sit at show it after they sit again."""
+    if not database_url:
+        raise click.UsageError("Set DATABASE_URL (or --database_url) to the site's database.")
+    from rivermind.db import make_engine
+
+    from .players import DatabasePlayers
+
+    store = DatabasePlayers(make_engine(database_url))
+    before = store.get(player_id)
+    if before is None:
+        raise click.ClickException(f"No player {player_id}.")
+    after = store.rename(player_id)
+    click.echo(f"{player_id}: {before.handle} -> {after.handle}")

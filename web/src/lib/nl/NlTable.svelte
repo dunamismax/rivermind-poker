@@ -2,13 +2,14 @@
 	import { onMount } from 'svelte';
 	import { allCardUrls } from '../card-assets.ts';
 	import PlayingCard from '../components/PlayingCard.svelte';
-	import type { TableView } from '../protocol-v2.ts';
+	import type { RelationKind, ReportReason, TableView } from '../protocol-v2.ts';
 	import ActionPanel from './ActionPanel.svelte';
 	import { describeEvent } from './bet.ts';
 	import type { NlConnection } from './connection.svelte.ts';
 	import { chipFor } from './faces.ts';
 	import { betClass, placeClass, sideClass } from './layout.ts';
 	import NlSeat from './NlSeat.svelte';
+	import { REACTIONS, REPORT_REASONS, relationText } from './safety.ts';
 	import './seat-places.css';
 
 	let { view, connection }: { view: TableView; connection: NlConnection } = $props();
@@ -92,6 +93,55 @@
 		}
 	}
 
+	// Safety (P4.5): the menu for another person's seat, and the reactions row.
+	let picked = $state<number | null>(null);
+	const pickedInfo = $derived(picked === null ? null : view.seats[picked]);
+	const pickedRelation = $derived(connection.relationOf(pickedInfo?.ref ?? null));
+	let reason = $state<ReportReason>('abuse');
+	let reported = $state<string | null>(null);
+	let busy = $state(false);
+	let reacting = $state(false);
+	$effect.pre(() => {
+		// The menu closes when its player leaves the seat.
+		if (picked !== null && (!pickedInfo || pickedInfo.kind !== 'human')) picked = null;
+	});
+
+	function pick(seat: number) {
+		reported = null;
+		picked = picked === seat ? null : seat;
+	}
+
+	async function safetyTask(task: () => Promise<void>) {
+		busy = true;
+		try {
+			await task();
+		} catch (e) {
+			connection.notify(e instanceof Error ? e.message : String(e));
+		} finally {
+			busy = false;
+		}
+	}
+
+	function toggle(kind: RelationKind) {
+		const seat = picked;
+		const ref = pickedInfo?.ref;
+		if (seat === null || !ref) return;
+		void safetyTask(() =>
+			pickedRelation === kind ? connection.unrelate(ref) : connection.relate(seat, kind)
+		);
+	}
+
+	function sendReport() {
+		const seat = picked;
+		if (seat === null) return;
+		void safetyTask(async () => {
+			const recorded = await connection.report(seat, reason);
+			reported = recorded
+				? 'Thanks: the report was sent for review.'
+				: 'You already reported this today; it counts once.';
+		});
+	}
+
 	let sharing = $state(false);
 	let copied = $state(false);
 	const inviteLink = $derived(
@@ -155,6 +205,57 @@
 				<span class="note">This private table is not listed: anyone with the link can join.</span>
 			</div>
 		{/if}
+		{#if picked !== null && pickedInfo}
+			<div class="player-menu px-inset" role="dialog" aria-label="Player {pickedInfo.name}">
+				<p class="who-menu">
+					<strong>{pickedInfo.name}</strong>{#if pickedRelation}<span class="note">
+							{` · ${relationText(pickedRelation)}`}
+						</span>{/if}
+				</p>
+				<div class="menu-row">
+					<button
+						type="button"
+						class="px-btn small"
+						aria-pressed={pickedRelation === 'mute'}
+						disabled={busy}
+						onclick={() => toggle('mute')}
+					>
+						{pickedRelation === 'mute' ? 'Unmute' : 'Mute'}
+					</button>
+					<button
+						type="button"
+						class="px-btn small red"
+						aria-pressed={pickedRelation === 'block'}
+						disabled={busy}
+						onclick={() => toggle('block')}
+					>
+						{pickedRelation === 'block' ? 'Unblock' : 'Block'}
+					</button>
+					<button type="button" class="px-btn small" onclick={() => (picked = null)}>Close</button>
+				</div>
+				<p class="hint">
+					Muting hides their reactions. Blocking also keeps quick seat from seating you together.
+				</p>
+				<form
+					class="menu-row"
+					onsubmit={(e) => {
+						e.preventDefault();
+						sendReport();
+					}}
+				>
+					<label>
+						<span class="visually-hidden">Reason</span>
+						<select class="px-field" bind:value={reason}>
+							{#each REPORT_REASONS as option (option.reason)}
+								<option value={option.reason}>{option.text}</option>
+							{/each}
+						</select>
+					</label>
+					<button type="submit" class="px-btn small amber" disabled={busy}>Report</button>
+				</form>
+				{#if reported}<p class="note" role="status">{reported}</p>{/if}
+			</div>
+		{/if}
 	</div>
 
 	<div class="arena seats-{count}">
@@ -187,6 +288,9 @@
 						turn={inHand ? view.turn : null}
 						{now}
 						won={result ? (result.winnings[seat] ?? 0) : 0}
+						reaction={connection.reactions[seat]?.text ?? null}
+						relation={relationText(connection.relationOf(info.ref))}
+						onselect={info.kind === 'human' && seat !== mine ? () => pick(seat) : undefined}
 					/>
 					{#if info.bet > 0 && !result}
 						<div class="bet {betClass(seat, mine, count)}">
@@ -370,6 +474,29 @@
 			{#if view.you.pending_rebuy}
 				<span class="note">+{view.you.pending_rebuy} after this hand</span>
 			{/if}
+			<button
+				type="button"
+				class="px-btn small"
+				aria-expanded={reacting}
+				aria-controls="reactions"
+				onclick={() => (reacting = !reacting)}
+			>
+				React
+			</button>
+			{#if reacting}
+				<div id="reactions" class="reactions" role="group" aria-label="Reactions">
+					{#each REACTIONS as option (option.kind)}
+						<button
+							type="button"
+							class="px-btn small"
+							disabled={!connection.connected}
+							onclick={() => connection.react(option.kind)}
+						>
+							{option.text}
+						</button>
+					{/each}
+				</div>
+			{/if}
 		</div>
 	{/if}
 
@@ -536,6 +663,36 @@
 		align-items: center;
 		gap: 8px;
 		padding: 8px;
+	}
+	.player-menu {
+		flex: 1 1 100%;
+		display: grid;
+		gap: 8px;
+		padding: 8px;
+		color: var(--mist);
+	}
+	.player-menu p {
+		margin: 0;
+	}
+	.who-menu strong {
+		color: var(--gold-light);
+		font-weight: normal;
+	}
+	.menu-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px;
+	}
+	.player-menu .hint {
+		font-size: var(--fs-s);
+		color: var(--paper-shade);
+	}
+	.reactions {
+		flex: 1 1 100%;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
 	}
 	.share label {
 		flex: 1 1 260px;

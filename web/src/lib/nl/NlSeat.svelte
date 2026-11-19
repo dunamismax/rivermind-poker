@@ -12,7 +12,10 @@
 		button = false,
 		turn = null,
 		now,
-		won = 0
+		won = 0,
+		reaction = null,
+		relation = '',
+		onselect
 	}: {
 		info: SeatInfo;
 		place: string;
@@ -24,6 +27,12 @@
 		/** The server's time now, for the turn clock. */
 		now: number;
 		won?: number;
+		/** A reaction showing beside the seat (P4.5). */
+		reaction?: string | null;
+		/** `Muted` or `Blocked` when the viewer muted or blocked this player. */
+		relation?: string;
+		/** Opens the menu to mute, block or report this player; set only for other people. */
+		onselect?: () => void;
 	} = $props();
 
 	const SEGMENTS = 12;
@@ -72,11 +81,27 @@
 	<div class="plate {frame}">
 		<span class="sprite avatar {avatarClass(info)}" aria-hidden="true"></span>
 		<div class="who">
-			<div class="name" title={info.name}>{info.name}</div>
+			{#if onselect}
+				<button
+					type="button"
+					class="name pick"
+					title={info.name}
+					aria-haspopup="dialog"
+					aria-label="{info.name}: mute, block or report"
+					onclick={onselect}
+				>
+					{info.name}
+				</button>
+			{:else}
+				<div class="name" title={info.name}>{info.name}</div>
+			{/if}
 			<div class="stack">
 				<span class="sprite chip chip-gold" aria-hidden="true"></span>{info.stack}
 			</div>
 		</div>
+		{#if reaction}<div class="bubble px-paper" role="status">
+				<span class="visually-hidden">{info.name}: </span>{reaction}
+			</div>{/if}
 		{#if button}<span class="sprite dealer-button dealer" title="Dealer button"></span>{/if}
 		{#if info.has_cards && !info.cards}
 			<span class="sprite mini-cards" aria-hidden="true"></span>
@@ -92,6 +117,7 @@
 				</span>
 			{/if}
 			{#if status}<span class="status">{status}</span>{/if}
+			{#if relation}<span class="status muted">{relation}</span>{/if}
 		</div>
 		{#if clock}
 			<div class="clock" class:bank={clock.bank} class:low={!clock.bank && clock.fraction < 0.3}>
@@ -163,6 +189,36 @@
 	.me .name {
 		color: var(--gold);
 	}
+	.name.pick {
+		display: block;
+		width: 100%;
+		padding: 0;
+		border: 0;
+		background: none;
+		font: inherit;
+		color: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+	.name.pick:hover,
+	.name.pick:focus-visible {
+		color: var(--gold-light);
+		text-decoration: underline;
+	}
+	.bubble {
+		position: absolute;
+		bottom: calc(100% - 6px);
+		left: 50%;
+		transform: translate(-50%, 0);
+		padding: 2px 8px;
+		color: var(--ink);
+		font-size: var(--fs-s);
+		line-height: 20px;
+		white-space: nowrap;
+		z-index: 4;
+		pointer-events: none;
+		animation: rise 0.3s steps(3, end);
+	}
 	.stack {
 		display: flex;
 		align-items: center;
@@ -207,6 +263,9 @@
 	}
 	.status {
 		color: var(--paper-shade);
+	}
+	.status.muted {
+		color: var(--red-light);
 	}
 	.clock {
 		display: flex;

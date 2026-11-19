@@ -73,7 +73,7 @@ def test_alembic_command_line(empty_database: str) -> None:
             [sys.executable, "-m", "alembic", *args], cwd=ROOT, env=env, capture_output=True, text=True, check=False
         )
         assert done.returncode == 0, done.stderr
-    assert "0003" in subprocess.run(
+    assert "0004" in subprocess.run(
         [sys.executable, "-m", "alembic", "current"], cwd=ROOT, env=env, capture_output=True, text=True, check=True
     ).stdout
 
@@ -135,6 +135,12 @@ def test_tables_seats_hands_and_histories_round_trip(engine: Engine) -> None:
         "INSERT INTO players (id, handle) VALUES ('p_2', '')",
         "INSERT INTO players (id, handle) VALUES ('p_2', 'Taken')",
         "INSERT INTO players (id, handle) VALUES ('p_1', 'Another')",
+        "INSERT INTO player_reports (reporter_id, target_id, target_handle, reason) VALUES ('p_1', 'p_1', 'Taken', 'abuse')",
+        "INSERT INTO player_reports (reporter_id, target_id, target_handle, reason) VALUES ('p_1', 'p_9', 'x', 'abuse')",
+        "INSERT INTO player_reports (reporter_id, target_id, target_handle, reason) VALUES ('p_1', 'p_3', 'x', 'rude')",
+        "INSERT INTO player_relations (player_id, target_id, kind) VALUES ('p_1', 'p_1', 'mute')",
+        "INSERT INTO player_relations (player_id, target_id, kind) VALUES ('p_1', 'p_3', 'ignore')",
+        "INSERT INTO safety_signals (kind, player_ids) VALUES ('same_device', '[]')",
     ],
 )
 def test_constraints_reject_bad_rows(engine: Engine, sql: str) -> None:
@@ -142,6 +148,7 @@ def test_constraints_reject_bad_rows(engine: Engine, sql: str) -> None:
         add_table(session)
         session.add(Hand(table_id="t1", hand_no=1, button=0))
         session.add(Player(id="p_1", handle="Taken"))
+        session.add(Player(id="p_3", handle="Third"))
         session.commit()
     with engine.connect() as conn, pytest.raises(IntegrityError):
         conn.execute(text(sql))

@@ -8,6 +8,10 @@ import type {
 	NewTableRequest,
 	NewTableResponse,
 	QuickSeatRequest,
+	RelationKind,
+	RelationsResponse,
+	ReportReason,
+	ReportResponse,
 	SeatRequest,
 	SeatResponse,
 	SessionRequest,
@@ -212,4 +216,66 @@ export function leaveWaitlist(tableId: string, fetcher: typeof fetch = fetch): P
 /** Give up a held seat. */
 export function giveUpSeat(tableId: string, fetcher: typeof fetch = fetch): Promise<void> {
 	return remove(`/api/tables/${encodeURIComponent(tableId)}/seat`, fetcher);
+}
+
+// Safety (P4.5): reports, mutes and blocks, by the seat a person sits in.
+
+/** Report the person in a seat for review. Resolves to false if the same report was already made today. */
+export async function reportSeat(
+	tableId: string,
+	seat: number,
+	reason: ReportReason,
+	fetcher: typeof fetch = fetch
+): Promise<boolean> {
+	const value = await post('/api/reports', { table_id: tableId, seat, reason }, fetcher);
+	if (!isRecord(value) || typeof value.recorded !== 'boolean') {
+		throw new ApiError('Unexpected /api/reports response', 201);
+	}
+	return (value as unknown as ReportResponse).recorded;
+}
+
+function relationList(value: unknown, path: string): RelationsResponse['players'] {
+	const players = isRecord(value) ? (value as Partial<RelationsResponse>).players : undefined;
+	if (!Array.isArray(players)) throw new ApiError(`Unexpected ${path} response`, 200);
+	return players;
+}
+
+/** Everyone this player muted or blocked. */
+export async function fetchRelations(
+	fetcher: typeof fetch = fetch
+): Promise<RelationsResponse['players']> {
+	const value = await body(await fetcher('/api/relations', { credentials: 'same-origin' }));
+	return relationList(value, '/api/relations');
+}
+
+/** Mute or block the person in a seat. */
+export async function setRelation(
+	tableId: string,
+	seat: number,
+	kind: RelationKind,
+	fetcher: typeof fetch = fetch
+): Promise<RelationsResponse['players']> {
+	const value = await body(
+		await fetcher('/api/relations', {
+			method: 'PUT',
+			credentials: 'same-origin',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ table_id: tableId, seat, kind })
+		})
+	);
+	return relationList(value, '/api/relations');
+}
+
+/** Unmute or unblock someone, by their public reference. */
+export async function removeRelation(
+	ref: string,
+	fetcher: typeof fetch = fetch
+): Promise<RelationsResponse['players']> {
+	const value = await body(
+		await fetcher(`/api/relations/${encodeURIComponent(ref)}`, {
+			method: 'DELETE',
+			credentials: 'same-origin'
+		})
+	);
+	return relationList(value, '/api/relations');
 }
