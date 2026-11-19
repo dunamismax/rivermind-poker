@@ -7,11 +7,11 @@ This file is the single source of truth for project status, from today’s worki
 | | |
 | --- | --- |
 | **Current phase** | Phase 1 · SvelteKit client |
-| **Next step** | **P1.2** Typed protocol shared by server and client |
-| **In progress** | **P1.2** Pydantic protocol models, schema export and generated TypeScript (claimed 2026-11-19) |
+| **Next step** | **P1.3** Port the table UI to components |
+| **In progress** | _None_ |
 | **Blockers** | _None_ |
 | **Live site** | https://rivermindpoker.com runs the Phase 0 prototype: a three-seat, fixed-limit, 20-card game against random bots or the RM-06 checkpoint. It uses FastAPI, WebSockets and a vanilla JavaScript client. Tables survive restarts. |
-| **`main`** | Phase 0 and the P1.1 scaffold in `web/` are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python suite on every push. |
+| **`main`** | Phase 0, the P1.1 scaffold in `web/` and the P1.2 typed protocol are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python suite on every push. |
 | **Last updated** | 2026-11-19 |
 
 ## The 1.0 product
@@ -118,11 +118,12 @@ Each question has a default. Agents build on the default until the owner decides
   - [x] `pnpm install --frozen-lockfile && pnpm check && pnpm lint && pnpm build` succeeds from a clean clone. CONTRIBUTING.md documents the commands.
   - Evidence: `be99381`. SvelteKit 3.3 and Svelte 5.57 with Node 26 and pnpm 12.18. In a fresh clone, `pnpm install --frozen-lockfile && pnpm check && pnpm lint && pnpm build` passed; `pnpm test` (3) and `pnpm e2e` (Chromium, placeholder page against a real `serve`) passed; with `serve` and `pnpm dev` running, the browser showed "Opponents available: random" and a Node WebSocket joined a table through the `/ws` proxy; `uv run --locked pytest` 123 passed.
 
-- [ ] **P1.2 · Typed protocol shared by server and client** · Depends on: P1.1
-  - [ ] Pydantic models describe every HTTP body and every WebSocket message in both directions, including the full seat view, in `poker_ai/web/protocol.py`. Phase 3 moves this module into `rivermind/server`.
-  - [ ] The server validates incoming messages with these models and keeps today’s error codes (`bad_request`, `stale`, `illegal_action`, `not_your_turn`, `hand_over`, `hand_in_progress`, `unknown_table`, `unknown_seat`).
-  - [ ] A command (`rivermind-poker protocol-schema`) exports JSON Schema, and a generator writes `web/src/lib/protocol.ts` from it.
-  - [ ] A test fails if the generated TypeScript is stale. The existing WebSocket tests still pass.
+- [x] **P1.2 · Typed protocol shared by server and client** · Depends on: P1.1
+  - [x] Pydantic models describe every HTTP body and every WebSocket message in both directions, including the full seat view, in `poker_ai/web/protocol.py`. Phase 3 moves this module into `rivermind/server`.
+  - [x] The server validates incoming messages with these models and keeps today’s error codes (`bad_request`, `stale`, `illegal_action`, `not_your_turn`, `hand_over`, `hand_in_progress`, `unknown_table`, `unknown_seat`).
+  - [x] A command (`rivermind-poker protocol-schema`) exports JSON Schema, and a generator writes `web/src/lib/protocol.ts` from it.
+  - [x] A test fails if the generated TypeScript is stale. The existing WebSocket tests still pass.
+  - Evidence: `ab6789b`. `uv run --locked pytest` 136 passed, including the new `test_protocol.py` (stale-TypeScript check, schema export, every message from three played hands parsing as `ServerMessage`, strict `seq`, error-code coverage); against a live `serve`, a Node WebSocket client got `bad_request`, `illegal_action` and `stale` as expected and a bad body returned 400 with a string `detail`. Web check, lint, Vitest, build and Playwright passed.
 
 - [ ] **P1.3 · Port the table UI to components** · Depends on: P1.2
   - [ ] Components: `Lobby`, `Table`, `Seat`, `PlayingCard`, `Board`, `ActionBar`, `HandLog`, `ResultBanner` and `ConnectionStatus`. A typed socket store handles join, `seq`, the reconnect backoff and the seat saved in `localStorage`.
@@ -425,6 +426,8 @@ These are possible directions after the release:
 ## Handoff log
 
 Newest first. Keep eight entries and move older ones to [docs/build-history.md](docs/build-history.md). Each entry gives the date, the step IDs, what changed, the checks actually run and the next concrete action.
+
+**2026-11-19 · P1.2.** Added Pydantic models for the whole protocol (`poker_ai/web/protocol.py`), used them for validation and for every outgoing message, and added `rivermind-poker protocol-schema` with a small JSON-Schema-to-TypeScript generator (`poker_ai/web/typescript.py`, no new dependency). Behaviour changes: malformed messages (a string `seq`, extra fields) are now `bad_request`, and HTTP body errors are 400 instead of 422. Ran pytest (136 passed), a live WebSocket check and the web suite. Next action: P1.3.
 
 **2026-11-19 · P1.1.** Scaffolded `web/` with `sv create` (SvelteKit 3.3, which configures the kit in `vite.config.ts`; `#lib/…` subpath imports take the file extension). Added the 200.html fallback, `ssr = false`, the Node 26 pin, the scripts, the `/api` and `/ws` proxy and a placeholder page, and documented them in CONTRIBUTING. Ran the clean-clone install, check, lint and build, Vitest, Playwright in Chromium, a browser check against `serve`, and pytest (123 passed). Note for P1.3: the SPA fallback bootstraps with an inline `<script>`, which the current `script-src 'self'` CSP blocks. Next action: P1.2.
 
