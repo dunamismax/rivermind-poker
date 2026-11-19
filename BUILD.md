@@ -9,9 +9,9 @@ This file is the single source of truth for project status, from today’s worki
 | **Current phase** | Phase 1 · SvelteKit client |
 | **Next step** | **P1.6** Deploy the SvelteKit client (**Owner gate:** deploy) |
 | **In progress** | _None_ |
-| **Blockers** | P1.6 waits for the owner’s approval to deploy to rivermindpoker.com. P2.1 (rules specification) can proceed meanwhile. |
+| **Blockers** | P1.6 waits for the owner’s approval to deploy to rivermindpoker.com (it also needs Node 26 and pnpm on ubuntu-vm). P2.1 is done; the rest of Phase 2 waits for the Phase 1 exit criteria, which need P1.6. |
 | **Live site** | https://rivermindpoker.com runs the Phase 0 prototype: a three-seat, fixed-limit, 20-card game against random bots or the RM-06 checkpoint. It uses FastAPI, WebSockets and a vanilla JavaScript client. Tables survive restarts. |
-| **`main`** | Phase 0, the P1.1 scaffold, the P1.2 typed protocol the P1.3 SvelteKit table UI, the P1.4 tests and the P1.5 CI job are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python and web suites on every push. |
+| **`main`** | Phase 0, the P1.1 scaffold, the P1.2 typed protocol, the P1.3 SvelteKit table UI, the P1.4 tests and the P1.5 CI job are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python and web suites on every push. |
 | **Last updated** | 2026-11-19 |
 
 ## The 1.0 product
@@ -174,8 +174,8 @@ Each question has a default. Agents build on the default until the owner decides
 - [ ] Hand histories round-trip through versioned JSON and replay to identical states.
 - [ ] Measured speed is recorded and meets the P2.6 target.
 
-- [ ] **P2.1 · Write the rules specification** · Depends on: none (may start during Phase 1)
-  - [ ] `docs/rules.md` covers the game rules:
+- [x] **P2.1 · Write the rules specification** · Depends on: none (may start during Phase 1)
+  - [x] `docs/rules.md` covers the game rules:
     - deck and dealing;
     - seat counts (2 to 9);
     - blinds and an optional ante;
@@ -184,12 +184,13 @@ Each question has a default. Agents build on the default until the owner decides
     - minimum and maximum raises (no-limit, with the last full raise setting the minimum);
     - incomplete all-in raises not reopening the betting;
     - uncalled bets being returned.
-  - [ ] It also covers the pot and showdown rules:
+  - [x] It also covers the pot and showdown rules:
     - side pots and split pots;
     - odd chips going to the first winner left of the button;
     - showdown order and mucking;
     - what happens on a timeout (check if possible, otherwise fold).
-  - [ ] Each rule has at least one worked example. Choices that vary between card rooms are listed with the option chosen, and the list is noted in the handoff for the owner.
+  - [x] Each rule has at least one worked example. Choices that vary between card rooms are listed with the option chosen, and the list is noted in the handoff for the owner.
+  - Evidence: `8878047`. [docs/rules.md](docs/rules.md) covers every listed rule with 25 worked examples and a Choices table. The side-pot, uncalled-bet and odd-chip examples were recomputed with a throwaway script (which caught and fixed one wrong pot total), the hand-ranking example was checked with the Deuces evaluator (A♥3♦ beats Q♣J♣ on K♠K♥7♦7♣2♠; A♣4♣ ties), and the internal links resolve. pytest 138 passed.
 
 - [ ] **P2.2 · State machine and legal actions** · Depends on: P2.1
   - [ ] Immutable state objects provide `legal_actions(state)` (fold, check, call, and bet or raise with exact minimum and maximum amounts) and `apply(state, action)`. Dealing uses a deck order or random generator supplied by the caller.
@@ -430,6 +431,8 @@ These are possible directions after the release:
 
 Newest first. Keep eight entries and move older ones to [docs/build-history.md](docs/build-history.md). Each entry gives the date, the step IDs, what changed, the checks actually run and the next concrete action.
 
+**2026-11-19 · P2.1.** Wrote [docs/rules.md](docs/rules.md), the no-limit specification for the Phase 2 engine. For the owner, the choices where card rooms differ: a moving button rather than a dead button; new and returning players dealt in at once with no missed-blind charges; an optional per-player ante; a short big blind still requires a full big blind to call; only a full raise in total reopens betting; odd chips go left of the button per pot; losing hands are auto-mucked and all-in hands tabled; burn cards are dealt; timeouts check or fold. Change any of them before P2.2 builds on them. Next action: P1.6 after the owner approves the deploy.
+
 **2026-11-19 · P1.5.** Added the `web` job to the test workflow (pnpm/action-setup v6 reading `web/package.json`, setup-node v7 from `web/.node-version`, Playwright with system dependencies, report uploaded on failure) and listed the web commands in AGENTS.md. Run 44461612198 passed both jobs. Next action: P1.6 needs the owner’s approval to deploy; meanwhile P2.1 may start.
 
 **2026-11-19 · P1.4.** Added Vitest specs for `wording.ts` and `TableConnection` (injectable socket, timers and storage), and six Playwright flows run in six projects. Each worker starts its own server on port 8700 and up in a detached process group, because killing `uv run` alone leaves the Python server running. 36 of 36 browser runs passed, and 72 of 72 with `--repeat-each 2`. Next action: P1.5.
@@ -443,5 +446,3 @@ Newest first. Keep eight entries and move older ones to [docs/build-history.md](
 **2026-11-19 · Plan to 1.0.** At the owner’s request, rewrote this tracker into phases toward 1.0 with checkable steps. It now covers the expanded scope (multiplayer, 2 to 9 seats, no-limit, strong bots, a full site) and records the stack decisions as D-1 to D-9. Phase 0 evidence and earlier handoffs moved verbatim to [docs/build-history.md](docs/build-history.md), and [AGENTS.md](AGENTS.md) and the [roadmap](docs/roadmap.md) were aligned with the new format. GitHub Actions showed passing runs for the latest pushes. Next action: P1.1.
 
 **2026-11-19 · RM-10.** Made tables survive restarts: `Table` snapshots, a SQLite store, `serve --state_path` and a state directory in the systemd unit. Ran `uv run --locked pytest` (123 passed) and a real SIGKILL restart check, and deployed. A live mid-hand service restart in a browser reconnected to the same hand and play continued.
-
-**2026-11-19 · RM-09.** Added Codeberg as a second push URL. Deployed rivermindpoker.com on ubuntu-vm with `deploy/update.sh`, fixing two script bugs found on the first runs. Verified HTTPS, redirects, headers and browser play before and after a restart.
