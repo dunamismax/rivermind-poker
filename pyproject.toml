@@ -41,6 +41,7 @@ namespaces = false
 [dependency-groups]
 dev = [
     "httpx2>=2.16.2",
+    "hypothesis>=6.170.15",
     "pytest>=8",
 ]
 
