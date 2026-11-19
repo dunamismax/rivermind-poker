@@ -9,14 +9,17 @@ This file is the single source of truth for project status, from today’s worki
 | **Current phase** | Phase 5 · Strong bots |
 | **Next step** | **P5.1** Abstraction design (`docs/bots.md`) |
 | **In progress** | _None._ |
+| **Early work** | **P6.0b** One-click practice and **P6.1** Hand replay can start during Phase 5. |
 | **Blockers** | _None._ Phases 0 to 4 are complete (P4.7 declined, D-12). The card sprites’ source and license are not yet recorded (Q-8). |
-| **Live site** | https://rivermindpoker.com runs no-limit hold’em at 2 to 9 seats against the Phase 2 bots (random, calling station and RiverMind Easy), on `serve-nl` with tables and hand histories in PostgreSQL (`rivermind_poker`), so tables survive restarts. Caddy serves the client from `/srv/rivermindpoker.com/current` and proxies `/api/*` and `/ws` to the app on 127.0.0.1:4316. Players are anonymous with signed session cookies (P4.1) and play from play-chip wallets (P4.2), find each other in the lobby (P4.3: table list, quick seat, bots giving up seats, held seats, waitlists, private tables with invite links), with safety controls (P4.5: app rate limits, reactions, mute, block, report, collusion signals) and fair-dealing pages (P4.6: your hands, the fairness page). The site wears the P6.0 pixel-art design with the owner’s card deck (P6.0a). Deployed at `7be243a`; Caddy rate-limits the seating endpoints and has the `safety` zone. The short-deck game left the site (D-11). |
+| **Live site** | https://rivermindpoker.com runs no-limit hold’em at 2 to 9 seats against the Phase 2 bots (random, calling station and RiverMind Easy), on `serve-nl` with tables and hand histories in PostgreSQL (`rivermind_poker`), so tables survive restarts. Caddy serves the client from `/srv/rivermindpoker.com/current` and proxies `/api/*` and `/ws` to the app on 127.0.0.1:4316. Players are anonymous with signed session cookies (P4.1) and play from play-chip wallets (P4.2), find each other in the lobby (P4.3: table list, quick seat, bots giving up seats, held seats, waitlists, private tables with invite links), with safety controls (P4.5: app rate limits, reactions, mute, block, report, collusion signals) and fair-dealing pages (P4.6: your hands, the fairness page). The site wears the P6.0 pixel-art design with the owner’s card deck (P6.0a). Deployed at `e99ca90`; Caddy rate-limits the seating endpoints and has the `safety` zone. The short-deck game left the site (D-11). |
 | **`main`** | Phases 0 to 4, the P6.0 pixel-art redesign and the owner’s card deck (P6.0a) are on `main`, pushed and deployed. The engine is in `rivermind/engine`, the bots in `rivermind/bots`, the durable table server (`serve-nl`, protocol v2) in `rivermind/server` and the client in `web/`. The short-deck code (`poker_ai/`, `serve`, the old client components) stays for reference until P7.6. `main` pushes to GitHub and Codeberg, and GitHub Actions runs the Python and web suites on every push. |
 | **Last updated** | 2026-11-19 |
 
 ## The 1.0 product
 
 RiverMind Poker 1.0 is a free, self-hosted, full-featured poker website at rivermindpoker.com. It uses **play money only, forever**. People play no-limit Texas hold’em at tables of 2 to 9 seats. They can play anonymous strangers, strong AI bots, or both. The site keeps their play-chip balance, hand histories and stats, and offers single-table tournaments. It works well on desktop and phone. The bots are the best this project can train and measure, and they are always labelled as bots.
+
+The first visit should lead straight to a hand, even with an empty wallet. Prioritize one-click practice (P6.0b), the first evaluated heads-up bot (P5.7), and review from the table (P6.1). Make it easy to find RiverMind through a useful rules page or a friend’s link (P6.7, P6.7a). Use a small playtest and aggregate usage counts (P7.1a) to see where players get stuck and which paths bring them back.
 
 The [release checklist](#10-release-checklist) at the end defines "done" precisely.
 
@@ -78,7 +81,7 @@ Each question has a default. Agents build on the default until the owner decides
 - [x] **Phase 3 · Table server v2.** Multi-seat tables on the new engine with PostgreSQL persistence, action clocks and the live cutover.
 - [x] **Phase 4 · Multiplayer and identity.** Anonymous players, a play-chip wallet, a lobby, safe multi-human tables and fair dealing.
 - [ ] **Phase 5 · Strong bots.** No-limit abstractions, training, evaluation, a promotion gate and serving, for heads-up, 6-max and 9-max.
-- [ ] **Phase 6 · Full-featured site.** Hand replays, stats, leaderboards, sit-and-go tournaments, settings, accessibility and content pages.
+- [ ] **Phase 6 · Full-featured site.** One-click practice, hand replays, friend invites, stats, leaderboards, sit-and-go tournaments, settings, accessibility and content pages.
 - [ ] **Phase 7 · Hardening and 1.0.** Monitoring, backups, load tests, fast restarts, a security review, cleanup and the release.
 - Phase 8 · After 1.0. Ideas that do not gate the release.
 
@@ -369,6 +372,7 @@ Each question has a default. Agents build on the default until the owner decides
 - [ ] **P5.7 · Serving and difficulty levels** · Depends on: P5.5, P3.2
   - [ ] Bots run within budget: 95th-percentile decision time under 200 ms and memory inside the service limits. A short "thinking" delay keeps play humane.
   - [ ] Difficulty levels are Easy (heuristic), Medium (champion mixed with heuristic) and Hard (champion). Bots are labelled per D-7. Deploying a new champion is documented and is an **Owner gate**.
+  - [ ] Heads-up is the first player-facing release under P5.7 and can ship as soon as it passes its own promotion and serving checks and the owner approves deployment. A guest can play Easy and the promoted bot at a two-seat table. The bot selection links to the published evaluation, with game settings, opponents, hand count, win rate in big blinds per 100 hands and its 95% interval.
 
 - [ ] **P5.8 · Real-time search (stretch, does not gate 1.0)** · Depends on: P5.5
   - [ ] Depth-limited subgame solving for heads-up runs within the serving budget, and its evaluation shows a significant gain over the blueprint alone. If it is not reached by 1.0, move it to Phase 8.
@@ -396,12 +400,21 @@ Each question has a default. Agents build on the default until the owner decides
   - [x] Cards snap to whole device pixels per art pixel (`--dpr` from `resolution` media queries, CSS `round()`), and the cards a phone pod shows keep at least 2 device pixels per art pixel in a compact fanned window, so every index reads at DPR 1 to 3. `/style` shows the deck, the 18 backs and the sizes, and [docs/design.md](docs/design.md) gives the rules.
   - Evidence: `b4492df`. `pnpm art` regenerates 118 files from the sprites (each verified as an exact 12x or 13x enlargement; the parchment back's few alpha-2 and alpha-4 strays count as clear). Reviewed contact sheets at 1x, 2x and 4x, and full-resolution screenshots of the lobby, a 9-seat table to showdown with calling bots and `/hands` against a local `serve-nl` at 1440×900 (DPR 2), 1280×800 (DPR 1), 768×1024 (DPR 2), 412×915 (DPR 2.625) and 375×812 (DPR 2 and 3, also in WebKit), with no horizontal overflow. pytest 548 passed with the database tests; Vitest 63, check, lint and build passed; Playwright 90 of 90 (Chromium, Firefox and WebKit at desktop and phone sizes). Not pushed or deployed.
   - Deployed: with the owner’s approval, pushed `main` and deployed `7be243a` (with P4.5 and P4.6) using `deploy/update.sh`. The first run stopped before the live site changed when `test_tables_are_saved_before_publishing_and_restored_at_startup` failed (547 passed); its file passed six times in a row on the server, and the second run passed all 548, ran migrations `0004` and `0005`, installed the Caddy `safety` zone and restored the open table. `pnpm e2e:live` passed 12 of 12 against https://rivermindpoker.com and 2 of 2 for the restart test with `LIVE_RESTART_COMMAND` (Chromium desktop and WebKit phone), and a live 6-seat table to showdown shows the new deck.
-- [ ] **P6.1 · Hand history viewer and replayer** · Depends on: P3.5, P4.6
+
+- [ ] **P6.0b · One-click practice at any balance** · Depends on: P3.7, P4.2, P4.5, P4.6 · May run during Phase 5
+  - [ ] A prominent “Practice vs bots” action starts a heads-up hand against the labelled RiverMind Easy bot from the lobby. Seats, blinds and a practice stack have defaults, so the first hand takes one click for a new guest or a guest at zero chips before their next top-up is due.
+  - [ ] Each guest can resume one active practice table after reload. Only that guest can access it. Concurrent start requests return the same table, and abandoned tables expire under the server’s existing capacity and rate limits.
+  - [ ] A player who busts can start another hand with a fresh practice stack. Practice chips stay at the practice table, and results appear in “Your hands” with a practice label that identifies them for exclusion from competitive stats. Browser tests on phone and desktop cover the first hand, reload and playing again after a bust. Server tests verify wallet and ledger equality before and after practice, the practice marker on stored hands, and refusal of access to a second guest.
+
+- [ ] **P6.1 · Hand history viewer and replayer** · Depends on: P3.5, P4.6 · May run during Phase 5
   - [ ] Players can browse their hands and replay them step by step with cards and pot sizes, and share a link to a finished hand. Shared links never show cards that were mucked.
+  - [ ] A player can open “Review hand” from the table as soon as a hand is settled. The live turn clock and controls remain reachable if a new hand starts. Replay uses the recorded actions and shows who acted, the amounts bet or called, and why each pot was awarded. Verify a fold-out, a showdown and a side-pot hand in the browser. The player can return to play from the replay.
+  - [ ] Sharing requires the player to create a revocable link from a finished hand. The shared view contains the public actions, board and cards shown at showdown, with generic seat labels. Shared pages serve `noindex`. Verify access and revocation in a second browser context and check the response payload for hidden cards and private table metadata.
 - [ ] **P6.2 · Player profile and stats** · Depends on: P4.2
   - [ ] Profiles show hands played and net chips over time, with a graph, plus VPIP, PFR and win rate in big blinds per 100 hands.
-- [ ] **P6.3 · Leaderboards** · Depends on: P6.2
+- [ ] **P6.3 · Leaderboards** · Depends on: P6.2, P6.0b
   - [ ] Daily, weekly and all-time boards rank play-chip results. Humans and bots are ranked separately, and boards resist simple abuse such as farming chips from fresh accounts.
+  - [ ] The boards count only eligible wallet-backed games. Verify that adding practice hands to a fixture produces the same rankings as the fixture with only wallet-backed games.
 - [ ] **P6.4 · Sit-and-go tournaments** · Depends on: P3.7, P4.2 · Scope per Q-3
   - [ ] Single-table tournaments with blind levels, eliminations and play-chip payouts. Bots fill empty seats on request, and tests cover the tournament rules from start to finish.
 - [ ] **P6.5 · Settings and polish** · Depends on: P3.6
@@ -412,8 +425,14 @@ Each question has a default. Agents build on the default until the owner decides
   - Remaining: Deck and back preference controls, animation speed, sound and mute, keyboard shortcuts, pre-actions, and bet and pot animations (P6.0 added only entrance animations for cards, bets and the action panel). The artwork follow-ups from the SVG review are resolved by P6.0: phone cards draw their rank 14px tall at 2x, card files are content-hashed and fetched before the first deal, and the alt text says "Jack of hearts".
 - [ ] **P6.6 · Accessibility** · Depends on: P3.6
   - [ ] Playwright runs axe checks on every page. The game is fully playable by keyboard, actions and turns are announced to screen readers, focus is managed and reduced motion is respected. The target is WCAG 2.2 AA.
-- [ ] **P6.7 · Content pages** · Depends on: P1.6
+- [ ] **P6.7 · Content pages** · Depends on: P1.6, P6.0b
   - [ ] Pre-rendered pages cover how to play, hand rankings, about the bots (honest claims linked to evaluations), privacy, and terms with the D-1 play-money statement. Each page has SEO metadata and social cards.
+  - [ ] The public play and learning pages have descriptive titles, permanent URLs and crawlable links back to the lobby. The beginner guide explains the button, blinds, basic actions and hand rankings with a worked hand. From the guide, verify that a phone visitor can get to the lobby and begin practice. Check the built HTML and sitemap for public pages and apply `noindex` to personal hand history pages. [Google Search Essentials](https://developers.google.com/search/docs/essentials) · [Indexing controls](https://developers.google.com/search/docs/crawling-indexing/block-indexing)
+
+- [ ] **P6.7a · Play with a friend from an invite** · Depends on: P4.3, P4.5, P6.0b
+  - [ ] The lobby gives guests a clear way to create a private table and copy its invite. A friend opening it on a fresh browser sees the stakes and can join under the existing guest rules. Bots can start the table and give up seats between hands. A closed or expired invite offers a direct return to the lobby or solo practice.
+  - [ ] Verify that a phone guest and a desktop guest can play a complete hand together from a copied link. Cover full tables, insufficient play chips and expired invites. A copied private invite has a generic preview and serves `noindex`. Its code stays out of the sitemap, page metadata and analytics.
+
 - [ ] **P6.8 · Installable app** · Depends on: P1.6
   - [ ] A web app manifest and icons make the site installable. An offline page explains that play needs a connection.
 
@@ -428,6 +447,12 @@ Each question has a default. Agents build on the default until the owner decides
 
 - [ ] **P7.1 · Observability** · Depends on: P3.7
   - [ ] Structured JSON logs and `/healthz` and `/readyz` endpoints are in place. Metrics cover tables, players, hands per minute, decision latency and errors. Uptime is monitored with the owner’s existing status service if suitable. Per Q-6, there is no third-party analytics.
+
+- [ ] **P7.1a · First-time playtest and usage baseline** · Depends on: P7.1, P6.1, P6.7, P6.7a
+  - [ ] Run an unassisted playtest with at least five first-time players across phone and desktop. Ask them to play a first hand, review it and join a friend from a link. Record where they stop or ask for help, fix reproducible blockers to those tasks, and repeat the affected checks.
+  - [ ] Produce a server-side aggregate report per Q-6. Count the share of new guests who complete a first hand after taking an action, guests who open a replay after finishing a hand, and guests who are dealt in after opening a valid invite. Report how many guests who finish a first hand return to play on the same browser within days 1–7. Write down the numerator, denominator, sample dates and build for each measure.
+  - [ ] Use the existing guest identity for deduplication within the measurement window and retain only aggregate usage results after it closes. Verify the counts with known test sessions before collecting a live baseline. The first report identifies one improvement to test after launch and specifies a comparable window for measuring it.
+
 - [ ] **P7.2 · Backups and recovery** · Depends on: P3.1
   - [ ] PostgreSQL and the bot artifacts are backed up nightly, integrated with the owner’s existing ubuntu-vm backup setup. A restore onto a scratch database is performed and documented.
 - [ ] **P7.3 · Load test** · Depends on: P4.4, P5.7
@@ -450,6 +475,7 @@ Each question has a default. Agents build on the default until the owner decides
 
 - [ ] No-limit hold’em at 2 to 9 seats, matching `docs/rules.md`, on the live site.
 - [ ] Anonymous players can play each other and bots, with persistent play-chip balances and a ledger that balances.
+- [ ] Guests can start solo practice at any balance, review a completed hand and join friends by link. First-time playtest findings and an aggregate usage baseline are recorded (P7.1a).
 - [ ] Champion bots for heads-up, 6-max and 9-max, with published evaluations, plus difficulty levels. Bots are always labelled.
 - [ ] Hand histories, a replayer, stats, leaderboards and sit-and-go tournaments.
 - [ ] Works on current Chromium, Firefox and Safari (WebKit), from phone to desktop. Accessibility checks pass and the game is fully keyboard playable.
@@ -470,6 +496,7 @@ These are possible directions after the release:
 - optional sign-in, such as passkeys that claim a guest identity so chips and history follow a player across devices (D-12);
 - native app wrappers;
 - public research write-ups on the bots.
+- a shareable weekly practice hand that asks the player to solve a worked example from the rules, such as awarding a side pot. After the answer, show the reasoning and a link to play against a bot.
 
 ---
 
@@ -477,7 +504,9 @@ These are possible directions after the release:
 
 Newest first. Keep eight entries and move older ones to [docs/build-history.md](docs/build-history.md). Each entry gives the date, the step IDs, what changed, the checks actually run and the next concrete action.
 
-**2026-11-19 · Fixed the durability flake from the deploy.** The owner asked to fix the test that failed once on ubuntu-vm. Cause: Starlette’s test client cancels the server’s socket handler as soon as a test’s socket closes; when that landed during the save of the disconnect, the save could be dropped before its worker thread started (the store one change behind), or, if the save had committed, its bookkeeping and the publish were skipped, so the next save could pay departing chips again. The same could happen in production whenever a request’s task is cancelled. Every request to a `TableRunner` now goes through `_change`, which applies, saves, accounts for and publishes the change in its own task shielded from the caller. New test: `test_a_change_is_saved_and_published_even_if_its_caller_is_cancelled` (failed before the fix, passes after). The durability test passed 10 of 10 under eight busy CPU loops; pytest 549 passed with the database tests and `pnpm e2e` 90 of 90. Not pushed or deployed. Next action: with the owner’s approval, push and deploy; the owner to name the card sprites’ source for Q-8; then P5.1.
+**2026-11-19 · Player experience and adoption plan.** The owner asked for roadmap additions based on the project review. A live guest had 542 chips against a 2,000 minimum buy-in at the lowest stakes. Added P6.0b for wallet-independent practice, P6.7a for friend invites and P7.1a for a first-time playtest and aggregate usage baseline. Expanded P5.7, P6.1 and P6.7 with the first evaluated heads-up release, post-hand review and public learning pages. Verified the step dependencies and the handoff archive. Next action is P5.1, with practice and replay eligible to run during Phase 5.
+
+**2026-11-19 · Fixed the durability flake from the deploy.** The owner asked to fix the test that failed once on ubuntu-vm. Cause: Starlette’s test client cancels the server’s socket handler as soon as a test’s socket closes; when that landed during the save of the disconnect, the save could be dropped before its worker thread started (the store one change behind), or, if the save had committed, its bookkeeping and the publish were skipped, so the next save could pay departing chips again. The same could happen in production whenever a request’s task is cancelled. Every request to a `TableRunner` now goes through `_change`, which applies, saves, accounts for and publishes the change in its own task shielded from the caller. New test: `test_a_change_is_saved_and_published_even_if_its_caller_is_cancelled` (failed before the fix, passes after). The durability test passed 10 of 10 under eight busy CPU loops; pytest 549 passed with the database tests and `pnpm e2e` 90 of 90. With the owner’s approval, pushed and deployed `e99ca90`: `deploy/update.sh` passed all 549 server tests on its first run and restored the open table, and `pnpm e2e:live` passed 14 of 14 with the restart test. Next action: the owner to name the card sprites’ source for Q-8; then P5.1.
 
 **2026-11-19 · P4.5, P4.6 and P6.0a deployed.** The owner asked to push and redeploy. Pushed `main` (`7be243a`) to both remotes; P4.5 and P4.6 were already pushed. The first `deploy/update.sh` stopped before changing the live site: the durability test `test_tables_are_saved_before_publishing_and_restored_at_startup` failed once (connected false, saved seq one behind live, no save failures, 15 s) while 547 passed; its file passed six reruns on ubuntu-vm, and the second run passed 548, migrated to `0005`, installed the Caddy `safety` zone and restored one table. `pnpm e2e:live` passed 12 of 12 plus 2 of 2 for the restart test. Next action: find why the save after a disconnect can lag under full-suite load on the server (the test, or the store’s worker-thread save); the owner to name the card sprites’ source for Q-8; then P5.1.
 
@@ -490,5 +519,3 @@ Newest first. Keep eight entries and move older ones to [docs/build-history.md](
 **2026-11-19 · P4.4 complete.** Continuing the same request. Added concurrent race tests (seats, last seat, two tabs on one turn, random concurrent rounds, nobody acting for another) and a browser test of two people and a bot through a disconnect; the one-seat rule was already in the table core and a mutation check showed the tests catch its removal. Phase 4's second exit criterion is ticked. Pitfalls: under load, random-play coverage checks failed while the ledgers held, so timing-dependent kinds now only need an attempt; forced clicks on the hidden lobby radios raced the table list's refresh on phones, and Playwright's `dispatchEvent` crashes Firefox pages, so the helper calls the input's own `click()`. Checks are in the P4.4 evidence. Committed `188d532`; not pushed or deployed. Next action: P4.5 (rate limits in the app, handle filter and reports, mute or block, preset reactions, collusion signals). Deploying P4.3 and P4.4 (owner approval) would let the first Phase 4 exit criterion be checked live.
 
 **2026-11-19 · P4.3 complete.** The owner asked for as much of the build as possible. Built the lobby: a live table list with filters, quick seat, seats taken from bots (at once between hands, otherwise held until the bot's hand ends), 60-second held seats, a waitlist, private tables with invite links, and spectating with “Sit here” on empty seats. Holds and the waitlist are table-core state (rule 2.4 in [docs/rules.md](docs/rules.md)), saved in snapshot format 2; bots refill a seat nobody wants. Pitfalls: inserting the lobby actions into the wallet's random play halved the rebuy band and made its coverage check flaky; advancing the `ManualClock` there made turn timeouts depend on thread timing, so hold expiry is tested deterministically instead. The new lobby has its own “Sit down” buttons and “Blinds” filter, so browser tests reach the new-table form through `newTableForm()`. The hand log now names each event's player as of that moment. Checks are in the P4.3 evidence. Committed `dedc77c`; not pushed or deployed (the deploy also installs the new Caddy rate limit). Next action: P4.4, multi-human correctness (one seat per player is already enforced; add concurrent-action race tests and a two-context browser test with disconnects).
-
-**2026-11-19 · P6.0 deployed, with P4.1 and P4.2.** The owner reviewed the redesign, asked for a better 10 and approved the push and deploy. The 10’s index sat one pixel left of the other ranks, against the outline; it now keeps the same margin, its side pips moved one pixel in, and the glyph has a flagged 1 and a bold 0 (`fcae7d5`, only the six 10 faces changed). pytest 478, Vitest 60 and Playwright 48 of 48 passed before the push. Pushed `main` to both remotes, including the other session’s test-race fix `f466488`, and deployed: the server’s tests passed, migrations `0002` and `0003` ran, and the service restored its open table. `pnpm e2e:live` passed 12 of 12, including a restart mid-hand. Next action: P4.3, the lobby.
