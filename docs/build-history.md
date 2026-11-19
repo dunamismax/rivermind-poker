@@ -45,6 +45,8 @@ This archive holds the evidence for finished work and older session handoffs, mo
 
 ## Phase 1 session handoffs
 
+**2026-11-19 · P6.5 artwork.** At the owner’s request a separate session created the original card deck (52 standard faces, four-colour clubs and diamonds, three backs) and wired it into the SvelteKit table, documented in [docs/card-art.md](card-art.md). This session then reviewed it, moved the in-memory rendering into `web/scripts/card-art/render.js`, added `pnpm cards` and a stale-artwork test, fixed a docs link into the ignored `artifacts/` folder, and committed it as `e826f94`. Checks are in the P6.5 evidence; follow-ups are under Remaining. P1.6 is still the next phase step and awaits deployment approval.
+
 **2026-11-19 · P1.5.** Added the `web` job to the test workflow (pnpm/action-setup v6 reading `web/package.json`, setup-node v7 from `web/.node-version`, Playwright with system dependencies, report uploaded on failure) and listed the web commands in AGENTS.md. Run 44461612198 passed both jobs. Next action: P1.6 needs the owner’s approval to deploy; meanwhile P2.1 may start.
 
 **2026-11-19 · P1.4.** Added Vitest specs for `wording.ts` and `TableConnection` (injectable socket, timers and storage), and six Playwright flows run in six projects. Each worker starts its own server on port 8700 and up in a detached process group, because killing `uv run` alone leaves the Python server running. 36 of 36 browser runs passed, and 72 of 72 with `--repeat-each 2`. Next action: P1.5.
