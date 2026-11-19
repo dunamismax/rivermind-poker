@@ -7,11 +7,11 @@ This file is the single source of truth for project status, from today’s worki
 | | |
 | --- | --- |
 | **Current phase** | Phase 1 · SvelteKit client |
-| **Next step** | **P1.5** CI for the web app |
-| **In progress** | **P1.5** Add a web job to GitHub Actions (claimed 2026-11-19) |
-| **Blockers** | _None_ |
+| **Next step** | **P1.6** Deploy the SvelteKit client (**Owner gate:** deploy) |
+| **In progress** | _None_ |
+| **Blockers** | P1.6 waits for the owner’s approval to deploy to rivermindpoker.com. P2.1 (rules specification) can proceed meanwhile. |
 | **Live site** | https://rivermindpoker.com runs the Phase 0 prototype: a three-seat, fixed-limit, 20-card game against random bots or the RM-06 checkpoint. It uses FastAPI, WebSockets and a vanilla JavaScript client. Tables survive restarts. |
-| **`main`** | Phase 0, the P1.1 scaffold, the P1.2 typed protocol the P1.3 SvelteKit table UI and the P1.4 tests are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python suite on every push. |
+| **`main`** | Phase 0, the P1.1 scaffold, the P1.2 typed protocol the P1.3 SvelteKit table UI, the P1.4 tests and the P1.5 CI job are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python and web suites on every push. |
 | **Last updated** | 2026-11-19 |
 
 ## The 1.0 product
@@ -108,7 +108,7 @@ Each question has a default. Agents build on the default until the owner decides
 **Exit criteria**
 - [ ] The live site serves the SvelteKit client, and every behaviour on the P1.3 parity list works there.
 - [x] Browser tests pass in Chromium, Firefox and WebKit, at desktop and phone sizes. (P1.4 evidence)
-- [ ] CI runs the Python and web suites and passes on GitHub.
+- [x] CI runs the Python and web suites and passes on GitHub. (P1.5 evidence)
 
 - [x] **P1.1 · Scaffold the SvelteKit app** · Depends on: none
   - [x] `web/` contains a SvelteKit app using Svelte 5 and strict TypeScript, with `adapter-static` and a `200.html` fallback, and `ssr = false` in the root layout.
@@ -152,9 +152,10 @@ Each question has a default. Agents build on the default until the owner decides
   - [x] Playwright projects for Chromium, Firefox and WebKit all pass. This closes the Phase 0 gap of Chromium-only testing.
   - Evidence: `66fb895`. `pnpm test` 28 passed (wording, results, hand log and the socket store against a mock socket). `pnpm e2e` 36 passed (six tests × Chromium, Firefox and WebKit at 1440×900 and 375×812) against a real `serve --client_dir web/build --state_path` per worker, with the restart test killing the process group; `--repeat-each 2` gave 72 of 72. Every test also fails on a CSP violation. pytest 138 passed; check, lint and build passed.
 
-- [ ] **P1.5 · CI for the web app** · Depends on: P1.4
-  - [ ] [`.github/workflows/test.yml`](.github/workflows/test.yml) gains a web job: frozen pnpm install, check, lint, Vitest, build and Playwright against the Python server.
-  - [ ] Evidence names a passing GitHub Actions run (`gh run list`).
+- [x] **P1.5 · CI for the web app** · Depends on: P1.4
+  - [x] [`.github/workflows/test.yml`](.github/workflows/test.yml) gains a web job: frozen pnpm install, check, lint, Vitest, build and Playwright against the Python server.
+  - [x] Evidence names a passing GitHub Actions run (`gh run list`).
+  - Evidence: `81856bd`. `gh run list` shows run [44461612198](https://github.com/dunamismax/rivermind-poker/actions/runs/44461612198) for `81856bd` succeeded: the `test` job (pytest) and the new `web` job (frozen install, check, lint, Vitest 28 passed, build, Playwright 36 passed in Chromium, Firefox and WebKit).
 
 - [ ] **P1.6 · Deploy the SvelteKit client** · Depends on: P1.5 · **Owner gate:** deploy
   - [ ] Caddy serves `web/build` as static files and keeps the SPA fallback. Hashed assets under `/_app/immutable/*` are cached as immutable, while HTML revalidates. `/api/*` and `/ws` are proxied to the app.
@@ -429,6 +430,8 @@ These are possible directions after the release:
 
 Newest first. Keep eight entries and move older ones to [docs/build-history.md](docs/build-history.md). Each entry gives the date, the step IDs, what changed, the checks actually run and the next concrete action.
 
+**2026-11-19 · P1.5.** Added the `web` job to the test workflow (pnpm/action-setup v6 reading `web/package.json`, setup-node v7 from `web/.node-version`, Playwright with system dependencies, report uploaded on failure) and listed the web commands in AGENTS.md. Run 44461612198 passed both jobs. Next action: P1.6 needs the owner’s approval to deploy; meanwhile P2.1 may start.
+
 **2026-11-19 · P1.4.** Added Vitest specs for `wording.ts` and `TableConnection` (injectable socket, timers and storage), and six Playwright flows run in six projects. Each worker starts its own server on port 8700 and up in a detached process group, because killing `uv run` alone leaves the Python server running. 36 of 36 browser runs passed, and 72 of 72 with `--repeat-each 2`. Next action: P1.5.
 
 **2026-11-19 · P1.3.** Ported the table to Svelte components with a `TableConnection` store and `wording.ts` helpers that match the vanilla client, plus a visible "Bot" label on bot seats (D-7). Found that SvelteKit's SPA fallback uses an inline bootstrap script and its route announcer an inline style, both blocked by the site CSP; the build now externalizes the script and fails on any inline code, and a Vite plugin drops the style. Added `serve --client_dir` so the built client runs locally with the production headers (P1.6 still removes the legacy client), and a Playwright harness that starts its own server per worker. Checks are in the P1.3 evidence. Next action: P1.4.
@@ -442,9 +445,3 @@ Newest first. Keep eight entries and move older ones to [docs/build-history.md](
 **2026-11-19 · RM-10.** Made tables survive restarts: `Table` snapshots, a SQLite store, `serve --state_path` and a state directory in the systemd unit. Ran `uv run --locked pytest` (123 passed) and a real SIGKILL restart check, and deployed. A live mid-hand service restart in a browser reconnected to the same hand and play continued.
 
 **2026-11-19 · RM-09.** Added Codeberg as a second push URL. Deployed rivermindpoker.com on ubuntu-vm with `deploy/update.sh`, fixing two script bugs found on the first runs. Verified HTTPS, redirects, headers and browser play before and after a restart.
-
-**2026-11-18 · RM-08.** Built the FastAPI and WebSocket server and the vanilla JavaScript client. Ran `uv run --locked pytest` (115 passed) and played in a browser at desktop and phone sizes against the RM-06 checkpoint and random bots.
-
-**2026-11-18 · RM-02 to RM-07 and training defaults.** Fixed resume, discounting and asynchronous checkpoints. Added the shared policies, the evaluation command and the server-owned table, trained and evaluated the RM-06 baseline, and fixed set-ordered deck suits. Set the Pluribus-style training defaults. Full details are in the history.
-
-**2026-11-18 · RM-01 and RM-00.** Established the tracker and corrected the river hand-strength labels. Full details are in the history.
