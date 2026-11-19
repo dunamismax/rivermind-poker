@@ -25,8 +25,8 @@ log = logging.getLogger("poker_ai.web")
               help="SQLite file that keeps tables across restarts. Without it, "
                    "a restart closes every table.")
 @click.option("--client_dir", default=None,
-              help="Serve this SvelteKit build (web/build) instead of the legacy "
-                   "client, with the site's security headers.")
+              help="Also serve this SvelteKit build (web/build), with the site's "
+                   "security headers. Without it, only /api and /ws are served.")
 def serve(host: str, port: int, strategy_path: Optional[str],
           lut_path: Optional[str], max_tables: int, state_path: Optional[str],
           client_dir: Optional[str]):

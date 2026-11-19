@@ -41,16 +41,12 @@ def _play_hand(ws, view, action="call"):
     return view
 
 
-def test_serves_client_and_config(client):
-    page = client.get("/")
-    assert page.status_code == 200 and "RiverMind Poker" in page.text
-    assert client.get("/static/app.js").status_code == 200
-    css = client.get("/static/style.css")
-    assert css.status_code == 200
-    for response in (page, css):
-        assert response.headers["cache-control"] == "no-cache"
-        assert response.headers.get("etag") or page is response
-    assert client.get("/api/config").json() == {"opponents": ["random", "checkpoint"]}
+def test_serves_only_the_api_without_a_client(client):
+    for path in ("/", "/static/app.js", "/some/route"):
+        assert client.get(path).status_code == 404, path
+    config = client.get("/api/config")
+    assert config.json() == {"opponents": ["random", "checkpoint"]}
+    assert "content-security-policy" not in config.headers
     assert TestClient(create_app()).get("/api/config").json() == {"opponents": ["random"]}
 
 
@@ -245,7 +241,7 @@ def test_serves_the_built_client_with_the_site_headers(built_client):
     assert client.get("/robots.txt").headers["cache-control"] == "no-cache"
     assert client.get("/_app/immutable/missing.js").status_code == 404
     assert client.get("/api/missing").status_code == 404
-    # The legacy client is off: its path is just another SPA route.
+    # The old client's path is just another SPA route.
     assert "RiverMind Poker" in client.get("/static/app.js").text
     config = client.get("/api/config")
     assert config.json() == {"opponents": ["random"]}

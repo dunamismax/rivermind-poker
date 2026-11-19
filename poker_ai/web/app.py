@@ -1,4 +1,4 @@
-"""Browser play: a FastAPI app that serves the client and wraps `Table`.
+"""Browser play: a FastAPI app that wraps `Table` for the SvelteKit client.
 
 HTTP creates a table (`POST /api/tables`) and returns its id and the
 human seat's secret token. Play happens over one WebSocket (`/ws`):
@@ -39,7 +39,6 @@ from typing import Any, Dict, Optional
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
@@ -54,7 +53,6 @@ from poker_ai.web.store import TableStore
 
 log = logging.getLogger("poker_ai.web")
 
-STATIC_DIR = Path(__file__).parent / "static"
 # Mirrors deploy/rivermindpoker.com.caddy, so the built client is tested
 # locally under the policy it gets in production.
 CLIENT_HEADERS = {
@@ -198,9 +196,11 @@ def create_app(
     change and restored from it at startup. Idle tables expire after
     `idle_seconds` (a week by default).
 
-    With `client_dir` (the SvelteKit build, `web/build`), the app serves that
-    client instead of the legacy one: its files, the `200.html` fallback for
-    every other path, immutable caching for hashed assets and the site's CSP.
+    The app itself serves only `/api` and `/ws`; on the live site Caddy
+    serves the client. With `client_dir` (the SvelteKit build, `web/build`),
+    the app also serves that client for local runs, as Caddy does: its files,
+    the `200.html` fallback for every other path, immutable caching for
+    hashed assets and the site's CSP.
     """
     if (strategy is None) != (not card_info_lut):
         raise ValueError("Checkpoint opponents need both a strategy and card tables.")
@@ -211,16 +211,12 @@ def create_app(
     client = Path(client_dir).resolve() if client_dir else None
     if client is not None and not (client / "200.html").is_file():
         raise ValueError(f"{client} has no 200.html; build the web client first.")
-    if client is None:
-        app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.middleware("http")
     async def client_headers(request, call_next):
         response = await call_next(request)
         path = request.url.path
-        if client is not None:
-            if path.startswith("/api/"):
-                return response
+        if client is not None and not path.startswith("/api/"):
             for name, value in CLIENT_HEADERS.items():
                 response.headers[name] = value
             ws = ("wss://" if request.url.scheme == "https" else "ws://") + request.url.netloc
@@ -230,16 +226,7 @@ def create_app(
                 "public, max-age=31536000, immutable"
                 if path.startswith("/_app/immutable/") and response.status_code == 200
                 else "no-cache")
-        elif path == "/" or path.startswith("/static/"):
-            # Browsers would otherwise keep a stale client after an upgrade;
-            # no-cache still lets them reuse it when the ETag matches.
-            response.headers["Cache-Control"] = "no-cache"
         return response
-
-    if client is None:
-        @app.get("/", include_in_schema=False)
-        async def index():
-            return FileResponse(STATIC_DIR / "index.html")
 
     @app.exception_handler(RequestValidationError)
     async def bad_body(request: Request, exc: RequestValidationError):

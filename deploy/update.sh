@@ -2,9 +2,13 @@
 # Deploy or update rivermindpoker.com on ubuntu-vm. Run as root:
 #   bash /home/sawyer/github/rivermind-poker/deploy/update.sh
 # Pulls main as sawyer, syncs the locked environment on Python 3.12 from
-# /opt/uv-python, runs the tests, installs the systemd unit and Caddy site,
-# then restarts the service and checks it answers. The pinned checkpoint and
-# tables are not in Git; copy them to artifacts/rm06/ first (see BUILD.md).
+# /opt/uv-python, runs the tests and builds the web client from the frozen
+# lockfile, stopping before the live site changes if any of that fails. Then it
+# installs the systemd unit and Caddy site, restarts the service, publishes the
+# build as a release under /srv/rivermindpoker.com and checks the app answers.
+# The pinned checkpoint and tables are not in Git; copy them to artifacts/rm06/
+# first (see BUILD.md). Node (the major in web/.node-version) must be on
+# sawyer's PATH, directly or through mise; pnpm comes from corepack.
 set -euo pipefail
 
 REPO=/home/sawyer/github/rivermind-poker
@@ -24,6 +28,21 @@ chmod -R a+rX "$UV_PYTHON_INSTALL_DIR"
 (cd "$REPO" && as_sawyer "$UV" sync --locked --python 3.12)
 (cd "$REPO" && as_sawyer "$UV" run --locked pytest -q)
 
+# Build the SvelteKit client as sawyer, in a login shell for Node's PATH.
+NODE_MAJOR=$(tr -d '[:space:]' < "$REPO/web/.node-version")
+NODE_MAJOR=${NODE_MAJOR%%.*}
+# shellcheck disable=SC2016  # expanded by the inner shell
+as_sawyer env NODE_MAJOR="$NODE_MAJOR" WEB="$REPO/web" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+    bash -lc 'set -euo pipefail
+        export PATH="$HOME/.local/share/mise/shims:$PATH"
+        have=$(node --version 2>/dev/null || echo none)
+        [[ $have == "v$NODE_MAJOR".* ]] || {
+            echo "web build needs Node $NODE_MAJOR, found $have" >&2; exit 1; }
+        cd "$WEB"
+        corepack pnpm install --frozen-lockfile
+        corepack pnpm build'
+[[ -f "$REPO/web/build/200.html" ]] || { echo "web build has no 200.html" >&2; exit 1; }
+
 id rivermind-poker >/dev/null 2>&1 || useradd --system --no-create-home \
     --home-dir /nonexistent --shell /usr/sbin/nologin rivermind-poker
 setfacl -m u:rivermind-poker:--x /home/sawyer
@@ -41,6 +60,21 @@ chown caddy:caddy /var/log/caddy/rivermindpoker-access.log
 systemctl daemon-reload
 systemctl enable rivermind-poker.service
 systemctl restart rivermind-poker.service
+
+# Publish the client as a new root-owned release and switch Caddy's root to it
+# atomically. The three newest releases are kept for a quick rollback: point
+# current at an older one with `ln -sfn <release> current.new && mv -T ...`.
+RELEASES=/srv/rivermindpoker.com
+RELEASE=$(date -u +%Y%m%dT%H%M%SZ)-$(as_sawyer git -C "$REPO" rev-parse --short=12 HEAD)
+install -d -m 0755 "$RELEASES"
+cp -R "$REPO/web/build" "$RELEASES/$RELEASE.tmp"
+chown -R root:root "$RELEASES/$RELEASE.tmp"
+chmod -R u=rwX,go=rX "$RELEASES/$RELEASE.tmp"
+mv -T "$RELEASES/$RELEASE.tmp" "$RELEASES/$RELEASE"
+ln -sfn "$RELEASE" "$RELEASES/current.new"
+mv -T "$RELEASES/current.new" "$RELEASES/current"
+find "$RELEASES" -mindepth 1 -maxdepth 1 -type d -name '20*Z-*' -printf '%f\n' |
+    sort -r | tail -n +4 | while read -r old; do rm -rf "${RELEASES:?}/$old"; done
 # The reload runs the host preflight, which validates the whole config as the
 # caddy user. (Validating as root would create log files caddy cannot write.)
 systemctl reload caddy

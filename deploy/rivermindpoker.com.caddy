@@ -1,8 +1,11 @@
 # rivermindpoker.com: installed as /etc/caddy/sites/rivermindpoker.com.caddy by
 # deploy/update.sh and loaded by the host Caddyfile (`import /etc/caddy/sites/*.caddy`).
 # DNS for both names points at the host, so Caddy obtains and renews certificates.
-# Everything is proxied to rivermind-poker.service on 127.0.0.1:4316, including
-# the /ws WebSocket. The app sets Cache-Control on its own files.
+# Caddy serves the SvelteKit build itself from /srv/rivermindpoker.com/current,
+# which update.sh points at the latest release, with the 200.html fallback for
+# every route. Only /api/* and the /ws WebSocket go to rivermind-poker.service
+# on 127.0.0.1:4316. Hashed files under /_app/immutable/ are cached for a year;
+# everything else revalidates, so a deploy reaches browsers on their next load.
 #
 # Check and reload: caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
 
@@ -41,9 +44,30 @@ rivermindpoker.com {
 		}
 	}
 
-	reverse_proxy 127.0.0.1:4316 {
-		# A config reload would otherwise close every open game socket.
-		stream_close_delay 5m
+	handle /api/* {
+		reverse_proxy 127.0.0.1:4316
+	}
+
+	handle /ws {
+		reverse_proxy 127.0.0.1:4316 {
+			# A config reload would otherwise close every open game socket.
+			stream_close_delay 5m
+		}
+	}
+
+	handle {
+		root * /srv/rivermindpoker.com/current
+		@immutable path /_app/immutable/*
+		@revalidate not path /_app/immutable/*
+		header @immutable Cache-Control "public, max-age=31536000, immutable"
+		header @revalidate Cache-Control "no-cache"
+		# Every other route is the app page, but a missing asset is a 404.
+		@page {
+			not path /_app/*
+			not file
+		}
+		rewrite @page /200.html
+		file_server
 	}
 
 	handle_errors 502 503 504 {

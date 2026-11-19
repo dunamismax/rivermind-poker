@@ -1,21 +1,9 @@
 import { test as base, expect, type Page } from '@playwright/test';
 import { TableServer } from './server.ts';
 
-// One server per worker, on its own port, so projects run in parallel.
-export const test = base.extend<{ cspViolations: string[] }, { server: TableServer }>({
-	server: [
-		// eslint-disable-next-line no-empty-pattern
-		async ({}, use, workerInfo) => {
-			const server = new TableServer(8700 + workerInfo.parallelIndex);
-			await server.start();
-			await use(server);
-			await server.dispose();
-		},
-		{ scope: 'worker', timeout: 90_000 }
-	],
-	baseURL: async ({ server }, use) => use(server.url),
+/** Records Content-Security-Policy violations; tests assert there are none. */
+export const withCsp = base.extend<{ cspViolations: string[] }>({
 	cspViolations: async ({ page }, use) => {
-		// Record Content-Security-Policy violations; tests assert there are none.
 		const violations: string[] = [];
 		await page.exposeFunction('__reportCsp', (text: string) => violations.push(text));
 		await page.addInitScript(() => {
@@ -29,12 +17,27 @@ export const test = base.extend<{ cspViolations: string[] }, { server: TableServ
 	}
 });
 
+// One server per worker, on its own port, so projects run in parallel.
+export const test = withCsp.extend<object, { server: TableServer }>({
+	server: [
+		// eslint-disable-next-line no-empty-pattern
+		async ({}, use, workerInfo) => {
+			const server = new TableServer(8700 + workerInfo.parallelIndex);
+			await server.start();
+			await use(server);
+			await server.dispose();
+		},
+		{ scope: 'worker', timeout: 90_000 }
+	],
+	baseURL: async ({ server }, use) => use(server.url)
+});
+
 export { expect };
 
-/** Start a table from the lobby against random bots. */
-export async function sitDown(page: Page): Promise<void> {
+/** Start a table from the lobby, against random bots unless told otherwise. */
+export async function sitDown(page: Page, opponents: RegExp = /Random bots/): Promise<void> {
 	await page.goto('/');
-	await page.getByRole('radio', { name: /Random bots/ }).check();
+	await page.getByRole('radio', { name: opponents }).check();
 	await page.getByRole('button', { name: 'Sit down' }).click();
 	await expect(page.getByRole('region', { name: 'Your seat' })).toBeVisible();
 }

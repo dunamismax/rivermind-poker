@@ -22,8 +22,11 @@ Those paths are examples for locally generated files. The terminal records compl
 
 ### In the browser
 
+Build the SvelteKit client once (Node and pnpm as in [CONTRIBUTING.md](CONTRIBUTING.md#sveltekit-client)), then serve it with the table server.
+
 ```sh
-uv run rivermind-poker serve
+(cd web && pnpm install --frozen-lockfile && pnpm build)
+uv run rivermind-poker serve --client_dir web/build
 ```
 
 Open http://127.0.0.1:8000, choose opponents and sit down. It works on desktop and mobile browsers. Pass the same `--strategy_path` and `--lut_path` to `serve` to offer trained RiverMind opponents next to the random ones. A reload or dropped connection rejoins your seat. Add `--state_path tables.sqlite3` to keep tables, mid-hand included, across server restarts.
@@ -39,7 +42,8 @@ Open http://127.0.0.1:8000, choose opponents and sit down. It works on desktop a
 | Bot decisions from one seat’s information | [Policies](poker_ai/policies.py) |
 | Fixed-seed matches against random bots | [Benchmark](poker_ai/benchmark.py) |
 | Server-owned table for networked clients | [Table](poker_ai/table.py) |
-| Browser client and WebSocket server | [Web](poker_ai/web/) |
+| Table API and WebSocket server | [Server](poker_ai/web/) |
+| Browser client (SvelteKit) | [Web](web/) |
 | Playable client | [Terminal](poker_ai/terminal/) |
 | Tests | [Unit and functional tests](test/) |
 

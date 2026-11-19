@@ -38,9 +38,6 @@ poker_ai = "poker_ai.cli.runner:cli"
 include = ["poker_ai", "poker_ai.*"]
 namespaces = false
 
-[tool.setuptools.package-data]
-"poker_ai.web" = ["static/*"]
-
 [dependency-groups]
 dev = [
     "httpx2>=2.16.2",
