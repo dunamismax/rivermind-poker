@@ -35,7 +35,7 @@ rivermind-poker = "poker_ai.cli.runner:cli"
 poker_ai = "poker_ai.cli.runner:cli"
 
 [tool.setuptools.packages.find]
-include = ["poker_ai", "poker_ai.*"]
+include = ["poker_ai", "poker_ai.*", "rivermind", "rivermind.*"]
 namespaces = false
 
 [dependency-groups]

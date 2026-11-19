@@ -114,11 +114,15 @@ Cards for streets that are never reached are not dealt. A hand uses at most 2*n*
 
 7.7. `legal_actions(state)` lists fold (only when there is something to call), check or call, and bet or raise with the exact minimum and maximum street totals. When a player’s chips do not reach the minimum, their only bet or raise is all-in.
 
+7.8. A player may bet or raise only while at least one other player who has not folded still has chips. When everyone else still in is all-in, nobody could call a raise, so the player may only check, call or fold.
+
 **Example (pre-flop).** S5 raises to 300, an increment of 200. S0 may call 300, or re-raise to at least 500 (300 + 200) and at most all-in at 10,000.
 
 **Example (post-flop).** On the flop S3 bets 100, the minimum. S4 raises to 350, an increment of 250. S5 may re-raise to at least 600 (350 + 250). If S5 had 80 chips in total, S5 could still go all-in for 80, calling for less.
 
 **Example (short stack).** S1 has 150 chips and faces a bet of 100. S1 may fold, call 100 or go all-in for 150. A raise to the minimum of 200 is not possible, so all-in is S1’s only raise.
+
+**Example (nobody left to raise).** Heads-up, S0 on the button goes all-in for 10,000 and S2 has 20,000. S2 may call 9,900 more or fold, but not raise. In the same way, a big blind of 60 all-in heads-up leaves the button only to call 50 more or fold; 40 of that call is then returned under rule 9.1.
 
 ## 8. Incomplete raises and reopening the betting
 
@@ -174,7 +178,7 @@ The pots add up to the 1,800 contributed. If B has the best hand, B wins the mai
 
 ## 12. Showing and mucking
 
-12.1. When the hand goes to showdown under rule 6.4, because at most one player still in has chips behind, every hand still in is turned face up at once, before any remaining board cards are dealt.
+12.1. When the hand goes to showdown under rule 6.4, because at most one player still in has chips behind, every hand still in is turned face up at once, before any remaining board cards are dealt. This includes a river where the last call puts a player all-in. The hands are listed clockwise from the first player left of the button.
 
 12.2. At any other showdown, hands are shown in order. If there was a bet or raise on the river, the last player to bet or raise shows first. Otherwise the first player left of the button who is still in shows first. Then the others follow clockwise.
 
