@@ -1,35 +1,35 @@
 # RiverMind Poker design
 
-The site is drawn in hand-made pixel art: a night-blue card room, a green felt table with a wooden rail, chunky cards with bold corner indices, and one pixel font for everything. The aim is the easiest poker table to read and play on a phone or a desktop, with the warmth of a pixel-art card game. The [design reference page](../web/src/routes/style/+page.svelte) (`/style` on any build) shows every piece of the kit as the site draws it.
+The site is drawn in hand-made pixel art: a night-blue card room, a green felt table with a wooden rail, a detailed pixel-art deck with four suit colors, and one pixel font for everything. The aim is the easiest poker table to read and play on a phone or a desktop, with the warmth of a pixel-art card game. The [design reference page](../web/src/routes/style/+page.svelte) (`/style` on any build) shows every piece of the kit as the site draws it.
 
-Everything here is original and licensed with the rest of the project under [GPL-3.0-or-later](../LICENSE).
+The interface art and the font are original and licensed with the rest of the project under [GPL-3.0-or-later](../LICENSE). The card deck is a set of pixel-art sprites the owner chose and added to the repository (see [The cards](#the-cards)).
 
 ## How the art is made
 
-The art is drawn by hand as text, after the approach of the owner’s Lorehallow project: every pixel is a character in a grid, every color is named from one palette, and a generator renders the grids into PNG files. Text sources diff cleanly, can be recolored and composed by code, and can never leave the palette.
+The interface art is drawn by hand as text, after the approach of the owner’s Lorehallow project: every pixel is a character in a grid, every color is named from one palette, and a generator renders the grids into PNG files. Text sources diff cleanly, can be recolored and composed by code, and can never leave the palette.
 
 | Source in `web/art/` | What it holds |
 | --- | --- |
 | [`palette.hex`](../web/art/palette.hex) | The 44 colors, by name, in ramps from dark to light. Nothing else is ever drawn. |
-| [`cards.pxl`](../web/art/cards.pxl) | Rank indices, small and large suit pips, the three court portraits and the back emblem. |
+| [`cards/`](../web/art/cards/) | The deck as PNG sprites: `fronts/<rank>-<suit>.png` (ranks `2` to `10`, `jack`, `queen`, `king`, `ace`) and `backs/<name>.png`. They are the only card art on the site. |
 | [`ui.pxl`](../web/art/ui.pxl) | The chip, the dealer button, the person and bot avatars and the RiverMind emblem. |
 | [`rivermind-pixel.font`](../web/art/rivermind-pixel.font) | RiverMind Pixel, the site’s font: 111 glyphs, capital height 7, x-height 5, digits all 5 wide. |
 
-A `.pxl` file is a legend (one character per palette color, or a role such as `@suit` that the generator fills in) followed by `sprite <name>` grids. The generator in [`web/scripts/pixel-art/`](../web/scripts/pixel-art/) lays the sprites out and draws what is better described by rule: the card outlines and pip layouts, the backs’ patterns, the nine-slice frames and buttons, and the table rail. It writes everything into [`web/src/lib/art/`](../web/src/lib/art/), where Vite gives each file a content-hashed URL, plus the favicon and home-screen icon in `web/static/`. From `web/`:
+A `.pxl` file is a legend (one character per palette color, or a role such as `@suit` that the generator fills in) followed by `sprite <name>` grids. The generator in [`web/scripts/pixel-art/`](../web/scripts/pixel-art/) lays the sprites out and draws what is better described by rule: the empty board slot, the nine-slice frames and buttons, and the table rail. It reads the card sprites, shrinks each back to one pixel per art pixel and crops the clear ring every card shares. It writes everything into [`web/src/lib/art/`](../web/src/lib/art/), where Vite gives each file a content-hashed URL, plus the favicon and home-screen icon in `web/static/`. From `web/`:
 
 ```sh
 pnpm art                      # write the art
-pnpm art --preview /tmp/art   # also write contact sheets at 1x and 4x for review
+pnpm art --preview /tmp/art   # also write contact sheets for review (cards at 1x, 2x and 4x)
 ```
 
-Look at the contact sheets before accepting a change, at 1x and zoomed in. `pnpm test` fails if a committed file no longer matches its source (PNGs are compared by their pixels and the font by its tables, so a different zlib does not matter), if any pixel is off the palette, if a card is not 33 × 45, or if a back does not look the same turned 180°. Commit the sources and the regenerated files together, and never edit a generated file by hand.
+Look at the contact sheets before accepting a change, at 1x and zoomed in. `pnpm test` fails if a committed file no longer matches its source (PNGs are compared by their pixels and the font by its tables, so a different zlib does not matter), if any drawn pixel is off the palette, if a card is not 71 × 95 with hard edges, or if `src/lib/art/cards/` holds a file the generator did not make. `pnpm art` itself fails if a card sprite is missing, unexpected, not an exact whole-number enlargement of 73 × 97, partly transparent or drawn outside the shared ring. Commit the sources and the regenerated files together, and never edit a generated file by hand.
 
 ## The rules
 
-- **Square pixels.** Art is drawn at whole multiples: interface sprites and frames at 2x (`--px: 2px`), cards at 1x, 2x or 3x (`--k` on any parent). `image-rendering: pixelated` is set on the body, so nothing is smoothed.
-- **One light.** Light comes from the top-left: frames and cards have a light bevel on the top and left and a shade on the bottom and right. Sprites have a 1-pixel ink outline. Shadows are hard offsets (`drop-shadow` with no blur), never blurred.
+- **Square pixels.** Art is drawn at whole multiples: interface sprites and frames at 2x (`--px: 2px`). Cards ask for a size with `--k` on any parent (1 is 71 CSS pixels wide) and snap to the nearest whole number of *device* pixels per art pixel, using `--dpr` (set in `app.css` from `resolution` media queries) and CSS `round()`, so a card is crisp on 1x, 2x, 2.625x and 3x screens alike. `image-rendering: pixelated` is set on the body, so nothing is smoothed.
+- **One light.** Light comes from the top-left: frames have a light bevel on the top and left and a shade on the bottom and right. Sprites have a 1-pixel ink outline. Shadows are hard offsets (`drop-shadow` with no blur), never blurred.
 - **One font.** RiverMind Pixel is pixel-exact at multiples of 10px: 20px for text and buttons, 30px for headings and amounts, 40px for titles. 15px is used only for secondary text (the log, tags, bets); it is crisp on 2x screens and soft on 1x ones. Text on art gets a 1-pixel ink shadow (`--shadow-text`).
-- **Readable first.** Corner indices use 2-pixel strokes, so a card’s rank is 14px tall at 2x. Red suits are red, black suits near-black; the four-colour deck makes clubs green and diamonds blue. Amounts are shown in full, with the gold chip for stacks.
+- **Readable first.** A card’s rank is 8 art pixels tall, so it is drawn at 2 or more device pixels per art pixel wherever it must be read (`--card-min: 2` keeps the cards a phone pod shows legible). Every suit has its own color: hearts red, diamonds amber, clubs blue, spades slate. Amounts are shown in full, with the gold chip for stacks.
 - **No inline style or script.** The site’s Content-Security-Policy forbids both, so positions are classes (`seat-places.css`, generated by `layout.ts`), swatches are SVG fills, and animations are CSS keyframes, never Svelte transitions. Fonts are always their own files, since the CSP allows `data:` only for images.
 
 ## The kit
@@ -43,19 +43,22 @@ Look at the contact sheets before accepting a change, at 1x and zoomed in. `pnpm
 | `.px-btn` with `.red`, `.blue`, `.amber`, `.green`, `.gold` | Buttons with a 2-pixel lip that drops when pressed. Fold is red, check and call blue, bet and raise amber, a chosen option gold. Slate is the default. `.small` for secondary actions. |
 | `.px-field`, `.px-range` | Inputs and selects; the bet slider with a gold chip for a thumb. |
 | `.sprite` with `.chip-*`, `.avatar-*`, `.pot-pile`, `.dealer-button`, `.mini-cards`, `.emblem` | Sprites as background images, sized in art pixels. |
+| `.card-peek` | A compact hand: two cards fanned tight in a 58 × 50 art-pixel window (the first card’s index and the second card’s corner), at 2 device pixels per art pixel or more. Lists of hands and small seats. |
 
-`PlayingCard` draws a face, a back (`card={null}`) or an empty board slot (`card={undefined}`), sized by the nearest `--k`. Faces have alt text such as “Jack of hearts”.
+`PlayingCard` draws a face, a back (`card={null}`, optionally `back="nebula"`) or an empty board slot (`card={undefined}`), sized by the nearest `--k` and snapped as above. Faces have alt text such as “Jack of hearts”.
 
 ## The cards
 
-A card is 33 × 45 art pixels: odd both ways, so pips centre on a real pixel and the lower half is the upper half turned 180°. The number cards use the standard pip layouts with 5-pixel pips (spades and clubs take a sixth row for the stem). The aces have a 15-pixel suit, and the ace of spades a gold ring. The courts are framed portraits whose robes take the suit’s color: the Jack a river pilot with an oar, the Queen with a flower, the King crowned and bearded. The three backs are RiverMind (felt green with a gold river emblem), Current (blue waves) and Lattice (burgundy diamonds). [`card-assets.ts`](../web/src/lib/card-assets.ts) maps cards to files and lists the treatments and backs for the settings in P6.5.
+The deck is pixel art at 73 × 97, delivered as PNGs enlarged 12 times (fronts) and 13 times (backs); on the site a card is 71 × 95 after the clear outer ring is cropped. It is a four-colour deck: the number cards use the standard pip layouts, the aces a large suit, and the courts are framed figures whose robes and trim take the suit’s color. There are 18 backs: five classic ornate backs (red, the site’s default, plus blue, green, amber and slate), a dusk gradient ornate back, parchment, argyle, confetti, maze, tracks, moons, nebula, rose marble, two contour maps (blue and rainbow), a violet swirl and shapes. Their names are the files’ names. [`card-assets.ts`](../web/src/lib/card-assets.ts) maps cards to files, lists the backs for the settings in P6.5 and preloads only the faces and the back in use. The sprites’ original file names were `8BitDeck_opt2.png` to `8BitDeck_opt53.png` (hearts, clubs, diamonds, spades; 2 to ace) and `Deck Backs1.png` to `Deck Backs18.png`; their source and license terms are still to be recorded in [`licenses/`](../licenses/).
+
+To replace a card, drop a new PNG with the same name into `web/art/cards/` (any whole-number enlargement of 73 × 97 with hard-edged transparency), run `pnpm art --preview <dir>` and look at the sheets. To add a back, add its file and its name to `BACKS` in [`cards.js`](../web/scripts/pixel-art/cards.js) and `CARD_BACKS` in `card-assets.ts`.
 
 ## The table
 
 [`NlTable.svelte`](../web/src/lib/nl/NlTable.svelte) lays out three screens:
 
-- **Wide (landscape, 900px and up).** The table on the left; the action dock, the seat tools and the hand log in a column on the right (360px from 1280px, 300px below). Opponents hold 2x cards, the viewer 3x cards (2x below 1280px), the board 3x (2x).
-- **Tall (phones, and tablets held upright).** One column: the bar, the seat tools, a tall table, then the dock pinned to the bottom of the screen and the log. Opponents are compact pods with a small card-back badge, placed in bands above and below the board so a 9-seat table never covers it; cards they show fan out towards the middle. The viewer keeps a full seat with 2x cards (3x on tablets).
+- **Wide (landscape, 900px and up).** The table on the left; the action dock, the seat tools and the hand log in a column on the right (360px from 1280px, 300px below). Opponents’ cards ask for `--k: 1`, the viewer’s and the board’s for `--k: 1.4` (1 below 1280px); on a 2x screen that is 2 and 3 device pixels per art pixel.
+- **Tall (phones, and tablets held upright).** One column: the bar, the seat tools, a tall table, then the dock pinned to the bottom of the screen and the log. Opponents are compact pods with a small card-back badge (the red back in miniature), placed in bands above and below the board so a 9-seat table never covers it. Cards they show sit towards the middle in a 58 × 50 art-pixel window, fanned tight so the first card’s index and the second card’s corner show, at 2 or more device pixels per art pixel; upright tablets show the whole cards. The viewer keeps a full seat with `--k: 1` cards (1.4 on tablets).
 - **Narrow landscape** (below 900px) uses the single column with the wide table.
 
 The seat tools never sit below the dock, so nothing moves under a finger when the turn’s action panel opens. Seats wear their avatar (a robot for every bot, labelled “Bot”, per D-7), name, stack and a segmented turn clock (green, gold when under 30%, red in the time bank). Bets sit between each seat and the pot with a chip whose color follows the bet’s size in big blinds.

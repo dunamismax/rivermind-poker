@@ -1,28 +1,23 @@
 <script lang="ts">
-	import {
-		CARD_SLOT,
-		cardBackPath,
-		cardFacePath,
-		type CardBack,
-		type CardTreatment
-	} from '../card-assets.ts';
+	import { CARD_SLOT, cardBackPath, cardFacePath, type CardBack } from '../card-assets.ts';
 	import type { Card } from '../protocol.ts';
 	import { cardName } from '../wording.ts';
 
 	/**
 	 * A card face, `null` for a face-down card, `undefined` for an empty slot.
-	 * Its size is 33 × 45 art pixels times `--k` (2 unless a parent sets it).
+	 * The art is 71 × 95; `--k` on any parent asks for a size (1 is 71 CSS
+	 * pixels wide), and the card snaps to the nearest whole number of device
+	 * pixels per art pixel, so it stays crisp on every screen. `--card-min`
+	 * sets the fewest device pixels per art pixel, for cards that must stay legible.
 	 */
 	let {
 		card,
 		large = false,
-		treatment,
 		back
 	}: {
 		card: Card | null | undefined;
-		/** Older layouts: one size up. */
+		/** Older layouts: half a size up. */
 		large?: boolean;
-		treatment?: CardTreatment;
 		back?: CardBack;
 	} = $props();
 </script>
@@ -41,7 +36,7 @@
 	<img
 		class="card face"
 		class:large
-		src={cardFacePath(card, treatment)}
+		src={cardFacePath(card)}
 		alt={cardName(card)}
 		draggable="false"
 	/>
@@ -49,13 +44,21 @@
 
 <style>
 	.card {
-		--card-k: var(--k, 2);
+		--card-k: var(--k, 1);
+		/* Device pixels per art pixel: the size asked for, rounded, but at least
+		   --card-min where the screen has that many device pixels per CSS pixel.
+		   Then one art pixel in CSS pixels. */
+		--card-s: max(
+			min(var(--card-min, 1), round(down, var(--dpr, 1), 1)),
+			round(nearest, calc(var(--card-k) * var(--dpr, 1)), 1)
+		);
+		--card-a: calc(1px * var(--card-s) / var(--dpr, 1));
 		display: block;
 		flex: none;
-		width: calc(33px * var(--card-k));
-		height: calc(45px * var(--card-k));
+		width: calc(71 * var(--card-a));
+		height: calc(95 * var(--card-a));
 		image-rendering: pixelated;
-		filter: drop-shadow(0 calc(1px * var(--card-k)) 0 rgb(0 0 0 / 0.4));
+		filter: drop-shadow(0 calc(2 * var(--card-a)) 0 rgb(0 0 0 / 0.4));
 		animation: deal 0.24s steps(4, end);
 		user-select: none;
 		-webkit-user-select: none;
@@ -65,11 +68,11 @@
 		animation: none;
 	}
 	.large {
-		--card-k: calc(var(--k, 2) + 1);
+		--card-k: calc(var(--k, 1) + 0.5);
 	}
 	@keyframes deal {
 		from {
-			transform: translateY(calc(-6px * var(--card-k))) rotate(-4deg);
+			transform: translateY(calc(-12 * var(--card-a))) rotate(-4deg);
 			opacity: 0;
 		}
 	}

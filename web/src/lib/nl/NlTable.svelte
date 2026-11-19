@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { allCardUrls } from '../card-assets.ts';
+	import { tableCardUrls } from '../card-assets.ts';
 	import PlayingCard from '../components/PlayingCard.svelte';
 	import type { RelationKind, ReportReason, TableView } from '../protocol-v2.ts';
 	import ActionPanel from './ActionPanel.svelte';
@@ -14,9 +14,9 @@
 
 	let { view, connection }: { view: TableView; connection: NlConnection } = $props();
 
-	// Fetch every card once, so none pops in mid-deal.
+	// Fetch the faces and the back once, so no card pops in mid-deal.
 	onMount(() => {
-		for (const src of allCardUrls()) new Image().src = src;
+		for (const src of tableCardUrls()) new Image().src = src;
 	});
 
 	// The turn clocks tick on the local clock, shifted to the server's.
@@ -587,7 +587,7 @@
 		gap: 8px;
 		text-align: center;
 		z-index: 1;
-		--k: 3;
+		--k: 1.4;
 	}
 	.pot-line {
 		display: flex;
@@ -819,7 +819,7 @@
 			--table-px: 2px;
 		}
 		.centre {
-			--k: 2;
+			--k: 1;
 		}
 		.log {
 			max-height: 360px;
@@ -860,7 +860,7 @@
 	/* Tablets held upright: the tall table with roomier seats and big cards. */
 	@media (min-width: 640px) and (max-width: 1099px) and (orientation: portrait) {
 		.centre {
-			--k: 3;
+			--k: 1.4;
 		}
 		.board {
 			gap: 6px;

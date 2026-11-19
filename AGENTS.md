@@ -54,7 +54,7 @@ pnpm check && pnpm lint && pnpm test && pnpm build
 pnpm e2e    # Chromium, Firefox and WebKit against a real `serve-nl`
 ```
 
-The site’s art is pixel art drawn as text: the palette, sprites and font are in `web/art/`, and `pnpm art` (from `web/`) renders them into `web/src/lib/art/` and `web/static/`. Never edit a generated PNG, the font or `palette.css` by hand; change the source, run `pnpm art --preview <dir outside the repo>`, look at the contact sheets, and commit both. Draw only with palette names, keep art at whole-number scales, and size text in multiples of 10px. [The design notes](docs/design.md) and the `/style` page describe the kit.
+The site’s art is pixel art drawn as text: the palette, sprites and font are in `web/art/`, and `pnpm art` (from `web/`) renders them into `web/src/lib/art/` and `web/static/`. Never edit a generated PNG, the font or `palette.css` by hand; change the source, run `pnpm art --preview <dir outside the repo>`, look at the contact sheets, and commit both. Draw only with palette names, keep art at whole-number scales, and size text in multiples of 10px. The cards are the exception: the owner’s PNG sprites in `web/art/cards/` (`fronts/<rank>-<suit>.png`, `backs/<name>.png`) are the only card art, are not on the palette, and are shrunk by `pnpm art` to 71 × 95. Size cards with `--k`; they snap to whole device pixels per art pixel, so check them at DPR 1, 2 and 3. [The design notes](docs/design.md) and the `/style` page describe the kit.
 
 After changing `poker_ai/web/protocol.py` or `rivermind/server/protocol.py`, run `pnpm protocol` and commit the regenerated `web/src/lib/protocol.ts` and `protocol-v2.ts`. Keep the client free of inline script and style: the site CSP blocks them and `pnpm build` fails on them.
 

@@ -34,7 +34,64 @@
 	--win: var(--green-light);
 	--shadow-text: 0 var(--px) 0 var(--ink);
 	--radius: 0;
+	/* Device pixels per CSS pixel, so cards can snap to whole device pixels. */
+	--dpr: 1;
 	color-scheme: dark;
+}
+@media (min-resolution: 1.25dppx) {
+	:root {
+		--dpr: 1.25;
+	}
+}
+@media (min-resolution: 1.5dppx) {
+	:root {
+		--dpr: 1.5;
+	}
+}
+@media (min-resolution: 1.75dppx) {
+	:root {
+		--dpr: 1.75;
+	}
+}
+@media (min-resolution: 2dppx) {
+	:root {
+		--dpr: 2;
+	}
+}
+@media (min-resolution: 2.25dppx) {
+	:root {
+		--dpr: 2.25;
+	}
+}
+@media (min-resolution: 2.5dppx) {
+	:root {
+		--dpr: 2.5;
+	}
+}
+@media (min-resolution: 2.625dppx) {
+	:root {
+		--dpr: 2.625;
+	}
+}
+@media (min-resolution: 2.75dppx) {
+	:root {
+		--dpr: 2.75;
+	}
+}
+@media (min-resolution: 3dppx) {
+	:root {
+		--dpr: 3;
+	}
+}
+@media (min-resolution: 3.5dppx) {
+	:root {
+		--dpr: 3.5;
+	}
+}
+@media (min-resolution: 4dppx) {
+	:root {
+		--dpr: 4;
+	}
 }
 
 * {

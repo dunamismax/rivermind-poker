@@ -46,8 +46,8 @@
 	<h2>Design reference</h2>
 	<p class="lead">
 		Every piece of the pixel kit as the site draws it. Art pixels are drawn at 2x for the interface;
-		cards at 1x, 2x or 3x. Sources live in <code>web/art/</code>; run
-		<code>pnpm art</code> after changing them.
+		cards at a whole number of screen pixels per art pixel, the size <code>--k</code> asks for.
+		Sources live in <code>web/art/</code>; run <code>pnpm art</code> after changing them.
 	</p>
 
 	<section>
@@ -119,19 +119,25 @@
 				</div>
 			{/each}
 			<div class="suit">
-				{#each ['diamonds', 'clubs'] as const as suit (suit)}
-					{#each [10, 12, 14] as rank (rank)}
-						<PlayingCard card={{ rank, suit }} treatment="four-colour" />
-					{/each}
+				{#each CARD_BACKS as back (back)}
+					<figure class="back">
+						<PlayingCard card={null} {back} />
+						<figcaption>{back}</figcaption>
+					</figure>
 				{/each}
-				{#each CARD_BACKS as back (back)}<PlayingCard card={null} {back} />{/each}
-				<PlayingCard card={undefined} />
+				<figure class="back">
+					<PlayingCard card={undefined} />
+					<figcaption>slot</figcaption>
+				</figure>
 			</div>
 		</div>
 		<div class="sizes">
-			<div class="k1"><PlayingCard card={{ rank: 13, suit: 'hearts' }} /><span>1x</span></div>
-			<div class="k2"><PlayingCard card={{ rank: 13, suit: 'hearts' }} /><span>2x</span></div>
-			<div class="k3"><PlayingCard card={{ rank: 13, suit: 'hearts' }} /><span>3x</span></div>
+			<div class="k1">
+				<PlayingCard card={{ rank: 13, suit: 'hearts' }} /><span>--k: 0.75</span>
+			</div>
+			<div class="k2"><PlayingCard card={{ rank: 13, suit: 'hearts' }} /><span>--k: 1</span></div>
+			<div class="k3"><PlayingCard card={{ rank: 13, suit: 'hearts' }} /><span>--k: 1.4</span></div>
+			<div class="k4"><PlayingCard card={{ rank: 13, suit: 'hearts' }} /><span>--k: 2</span></div>
 		</div>
 	</section>
 
@@ -233,7 +239,7 @@
 		min-width: 220px;
 	}
 	.deck {
-		--k: 2;
+		--k: 1;
 		display: grid;
 		gap: 10px;
 	}
@@ -254,14 +260,26 @@
 		gap: 6px;
 		color: var(--mist);
 	}
+	.back {
+		display: grid;
+		justify-items: center;
+		gap: 4px;
+		width: 120px;
+		margin: 0;
+		color: var(--mist);
+		font-size: var(--fs-s);
+	}
 	.k1 {
-		--k: 1;
+		--k: 0.75;
 	}
 	.k2 {
-		--k: 2;
+		--k: 1;
 	}
 	.k3 {
-		--k: 3;
+		--k: 1.4;
+	}
+	.k4 {
+		--k: 2;
 	}
 	.sprites .avatar {
 		width: 64px;
@@ -269,7 +287,10 @@
 	}
 	@media (max-width: 639px) {
 		.deck {
-			--k: 1;
+			--k: 0.75;
+		}
+		.sizes {
+			flex-wrap: wrap;
 		}
 	}
 </style>

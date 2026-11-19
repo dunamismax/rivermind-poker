@@ -214,10 +214,17 @@ function miniCards() {
 				if (corner) continue;
 				const edge = x === 0 || x === 8 || y === 0 || y === 10;
 				const border = x === 1 || x === 7 || y === 1 || y === 9;
-				c.px(x0 + x, y0 + y, edge ? 'ink' : border ? 'paper' : (x + y) % 2 ? 'felt' : 'felt dark');
+				c.px(x0 + x, y0 + y, edge ? 'ink' : border ? 'white' : 'red light');
 			}
 		}
-		c.px(x0 + 4, y0 + 5, 'gold');
+		// The default back (classic red) in miniature: a white diamond at its heart.
+		for (const [dx, dy] of [
+			[4, 4],
+			[3, 5],
+			[5, 5],
+			[4, 6]
+		])
+			c.px(x0 + dx, y0 + dy, 'white');
 	};
 	card(0, 2);
 	card(5, 0);

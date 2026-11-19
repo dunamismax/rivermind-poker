@@ -1,11 +1,12 @@
-// Writes the site's pixel art (see scripts/pixel-art/render.js). With
-// --preview DIR it also writes contact sheets there for review: every card,
-// every interface sprite and a font specimen, at 1x and 4x.
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { Canvas } from './pixel-art/canvas.js';
-import { BACKS, CARD_H, CARD_W, RANKS, SUITS, back, face } from './pixel-art/cards.js';
-import { encodePng } from './pixel-art/png.js';
+// Writes the site's pixel art (see scripts/pixel-art/render.js) and removes
+// any card image it no longer makes. With --preview DIR it also writes
+// contact sheets there for review: every card, every interface sprite and a
+// font specimen, at 1x and 4x (the cards also at 2x).
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, relative, resolve } from 'node:path';
+import { Canvas, PALETTE } from './pixel-art/canvas.js';
+import { BACKS, CARD_H, CARD_W, RANKS, SUITS, slot } from './pixel-art/cards.js';
+import { decodePng, encodePng } from './pixel-art/png.js';
 import { loadFont, renderAll, renderImages } from './pixel-art/render.js';
 
 const WEB = resolve(import.meta.dirname, '..');
@@ -17,23 +18,65 @@ for (const [path, bytes] of files) {
 }
 console.log(`Wrote ${files.size} files.`);
 
+// The site bundles every PNG under src/lib/art/cards/, so nothing else may stay there.
+const cardsDir = resolve(WEB, 'src/lib/art/cards');
+for (const entry of readdirSync(cardsDir, { recursive: true, withFileTypes: true })) {
+	const path = relative(WEB, resolve(entry.parentPath, entry.name));
+	if (entry.isFile() && !files.has(path)) {
+		rmSync(resolve(WEB, path));
+		console.log(`Removed ${path}`);
+	}
+}
+for (const entry of readdirSync(cardsDir, { withFileTypes: true })) {
+	const dir = resolve(cardsDir, entry.name);
+	if (entry.isDirectory() && readdirSync(dir).length === 0) rmSync(dir, { recursive: true });
+}
+
 const at = process.argv.indexOf('--preview');
 if (at > 0) {
 	const dir = resolve(process.argv[at + 1] ?? '.');
 	mkdirSync(dir, { recursive: true });
 	const save = (name, canvas, k) =>
 		writeFileSync(resolve(dir, name), encodePng(canvas.scale(k).rgba()));
-	for (const treatment of ['standard', 'four-colour']) {
-		const sheet = new Canvas(13 * (CARD_W + 3) + 3, 5 * (CARD_H + 3) + 3);
-		sheet.rect(0, 0, sheet.width, sheet.height, 'felt');
-		SUITS.forEach((suit, j) =>
-			RANKS.forEach((rank, i) =>
-				sheet.stamp(face(rank, suit, treatment), 3 + i * (CARD_W + 3), 3 + j * (CARD_H + 3))
-			)
+	// The deck on felt: a row per suit, then the backs and the slot.
+	const image = (path) => decodePng(files.get(`src/lib/art/cards/${path}`)).data;
+	const gap = 4;
+	const cols = 13;
+	const rows = 4 + Math.ceil((BACKS.length + 1) / cols);
+	const sheetW = gap + cols * (CARD_W + gap);
+	const sheetH = gap + rows * (CARD_H + gap);
+	const deckSheet = new Uint8Array(sheetW * sheetH * 4);
+	const felt = [...PALETTE.get('felt'), 255];
+	for (let i = 0; i < sheetW * sheetH; i++) deckSheet.set(felt, i * 4);
+	const place = (rgba, col, row) => {
+		const x0 = gap + col * (CARD_W + gap);
+		const y0 = gap + row * (CARD_H + gap);
+		for (let y = 0; y < CARD_H; y++) {
+			for (let x = 0; x < CARD_W; x++) {
+				const at = (y * CARD_W + x) * 4;
+				if (rgba[at + 3])
+					deckSheet.set(rgba.subarray(at, at + 4), ((y0 + y) * sheetW + x0 + x) * 4);
+			}
+		}
+	};
+	SUITS.forEach((suit, j) =>
+		RANKS.forEach((rank, i) => place(image(`faces/${rank}-${suit}.png`), i, j))
+	);
+	[...BACKS.map((name) => image(`backs/${name}.png`)), slot().rgba().data].forEach((rgba, n) =>
+		place(rgba, n % cols, 4 + Math.floor(n / cols))
+	);
+	for (const k of [1, 2, 4]) {
+		const big = new Uint8Array(sheetW * k * sheetH * k * 4);
+		for (let y = 0; y < sheetH * k; y++) {
+			for (let x = 0; x < sheetW * k; x++) {
+				const at = (Math.floor(y / k) * sheetW + Math.floor(x / k)) * 4;
+				big.set(deckSheet.subarray(at, at + 4), (y * sheetW * k + x) * 4);
+			}
+		}
+		writeFileSync(
+			resolve(dir, `cards-${k}x.png`),
+			encodePng({ width: sheetW * k, height: sheetH * k, data: big })
 		);
-		BACKS.forEach((name, i) => sheet.stamp(back(name), 3 + i * (CARD_W + 3), 3 + 4 * (CARD_H + 3)));
-		save(`cards-${treatment}-1x.png`, sheet, 1);
-		save(`cards-${treatment}-4x.png`, sheet, 4);
 	}
 	const ui = [...renderImages()].filter(([path]) => path.includes('/ui/'));
 	const width = 400;

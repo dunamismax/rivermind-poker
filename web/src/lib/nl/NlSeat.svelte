@@ -136,7 +136,7 @@
 
 <style>
 	.seat {
-		--k: 2;
+		--k: 1;
 		position: absolute;
 		transform: translate(-50%, -50%);
 		display: grid;
@@ -148,19 +148,29 @@
 		line-height: 1.2;
 	}
 	.seat.me {
-		--k: 3;
+		--k: 1.4;
 		width: 200px;
 		z-index: 2;
 	}
+	/* --hand-a is the cards' art pixel as PlayingCard snaps it, so the fan and
+	   the overlap with the plate follow the size the cards are drawn at. */
 	.hand {
+		--hand-a: calc(
+			1px *
+				max(
+					min(var(--card-min, 1), round(down, var(--dpr, 1), 1)),
+					round(nearest, calc(var(--k) * var(--dpr, 1)), 1)
+				) /
+				var(--dpr, 1)
+		);
 		display: flex;
 		justify-content: center;
-		min-height: calc(45px * var(--k) * 0.55);
-		margin-bottom: calc(-45px * var(--k) * 0.3);
+		min-height: calc(95 * var(--hand-a) * 0.55);
+		margin-bottom: calc(-95 * var(--hand-a) * 0.3);
 	}
 	.hand :global(.card + .card) {
-		margin-left: calc(-12px * var(--k));
-		transform: rotate(4deg) translateY(calc(var(--k) * 1px));
+		margin-left: calc(-26 * var(--hand-a));
+		transform: rotate(4deg) translateY(calc(2 * var(--hand-a)));
 		transform-origin: bottom left;
 	}
 	.hand :global(.card:first-child:not(:last-child)) {
@@ -341,7 +351,7 @@
 			width: 150px;
 		}
 		.seat.me {
-			--k: 2;
+			--k: 1;
 			width: 172px;
 		}
 		.avatar {
@@ -355,12 +365,12 @@
 	   keeps a full seat with large cards. */
 	@media (max-width: 639px), (max-width: 1099px) and (orientation: portrait) {
 		.seat {
-			--k: 1;
+			--k: 0.5;
 			width: 84px;
 			font-size: var(--fs-s);
 		}
 		.seat.me {
-			--k: 2;
+			--k: 1;
 			width: 220px;
 			font-size: var(--fs);
 		}
@@ -381,11 +391,26 @@
 			justify-content: center;
 			gap: 4px;
 		}
+		/* Cards a pod shows: at least 2 device pixels per art pixel so the
+		   indices read, fanned tight and cut to a 58 × 50 window (the first
+		   card's index and the second card's corner) so the pod stays small. */
 		.seat:not(.me) .hand {
+			--k: 0.75;
+			--card-min: 2;
 			position: absolute;
 			z-index: 2;
+			justify-content: flex-start;
+			width: calc(58 * var(--hand-a));
+			height: calc(50 * var(--hand-a));
 			min-height: 0;
 			margin: 0;
+			overflow: hidden;
+		}
+		.seat:not(.me) .hand :global(.card) {
+			transform: none;
+		}
+		.seat:not(.me) .hand :global(.card + .card) {
+			margin-left: calc(-53 * var(--hand-a));
 		}
 		.seat:not(.me) .hand.backs {
 			display: none;
@@ -471,11 +496,18 @@
 			font-size: var(--fs);
 		}
 		.seat.me {
-			--k: 3;
+			--k: 1.4;
 			width: 240px;
 		}
+		/* Upright tablets have room for the whole cards. */
 		.seat:not(.me) .hand {
-			--k: 2;
+			--k: 1;
+			width: auto;
+			height: auto;
+			overflow: visible;
+		}
+		.seat:not(.me) .hand :global(.card + .card) {
+			margin-left: calc(-49 * var(--hand-a));
 		}
 		.bot,
 		.status {

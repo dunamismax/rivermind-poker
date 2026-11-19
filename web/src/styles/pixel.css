@@ -247,6 +247,34 @@ input.px-range:disabled {
 	height: calc(13 * var(--px));
 	background-image: url('../lib/art/ui/mini-cards.png');
 }
+/* A compact hand: cards fanned tight and cut to a 58 × 50 art-pixel window
+   (the first card's index and the second card's corner), at 2 device pixels
+   per art pixel or more where the screen has them, so the ranks read in a
+   list or a small seat. --peek-a is one art pixel, snapped as PlayingCard's. */
+.card-peek {
+	--k: 0.75;
+	--card-min: 2;
+	--peek-a: calc(
+		1px *
+			max(
+				min(var(--card-min), round(down, var(--dpr, 1), 1)),
+				round(nearest, calc(var(--k) * var(--dpr, 1)), 1)
+			) /
+			var(--dpr, 1)
+	);
+	display: flex;
+	flex: none;
+	width: calc(58 * var(--peek-a));
+	height: calc(50 * var(--peek-a));
+	overflow: hidden;
+}
+.card-peek > .card {
+	transform: none;
+}
+.card-peek > .card + .card {
+	margin-left: calc(-53 * var(--peek-a));
+}
+
 .emblem {
 	width: calc(15 * var(--px));
 	height: calc(17 * var(--px));

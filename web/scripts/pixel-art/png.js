@@ -65,9 +65,31 @@ export function encodePng({ width, height, data }) {
 	return out;
 }
 
+/** Undoes PNG row filter `type` in place (bytes per pixel 4). */
+function unfilter(type, row, prior) {
+	for (let i = 0; i < row.length; i++) {
+		const a = i >= 4 ? row[i - 4] : 0;
+		const b = prior ? prior[i] : 0;
+		const c = prior && i >= 4 ? prior[i - 4] : 0;
+		let add = 0;
+		if (type === 1) add = a;
+		else if (type === 2) add = b;
+		else if (type === 3) add = (a + b) >> 1;
+		else if (type === 4) {
+			const p = a + b - c;
+			const pa = Math.abs(p - a);
+			const pb = Math.abs(p - b);
+			const pc = Math.abs(p - c);
+			add = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+		} else if (type !== 0) throw new Error(`decodePng: bad filter ${type}`);
+		row[i] = (row[i] + add) & 0xff;
+	}
+}
+
 /**
- * Decodes a PNG written by encodePng (8-bit RGBA, filter 0), for the drift
- * check: two PNGs match when their pixels do, whatever zlib produced.
+ * Decodes an 8-bit RGBA PNG without interlacing: the drift check's reader
+ * (two PNGs match when their pixels do, whatever zlib produced) and the
+ * reader for the imported card sprites in web/art/cards/.
  * @param {Uint8Array} png
  */
 export function decodePng(png) {
@@ -84,6 +106,7 @@ export function decodePng(png) {
 			width = view.getUint32(at + 8);
 			height = view.getUint32(at + 12);
 			if (data[8] !== 8 || data[9] !== 6) throw new Error('decodePng: only 8-bit RGBA');
+			if (data[12] !== 0) throw new Error('decodePng: no interlacing');
 		} else if (type === 'IDAT') idat.push(data);
 		at += 12 + length;
 	}
@@ -96,9 +119,10 @@ export function decodePng(png) {
 	const raw = inflateSync(joined);
 	const data = new Uint8Array(width * height * 4);
 	for (let y = 0; y < height; y++) {
-		const row = y * (width * 4 + 1);
-		if (raw[row] !== 0) throw new Error('decodePng: only filter 0');
-		data.set(raw.subarray(row + 1, row + 1 + width * 4), y * width * 4);
+		const at = y * (width * 4 + 1);
+		const row = raw.slice(at + 1, at + 1 + width * 4);
+		unfilter(raw[at], row, y ? data.subarray((y - 1) * width * 4, y * width * 4) : null);
+		data.set(row, y * width * 4);
 	}
 	return { width, height, data };
 }

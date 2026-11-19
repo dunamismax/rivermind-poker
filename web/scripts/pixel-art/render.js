@@ -1,19 +1,22 @@
 // Renders every piece of the site's pixel art from the sources in web/art/:
-// cards, interface sprites, the font, the palette as CSS and the icons.
+// the cards, interface sprites, the font, the palette as CSS and the icons.
 // scripts/generate-pixel-art.js writes the result; src/lib/art/art.spec.ts
 // fails when a committed file no longer matches.
 import { readFileSync } from 'node:fs';
 import { ART, PALETTE } from './canvas.js';
-import { renderCards } from './cards.js';
+import { renderDeck, slot } from './cards.js';
 import { PixelFont } from './font.js';
 import { encodePng } from './png.js';
 import { renderIcons, renderUi } from './ui.js';
 import { fromSfnt } from './woff.js';
 
-/** Canvases by path: `lib/...` under web/src/, `static/...` under web/. */
+/**
+ * The art drawn on the palette, as canvases by path relative to web/. The
+ * imported card sprites are not on the palette; see renderDeck.
+ */
 export function renderImages() {
 	const out = new Map();
-	for (const [path, canvas] of renderCards()) out.set(`src/lib/art/${path}`, canvas);
+	out.set('src/lib/art/cards/slot.png', slot());
 	for (const [path, canvas] of renderUi()) out.set(`src/lib/art/${path}`, canvas);
 	for (const [path, canvas] of renderIcons()) out.set(`static/${path}`, canvas);
 	return out;
@@ -39,6 +42,7 @@ export function paletteCss() {
 /** Every generated file as bytes, by path relative to web/. */
 export function renderAll() {
 	const out = new Map();
+	for (const [path, image] of renderDeck()) out.set(`src/lib/art/${path}`, encodePng(image));
 	for (const [path, canvas] of renderImages()) out.set(path, encodePng(canvas.rgba()));
 	out.set('src/lib/art/fonts/rivermind-pixel.woff', fromSfnt(loadFont().ttf()));
 	out.set('src/lib/art/palette.css', new TextEncoder().encode(paletteCss()));

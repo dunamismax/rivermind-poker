@@ -120,7 +120,11 @@
 									You
 								</span>{/if}{#if open.button === seat.seat}<span class="tag">Button</span>{/if}
 						</span>
-						<span class="hole" aria-label={seat.cards ? 'Cards' : 'Cards not shown'}>
+						<span
+							class="hole"
+							class:card-peek={seat.cards}
+							aria-label={seat.cards ? 'Cards' : 'Cards not shown'}
+						>
 							{#if seat.cards}
 								{#each seat.cards as card (`${card.rank}${card.suit}`)}<PlayingCard {card} />{/each}
 							{:else}
@@ -155,7 +159,7 @@
 						>
 							<span class="title">{hand.table_name} · hand #{hand.hand_no}</span>
 							<span class="when">{when(hand.at)}</span>
-							<span class="cards" aria-hidden="true">
+							<span class="cards card-peek" aria-hidden="true">
 								{#each hand.cards as card (`${card.rank}${card.suit}`)}<PlayingCard {card} />{/each}
 							</span>
 							<span class="net" class:won={hand.net > 0} class:lost={hand.net < 0}>
@@ -230,21 +234,28 @@
 		font-size: var(--fs-s);
 	}
 	.board,
-	.hole,
-	.cards {
+	.hole {
 		display: flex;
 		gap: 4px;
 	}
 	.board {
 		margin: 12px 0;
 	}
-	.cards,
-	.hole {
-		--k: 1;
+	/* Whole cards where there is room; phones keep the compact peek. */
+	@media (min-width: 600px) {
+		.hole {
+			--k: 1;
+			width: auto;
+			height: auto;
+			overflow: visible;
+		}
+		.hole :global(.card + .card) {
+			margin-left: -26px;
+		}
 	}
 	@media (max-width: 599px) {
-		.board {
-			--k: 1;
+		.board :global(.card + .card) {
+			margin-left: -14px;
 		}
 		.page {
 			padding: 8px;

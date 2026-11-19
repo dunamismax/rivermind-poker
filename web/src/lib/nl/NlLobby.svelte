@@ -278,7 +278,7 @@
 		align-content: start;
 	}
 	.fan {
-		--k: 3;
+		--k: 1.4;
 		display: flex;
 		padding: 8px 0 4px 12px;
 	}
@@ -486,7 +486,7 @@
 			margin-top: 8px;
 		}
 		.fan {
-			--k: 2;
+			--k: 1;
 			justify-content: center;
 			padding-left: 0;
 		}
