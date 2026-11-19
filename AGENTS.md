@@ -54,7 +54,9 @@ pnpm check && pnpm lint && pnpm test && pnpm build
 pnpm e2e    # Chromium, Firefox and WebKit against a real `serve`
 ```
 
-After changing `poker_ai/web/protocol.py`, run `pnpm protocol` and commit the regenerated `web/src/lib/protocol.ts`. Keep the client free of inline script and style: the site CSP blocks them and `pnpm build` fails on them.
+After changing `poker_ai/web/protocol.py` or `rivermind/server/protocol.py`, run `pnpm protocol` and commit the regenerated `web/src/lib/protocol.ts` and `protocol-v2.ts`. Keep the client free of inline script and style: the site CSP blocks them and `pnpm build` fails on them.
+
+Socket tests of the table server (`test/server/test_protocol_v2.py`) run with a `ManualClock`, so nobody times out, and a `TestClient` receive has no timeout. Check the last message already received before waiting for a turn (the snapshot after joining is often one), and keep playing your own turns while waiting for a later hand, or the test hangs.
 
 Training workers are separate processes, and macOS starts them with spawn, so pytest monkeypatches do not reach them. To test server scheduling with deterministic updates, use the thread workers in [the training test helpers](test/functional/training_helpers.py). Keep a real-worker CLI run for the end-to-end check.
 

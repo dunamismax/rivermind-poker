@@ -14,7 +14,7 @@ from poker_ai.web.app import create_app
 from poker_ai.web.protocol import (
     ClientMessage, ErrorCode, SeatView, ServerMessage, json_schema,
 )
-from poker_ai.web.typescript import to_typescript, type_of
+from rivermind.server.typescript import to_typescript, type_of
 
 ROOT = Path(__file__).resolve().parents[2]
 GENERATED = ROOT / "web" / "src" / "lib" / "protocol.ts"

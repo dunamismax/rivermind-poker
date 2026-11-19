@@ -54,6 +54,8 @@ class RunnerOptions:
     """Seconds a bot waits before acting, so people can follow the play."""
     bot_rebuy: bool = True
     """Bots that lose every chip buy in again for the maximum."""
+    require_person: bool = False
+    """Deal only when a person would be dealt in, so bots never play on alone."""
     sleep: Sleep = field(default=asyncio.sleep)
     """Waits for the pauses above."""
     clock: Clock = field(default_factory=SystemClock)
@@ -88,6 +90,7 @@ class TableRunner:
         self._task: asyncio.Task[None] | None = None
         self._closed = False
         self._bot_count = 0
+        self.last_active = self.options.clock.now()
 
     # Lifecycle
 
@@ -155,12 +158,12 @@ class TableRunner:
             self.table.rebuy(player_id, amount)
             await self._changed()
 
-    async def act(self, player_id: str, action: Action) -> None:
+    async def act(self, player_id: str, action: Action, seq: int | None = None) -> None:
         async with self.lock:
             seat = self.table.seat_of(player_id)
             if seat is not None and self._is_bot(seat):
                 raise TableError(ErrorCode.NOT_YOUR_TURN, "bots act for themselves")
-            self.table.act(player_id, action)
+            self.table.act(player_id, action, seq)
             await self._changed()
 
     # The task
@@ -179,6 +182,7 @@ class TableRunner:
         self._wake.set()
         if not events:
             return
+        self.last_active = self.options.clock.now()
         for hook in self.before_publish:
             await hook(self, events)
         for listener in list(self.listeners):
@@ -198,13 +202,25 @@ class TableRunner:
                 log.exception("Table %s failed a step; retrying", self.table_id)
                 await self.options.sleep(1.0)
 
+    def may_deal(self) -> bool:
+        table = self.table
+        if not table.can_start():
+            return False
+        if not self.options.require_person:
+            return True
+        return any(not self._is_bot(seat) for seat in table.dealt_in_next())
+
+    def has_people(self) -> bool:
+        """Whether any person holds a seat."""
+        return any(not player.is_bot for _, player in self.table.players())
+
     async def _step(self) -> None:
         table = self.table
-        if table.can_start():
+        if self.may_deal():
             if table.hand is not None and self.options.hand_pause:
                 await self.options.sleep(self.options.hand_pause)
             async with self.lock:
-                if table.can_start():
+                if self.may_deal():
                     table.start_hand(self.rng)
                     await self._changed()
             return

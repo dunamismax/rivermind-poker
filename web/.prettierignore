@@ -10,3 +10,4 @@ bun.lockb
 
 # Generated from the Python protocol models
 /src/lib/protocol.ts
+/src/lib/protocol-v2.ts

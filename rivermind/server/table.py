@@ -71,6 +71,7 @@ class ErrorCode(StrEnum):
     NOT_SEATED = "not_seated"
     BAD_BUY_IN = "bad_buy_in"
     NOT_YOUR_TURN = "not_your_turn"
+    STALE = "stale"
     ILLEGAL_ACTION = "illegal_action"
     HAND_OVER = "hand_over"
     HAND_IN_PROGRESS = "hand_in_progress"
@@ -168,6 +169,8 @@ class Turn:
     """The clock for the player to act."""
 
     seat: int
+    seq: int
+    """The seq of the event that started the turn."""
     started: float
     deadline: float
     """When the action time runs out; after it the time bank runs."""
@@ -195,6 +198,8 @@ class Table:
         self.seats: list[Player | None] = [None] * config.seat_count
         self.hand: HandState | None = None
         """The current hand, or the last one once it is over, until the next starts."""
+        self.hand_players: list[str | None] = [None] * config.seat_count
+        """The player id in each seat when ``hand`` was dealt."""
         self.hand_no = 0
         self.button: int | None = None
         """The button seat of the last hand dealt."""
@@ -406,6 +411,7 @@ class Table:
                 self.config.time_bank_seconds, player.time_bank + self.config.bank_refill_seconds
             )
         self.hand = state
+        self.hand_players = [p.player_id if p is not None else None for p in self.seats]
         self.hand_no += 1
         self.button = button
         self._emit(
@@ -421,9 +427,17 @@ class Table:
         self._after_change(None, state)
         return state
 
-    def act(self, player_id: str, action: Action) -> None:
-        """Apply the player's action. Only the seat to act may act."""
+    def act(self, player_id: str, action: Action, seq: int | None = None) -> None:
+        """Apply the player's action. Only the seat to act may act.
+
+        With ``seq``, the seq of the state the player saw, an action meant for
+        an earlier turn is refused as stale rather than applied to this one.
+        """
         seat, _ = self._seated(player_id)
+        hand = self.hand
+        if hand is not None and not hand.is_over and hand.to_act == seat and seq is not None:
+            if self.turn is not None and seq < self.turn.seq:
+                raise TableError(ErrorCode.STALE, f"that action was for an earlier turn (seq {seq} < {self.turn.seq})")
         self.act_seat(seat, action)
 
     def act_seat(self, seat: int, action: Action, *, timed_out: bool = False) -> None:
@@ -486,10 +500,13 @@ class Table:
         else:
             started = self.clock()
         deadline = started + self.config.action_seconds
-        bank = player.time_bank if player.connected else 0.0
-        self.turn = Turn(seat, started, deadline, deadline + bank)
-        if not keep_start:
-            self._emit("turn", seat=seat, started=started, deadline=deadline, final=self.turn.final)
+        final = deadline + (player.time_bank if player.connected else 0.0)
+        if keep_start and self.turn is not None and self.turn.seat == seat:
+            seq = self.turn.seq
+        else:
+            self._emit("turn", seat=seat, started=started, deadline=deadline, final=final)
+            seq = self.seq
+        self.turn = Turn(seat, seq, started, deadline, final)
 
     def _fold_absent(self) -> None:
         """Fold for players who have left, whenever their turn comes (rule 2.3)."""
