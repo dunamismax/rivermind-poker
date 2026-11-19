@@ -27,11 +27,17 @@ chmod -R a+rX "$REPO/.venv" "$REPO/artifacts/rm06"
 
 install -m 0644 "$REPO/deploy/rivermind-poker.service" /etc/systemd/system/rivermind-poker.service
 install -m 0644 "$REPO/deploy/rivermindpoker.com.caddy" /etc/caddy/sites/rivermindpoker.com.caddy
+# The host's Caddy reload preflight requires every access log to be declared
+# in its tmpfiles config, which also creates the file with caddy ownership.
+LOGS=/etc/tmpfiles.d/caddy-access-logs.conf
+grep -q rivermindpoker-access.log "$LOGS" || printf '%-50s %s\n' \
+    "f /var/log/caddy/rivermindpoker-access.log" "0600 caddy caddy -" >> "$LOGS"
+systemd-tmpfiles --create "$LOGS"
 systemctl daemon-reload
 systemctl enable rivermind-poker.service
 systemctl restart rivermind-poker.service
-caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-systemctl reload caddy
+/usr/local/lib/caddy/caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+systemctl reload caddy  # runs the host preflight first
 
 for _ in $(seq 60); do
     curl -fsS http://127.0.0.1:4316/api/config && echo && break
