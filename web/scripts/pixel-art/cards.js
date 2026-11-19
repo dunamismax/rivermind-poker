@@ -104,17 +104,19 @@ const LAYOUTS = {
 		[L, 37],
 		[R, 37]
 	],
+	// The 10's side columns sit one pixel in, leaving a clear column between
+	// its wider index and the pips.
 	10: [
-		[L, 7],
-		[R, 7],
+		[L + 1, 7],
+		[R - 1, 7],
 		[C, 12],
-		[L, 17],
-		[R, 17],
-		[L, 27],
-		[R, 27],
+		[L + 1, 17],
+		[R - 1, 17],
+		[L + 1, 27],
+		[R - 1, 27],
 		[C, 32],
-		[L, 37],
-		[R, 37]
+		[L + 1, 37],
+		[R - 1, 37]
 	]
 };
 
@@ -182,7 +184,8 @@ function outlined(part, color = 'ink') {
 function index(c, rank, suit, inks) {
 	const glyph = paint(sprite(`rank-${rank}`), { ink: inks.ink });
 	const pip = paint(sprite(`pip-${suit}`), { suit: inks.suit });
-	const gx = rank === 10 ? 1 : 2;
+	// Every index keeps a one-pixel margin inside the outline and bevel.
+	const gx = 2;
 	c.stamp(glyph, gx, 2);
 	c.stamp(pip, 2, 10);
 	// The same index turned 180° in the bottom-right corner.
