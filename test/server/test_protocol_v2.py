@@ -270,6 +270,10 @@ def test_sockets_must_say_hello_with_a_real_token() -> None:
         with client.websocket_connect("/ws") as ws:
             ws.send_text(json.dumps({"type": "join_table", "table_id": "x"}))
             assert json.loads(ws.receive_text())["code"] == "bad_request"
+        with client.websocket_connect("/ws") as ws:  # a short-deck page left open since the cutover
+            ws.send_text(json.dumps({"type": "join", "table_id": "old", "token": "x"}))
+            closed = json.loads(ws.receive_text())
+            assert closed["code"] == "unknown_table" and "no-limit" in closed["message"]
         with client.websocket_connect("/ws") as ws:
             ws.send_text(json.dumps({"type": "hello", "token": player.token + "0", "protocol": 2}))
             assert json.loads(ws.receive_text())["code"] == "unauthorized"

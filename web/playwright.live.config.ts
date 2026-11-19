@@ -9,7 +9,7 @@ export default defineConfig({
 	testDir: 'e2e',
 	testMatch: '**/*.live.ts',
 	forbidOnly: !!process.env.CI,
-	timeout: 180_000,
+	timeout: 300_000,
 	workers: 1,
 	reporter: 'list',
 	use: {

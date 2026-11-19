@@ -1,17 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import ConnectionStatus from '#lib/components/ConnectionStatus.svelte';
-	import Lobby from '#lib/components/Lobby.svelte';
-	import Table from '#lib/components/Table.svelte';
-	import { TableConnection } from '#lib/table-connection.svelte.ts';
-	import { signed } from '#lib/wording.ts';
+	import { NlConnection } from '#lib/nl/connection.svelte.ts';
+	import NlLobby from '#lib/nl/NlLobby.svelte';
+	import NlTable from '#lib/nl/NlTable.svelte';
 
-	const connection = new TableConnection();
+	// The no-limit table on protocol v2, served by `rivermind-poker serve-nl`.
+	// It replaced the short-deck prototype at the Phase 3 cutover (P3.7, D-11).
+	const connection = new NlConnection();
 	let ready = $state(false);
 
-	const me = $derived(connection.view?.seats.find((s) => s.seat === connection.view?.seat));
-
-	// Errors show briefly as a toast; a repeat of the same text restarts it.
 	let toast = $state<string | null>(null);
 	let toastTimer: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => {
@@ -27,34 +25,37 @@
 		ready = true;
 		return () => {
 			clearTimeout(toastTimer);
-			connection.leave();
+			connection.disconnect();
 		};
 	});
 </script>
 
+<svelte:head>
+	<title>No-limit hold’em · RiverMind Poker</title>
+</svelte:head>
+
 <header class="topbar">
 	<h1>RiverMind Poker</h1>
 	<div class="topbar-right">
-		{#if connection.seat && me}
-			<span class="balance" class:up={me.balance > 0} class:down={me.balance < 0}>
-				Session {signed(me.balance)}
-			</span>
-		{/if}
+		{#if connection.player}<span class="me">{connection.player.name}</span>{/if}
 		<ConnectionStatus status={connection.status} />
 	</div>
 </header>
 
 <main>
 	{#if !ready}
-		<!-- Deciding between the lobby and a saved seat. -->
-	{:else if connection.seat}
+		<!-- Deciding between the lobby and a saved table. -->
+	{:else if connection.tableId}
 		{#if connection.view}
-			<Table view={connection.view} {connection} onleave={() => connection.leave()} />
+			<NlTable view={connection.view} {connection} />
 		{:else}
 			<p class="joining" role="status">Joining your table…</p>
 		{/if}
 	{:else}
-		<Lobby message={connection.closedMessage ?? ''} onseat={(seat) => connection.join(seat)} />
+		<NlLobby
+			message={connection.closedMessage ?? ''}
+			onstart={(request) => connection.newTable(request)}
+		/>
 	{/if}
 </main>
 
@@ -80,18 +81,11 @@
 		align-items: center;
 		gap: 12px;
 	}
-	.balance {
-		font-variant-numeric: tabular-nums;
+	.me {
 		color: var(--muted);
 	}
-	.balance.up {
-		color: var(--win);
-	}
-	.balance.down {
-		color: var(--danger);
-	}
 	main {
-		max-width: 760px;
+		max-width: 960px;
 		margin: 0 auto;
 		padding: 16px;
 	}
@@ -110,10 +104,11 @@
 		padding: 10px 16px;
 		border-radius: var(--radius);
 		max-width: calc(100vw - 32px);
+		z-index: 2;
 	}
 	@media (max-width: 420px) {
 		main {
-			padding: 12px;
+			padding: 12px 8px;
 		}
 	}
 </style>

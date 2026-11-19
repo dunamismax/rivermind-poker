@@ -31,12 +31,12 @@ rivermindpoker.com {
 		max_size 16KB
 	}
 
-	# New tables are cheap but held in memory; slow down scripted creation.
+	# New players and tables are cheap but stored; slow down scripted creation.
 	rate_limit {
 		zone new_tables {
 			match {
 				method POST
-				path /api/tables
+				path /api/tables /api/players
 			}
 			key {remote_host}
 			events 30

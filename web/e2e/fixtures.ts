@@ -17,7 +17,7 @@ export const withCsp = base.extend<{ cspViolations: string[] }>({
 	}
 });
 
-// One server per worker, on its own port, so projects run in parallel.
+// One `serve-nl` per worker, on its own port, so projects run in parallel.
 export const test = withCsp.extend<object, { server: TableServer }>({
 	server: [
 		// eslint-disable-next-line no-empty-pattern
@@ -34,40 +34,57 @@ export const test = withCsp.extend<object, { server: TableServer }>({
 
 export { expect };
 
-/** Start a table from the lobby, against random bots unless told otherwise. */
-export async function sitDown(page: Page, opponents: RegExp = /Random bots/): Promise<void> {
+/** Start a table from the lobby and wait for the player's seat. */
+export async function sitDown(
+	page: Page,
+	seats: number,
+	{ bots = /Calling bot/, buyIn }: { bots?: RegExp; buyIn?: RegExp } = {}
+): Promise<void> {
 	await page.goto('/');
-	await page.getByRole('radio', { name: opponents }).check();
-	await page.getByRole('button', { name: 'Sit down' }).click();
-	await expect(page.getByRole('region', { name: 'Your seat' })).toBeVisible();
-}
-
-/** Check or call until the hand is over; returns the result line. */
-export async function playHand(page: Page): Promise<string> {
-	const next = page.getByRole('button', { name: 'Next hand' });
-	const call = page.getByRole('button', { name: /^(Check|Call \d+)$/ });
-	for (let i = 0; i < 60; i += 1) {
-		await expect(next.or(call)).toBeEnabled();
-		if (await next.isVisible()) break;
-		await call.click();
+	await page.getByRole('radio', { name: String(seats), exact: true }).check({ force: true });
+	await page.getByRole('radio', { name: bots }).check({ force: true });
+	if (buyIn) {
+		const select = page.getByRole('combobox', { name: 'Buy-in' });
+		const option = select.getByRole('option', { name: buyIn });
+		await select.selectOption((await option.getAttribute('value')) ?? '');
 	}
-	await expect(next).toBeEnabled();
-	const result = page.locator('.result');
-	await expect(result).toHaveText(/wins? \d+/);
-	return (await result.textContent()) ?? '';
+	await page.getByRole('button', { name: 'Sit down' }).click();
+	await expect(page.getByRole('group', { name: /^Your seat/ })).toBeVisible();
 }
 
-// The no-limit server (serve-nl, protocol v2), one per worker on its own port.
-export const testNl = withCsp.extend<object, { nlServer: TableServer }>({
-	nlServer: [
-		// eslint-disable-next-line no-empty-pattern
-		async ({}, use, workerInfo) => {
-			const server = new TableServer(8800 + workerInfo.parallelIndex, 'serve-nl');
-			await server.start();
-			await use(server);
-			await server.dispose();
-		},
-		{ scope: 'worker', timeout: 90_000 }
-	],
-	baseURL: async ({ nlServer }, use) => use(nlServer.url)
-});
+export async function handNumber(page: Page): Promise<number> {
+	const text = (await page.locator('.meta').textContent()) ?? '';
+	return Number(/Hand #(\d+)/.exec(text)?.[1] ?? 0);
+}
+
+/** Check, call (up to ten big blinds) or fold on each of our turns until `done` holds. */
+export async function playUntil(
+	page: Page,
+	done: () => Promise<boolean>,
+	timeoutMs = 45_000
+): Promise<void> {
+	const panel = page.getByRole('group', { name: 'Your action' });
+	const call = panel.getByRole('button', { name: /^(Check|Call \d+)$/ });
+	const fold = panel.getByRole('button', { name: 'Fold' });
+	const deadline = Date.now() + timeoutMs;
+	while (!(await done()) && Date.now() < deadline) {
+		if (await call.isVisible()) {
+			const amount = Number(/(\d+)$/.exec((await call.textContent()) ?? '')?.[1] ?? 0);
+			const big = amount > 1000 && (await fold.isVisible());
+			// A short timeout: the turn may end as we click, and the button with it.
+			await (big ? fold : call).click({ timeout: 1000 }).catch(() => {});
+		} else {
+			await page.waitForTimeout(100);
+		}
+	}
+	expect(await done()).toBe(true);
+}
+
+export async function playUntilHand(page: Page, target: number, timeoutMs?: number): Promise<void> {
+	await playUntil(page, async () => (await handNumber(page)) >= target, timeoutMs);
+}
+
+export async function noOverflow(page: Page): Promise<void> {
+	const widths = await page.evaluate(() => [document.documentElement.scrollWidth, innerWidth]);
+	expect(widths[0]).toBeLessThanOrEqual(widths[1]);
+}

@@ -1,6 +1,6 @@
 # RiverMind Poker
 
-RiverMind Poker is an independent poker AI project. The current game is a three-seat table where you play two bots using a 20-card deck, tens through aces, with fixed-size raises. Play it at https://rivermindpoker.com, or run it yourself in the browser or the terminal. The goal is a free, self-hosted browser table at `rivermindpoker.com`.
+RiverMind Poker is an independent poker AI project. At https://rivermindpoker.com you play no-limit Texas hold’em at tables of 2 to 9 seats against bots that are always labelled as bots, for play money only. The terminal still runs the earlier three-seat, 20-card, fixed-limit prototype that the first trained bot plays. The goal is a free, self-hosted, full-featured poker site with strong bots.
 
 ## Play a hand
 
@@ -22,14 +22,14 @@ Those paths are examples for locally generated files. The terminal records compl
 
 ### In the browser
 
-Build the SvelteKit client once (Node and pnpm as in [CONTRIBUTING.md](CONTRIBUTING.md#sveltekit-client)), then serve it with the table server.
+The browser game is no-limit hold’em at 2 to 9 seats against labelled bots, as at https://rivermindpoker.com. Build the SvelteKit client once (Node and pnpm as in [CONTRIBUTING.md](CONTRIBUTING.md#sveltekit-client)), then serve it with the no-limit table server.
 
 ```sh
 (cd web && pnpm install --frozen-lockfile && pnpm build)
-uv run rivermind-poker serve --client_dir web/build
+uv run rivermind-poker serve-nl --client_dir web/build --secret_file artifacts/secret
 ```
 
-Open http://127.0.0.1:8000, choose opponents and sit down. It works on desktop and mobile browsers. Pass the same `--strategy_path` and `--lut_path` to `serve` to offer trained RiverMind opponents next to the random ones. A reload or dropped connection rejoins your seat. Add `--state_path tables.sqlite3` to keep tables, mid-hand included, across server restarts.
+Open http://127.0.0.1:8000, choose the seats, bots, blinds and buy-in, and sit down. It works on desktop and mobile browsers, and a reload or dropped connection rejoins your table. Set `DATABASE_URL` to a migrated PostgreSQL database (see [CONTRIBUTING.md](CONTRIBUTING.md#postgresql)) to keep tables, mid-hand included, across server restarts.
 
 ## Develop the bot
 

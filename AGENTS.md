@@ -51,7 +51,7 @@ The SvelteKit client in `web/` has its own suite (Node from `web/.node-version`,
 ```sh
 pnpm install --frozen-lockfile
 pnpm check && pnpm lint && pnpm test && pnpm build
-pnpm e2e    # Chromium, Firefox and WebKit against a real `serve`
+pnpm e2e    # Chromium, Firefox and WebKit against a real `serve-nl`
 ```
 
 After changing `poker_ai/web/protocol.py` or `rivermind/server/protocol.py`, run `pnpm protocol` and commit the regenerated `web/src/lib/protocol.ts` and `protocol-v2.ts`. Keep the client free of inline script and style: the site CSP blocks them and `pnpm build` fails on them.

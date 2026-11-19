@@ -1,35 +1,34 @@
-// Runs a real `rivermind-poker serve` for the browser tests: the built
-// client, the table API and the WebSocket on one origin, with a SQLite state
-// file so tables survive the restarts some tests perform.
+// Runs a real `rivermind-poker serve-nl` for the browser tests: the built
+// client, the table API and the WebSocket on one origin. Tables live in
+// memory; their durability is tested in pytest (test/db).
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 
 const REPO = resolve(import.meta.dirname, '..', '..');
 
 export class TableServer {
 	readonly url: string;
-	readonly #dir = mkdtempSync(join(tmpdir(), 'rivermind-e2e-'));
 	#process: ChildProcess | null = null;
 	#output = '';
 
-	/** `serve` runs the short-deck game; `serve-nl` the no-limit server (P3.6). */
-	constructor(
-		readonly port: number,
-		readonly kind: 'serve' | 'serve-nl' = 'serve'
-	) {
+	constructor(readonly port: number) {
 		this.url = `http://127.0.0.1:${port}`;
 	}
 
 	#args(): string[] {
-		const common = ['--port', String(this.port), '--client_dir', 'web/build'];
-		if (this.kind === 'serve-nl') {
-			// Quick bots and hands; tables live in memory (P3.5 is tested in pytest).
-			return ['serve-nl', ...common, '--hand_pause', '0.4', '--bot_delay', '0.05'];
-		}
-		return ['serve', ...common, '--state_path', join(this.#dir, 'tables.sqlite3')];
+		// Quick bots and hands, so the tests play many of them.
+		return [
+			'serve-nl',
+			'--port',
+			String(this.port),
+			'--client_dir',
+			'web/build',
+			'--hand_pause',
+			'0.4',
+			'--bot_delay',
+			'0.05'
+		];
 	}
 
 	async start(): Promise<void> {
@@ -58,7 +57,7 @@ export class TableServer {
 			}
 			await new Promise((r) => setTimeout(r, 250));
 		}
-		throw new Error(`${this.kind} did not start on ${this.port}:\n${this.#output}`);
+		throw new Error(`serve-nl did not start on ${this.port}:\n${this.#output}`);
 	}
 
 	/** Kill the process outright (no graceful shutdown), as a crash would. */
@@ -79,7 +78,6 @@ export class TableServer {
 
 	async dispose(): Promise<void> {
 		await this.stop();
-		rmSync(this.#dir, { recursive: true, force: true });
 	}
 
 	async #waitUntilDown(): Promise<void> {

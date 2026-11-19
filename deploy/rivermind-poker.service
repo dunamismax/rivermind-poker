@@ -1,13 +1,14 @@
-# RiverMind Poker browser table: installed as
+# RiverMind Poker no-limit table server: installed as
 # /etc/systemd/system/rivermind-poker.service by deploy/update.sh.
 # Serves the git checkout in /home/sawyer/github/rivermind-poker on loopback;
-# Caddy proxies https://rivermindpoker.com to it (deploy/rivermindpoker.com.caddy).
-# The dedicated rivermind-poker user only needs traverse access to /home/sawyer
-# (ACL) and read access to the checkout, its .venv, the Python under
-# /opt/uv-python and the pinned checkpoint/tables in artifacts/.
-# Open tables are saved to /var/lib/rivermind-poker/tables.sqlite3 (private
-# state directory) after every change and restored on start, so restarts and
-# deploys keep every game.
+# Caddy proxies https://rivermindpoker.com/api and /ws to it
+# (deploy/rivermindpoker.com.caddy). The dedicated rivermind-poker user only
+# needs traverse access to /home/sawyer (ACL) and read access to the checkout,
+# its .venv and the Python under /opt/uv-python.
+# Every table is saved to PostgreSQL (DATABASE_URL in web.env) after each
+# change and restored on start, so restarts and deploys keep every game. The
+# secret that signs player tokens lives in the private state directory, so
+# players keep their identity across restarts too.
 [Unit]
 Description=RiverMind Poker browser table (rivermindpoker.com)
 Documentation=https://github.com/dunamismax/rivermind-poker
@@ -23,15 +24,12 @@ Group=rivermind-poker
 WorkingDirectory=/home/sawyer/github/rivermind-poker
 Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 # DATABASE_URL for the rivermind_poker_web role, from deploy/setup-database.sh.
-# The app does not use it until Phase 3 moves tables into PostgreSQL.
-EnvironmentFile=-/etc/rivermind-poker/web.env
+EnvironmentFile=/etc/rivermind-poker/web.env
 StateDirectory=rivermind-poker
 StateDirectoryMode=0700
-ExecStart=/home/sawyer/github/rivermind-poker/.venv/bin/rivermind-poker serve \
+ExecStart=/home/sawyer/github/rivermind-poker/.venv/bin/rivermind-poker serve-nl \
     --host 127.0.0.1 --port 4316 \
-    --strategy_path /home/sawyer/github/rivermind-poker/artifacts/rm06/baseline_2026_11_18_20_45_30_074222/agent.joblib \
-    --lut_path /home/sawyer/github/rivermind-poker/artifacts/rm06/tables \
-    --state_path /var/lib/rivermind-poker/tables.sqlite3
+    --secret_file /var/lib/rivermind-poker/secret
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=15

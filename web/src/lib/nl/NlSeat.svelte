@@ -118,13 +118,15 @@
 	.dim {
 		opacity: 0.6;
 	}
+	/* The ring and the dealer button stay within the seat's width, so seats at
+	   the edges of a phone never push the page sideways. */
 	.ring {
 		position: absolute;
-		top: -14px;
-		right: -14px;
+		top: -16px;
+		left: 50%;
 		width: 30px;
 		height: 30px;
-		transform: rotate(-90deg);
+		transform: translateX(-50%) rotate(-90deg);
 	}
 	.ring circle {
 		fill: var(--panel);
@@ -150,7 +152,7 @@
 	.dealer {
 		position: absolute;
 		top: -9px;
-		left: -9px;
+		left: 4px;
 		text-align: center;
 		background: #fff;
 		color: #111;

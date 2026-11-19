@@ -309,6 +309,19 @@ def _error(code: object, message: str, table_id: str | None = None) -> p.ErrorMe
     return p.ErrorMessage(type="error", code=p.ErrorCode(str(code)), message=message, table_id=table_id)
 
 
+LEGACY_CLOSED = (
+    "The short-deck tables have closed: RiverMind Poker now plays no-limit hold'em. Reload the page to play."
+)
+
+
+def _message_type(text: str) -> object:
+    try:
+        message = json.loads(text)
+    except ValueError:
+        return None
+    return message.get("type") if isinstance(message, dict) else None
+
+
 def _describe_invalid(text: str) -> str:
     try:
         message = json.loads(text)
@@ -420,12 +433,22 @@ def create_app(
     @app.websocket("/ws")
     async def socket(ws: WebSocket) -> None:
         await ws.accept()
+        raw = ""
         try:
             raw = await asyncio.wait_for(ws.receive_text(), 30)
             hello = p.HelloMessage.model_validate_json(raw)
         except (TimeoutError, ValidationError, WebSocketDisconnect):
+            # A page of the short-deck prototype still open since the cutover
+            # (P3.7) joins with v1's `join`; its client shows unknown_table
+            # as a closed table and returns to its lobby.
+            legacy = _message_type(raw) == "join"
+            error = (
+                _error("unknown_table", LEGACY_CLOSED)
+                if legacy
+                else _error("bad_request", "Send a hello message first.")
+            )
             with contextlib.suppress(Exception):
-                await ws.send_text(_error("bad_request", "Send a hello message first.").model_dump_json())
+                await ws.send_text(error.model_dump_json())
                 await ws.close(code=1008)
             return
         player_id = auth.verify(server.secret, hello.token)

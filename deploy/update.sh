@@ -7,8 +7,8 @@
 # lockfile, stopping before the live site changes if any of that fails. Then it
 # migrates the database, installs the systemd unit and Caddy site, restarts the service, publishes the
 # build as a release under /srv/rivermindpoker.com and checks the app answers.
-# The pinned checkpoint and tables are not in Git; copy them to artifacts/rm06/
-# first (see BUILD.md). Node (the major in web/.node-version) must be on
+# The service needs /etc/rivermind-poker/web.env from deploy/setup-database.sh,
+# since tables live in PostgreSQL. Node (the major in web/.node-version) must be on
 # sawyer's PATH, directly or through mise; pnpm comes from corepack.
 set -euo pipefail
 
@@ -67,7 +67,8 @@ as_sawyer env NODE_MAJOR="$NODE_MAJOR" WEB="$REPO/web" COREPACK_ENABLE_DOWNLOAD_
 id rivermind-poker >/dev/null 2>&1 || useradd --system --no-create-home \
     --home-dir /nonexistent --shell /usr/sbin/nologin rivermind-poker
 setfacl -m u:rivermind-poker:--x /home/sawyer
-chmod -R a+rX "$REPO/.venv" "$REPO/artifacts/rm06"
+chmod -R a+rX "$REPO/.venv"
+[[ -f $DB_ENV/web.env ]] || { echo "no $DB_ENV/web.env: run deploy/setup-database.sh" >&2; exit 1; }
 
 # Migrate the site database before the new code starts.
 if [[ -f $DB_ENV/migration.env ]]; then

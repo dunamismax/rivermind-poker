@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { TableView } from '../protocol-v2.ts';
 import {
 	CLOSED_TABLE_MESSAGE,
+	LEGACY_CLOSED_MESSAGE,
+	LEGACY_SEAT_KEY,
 	NlConnection,
 	PLAYER_KEY,
 	TABLE_KEY,
@@ -210,6 +212,15 @@ describe('NlConnection', () => {
 		await connection.newTable({ seats: 2 });
 		expect(requests.filter((r) => r.url === '/api/players')).toHaveLength(1);
 		expect(sockets.at(-2)?.closed).toBe(true); // the old socket was closed
+	});
+
+	it('tells a returning short-deck player that their table closed', () => {
+		const { connection, storage, sockets } = setup(false);
+		storage.setItem(LEGACY_SEAT_KEY, JSON.stringify({ table_id: 'old', token: 'x' }));
+		expect(connection.resume()).toBe(false);
+		expect(connection.closedMessage).toBe(LEGACY_CLOSED_MESSAGE);
+		expect(storage.getItem(LEGACY_SEAT_KEY)).toBeNull();
+		expect(sockets).toHaveLength(0);
 	});
 
 	it('leaves the table on request', () => {

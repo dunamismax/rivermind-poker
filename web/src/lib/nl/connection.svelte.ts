@@ -24,6 +24,10 @@ export const TABLE_KEY = 'rivermind.nl.table';
 export const MAX_BACKOFF_MS = 8000;
 export const LOG_LIMIT = 60;
 export const CLOSED_TABLE_MESSAGE = 'That table has closed. Start a new one.';
+/** Where the short-deck client kept its seat, until the cutover (P3.7). */
+export const LEGACY_SEAT_KEY = 'rivermind.seat';
+export const LEGACY_CLOSED_MESSAGE =
+	'The short-deck tables have closed. RiverMind Poker now plays no-limit hold’em: start a table below.';
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'open' | 'closed';
 
@@ -116,6 +120,10 @@ export class NlConnection {
 
 	/** Rejoin the table saved by an earlier page load. Returns whether there was one. */
 	resume(): boolean {
+		if (this.#storage?.getItem(LEGACY_SEAT_KEY) != null) {
+			this.#remove(LEGACY_SEAT_KEY);
+			this.closedMessage = LEGACY_CLOSED_MESSAGE;
+		}
 		this.player = this.#load(PLAYER_KEY, isPlayer);
 		const tableId = this.#load(TABLE_KEY, (v): v is string => typeof v === 'string');
 		if (!this.player || !tableId) return false;

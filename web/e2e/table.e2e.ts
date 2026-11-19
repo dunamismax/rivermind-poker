@@ -1,105 +1,102 @@
-import type { Page } from '@playwright/test';
-import { expect, playHand, sitDown, test } from './fixtures.ts';
+import {
+	expect,
+	handNumber,
+	noOverflow,
+	playUntil,
+	playUntilHand,
+	sitDown,
+	test
+} from './fixtures.ts';
 
-const tableSnapshot = (page: Page) => page.getByRole('region', { name: 'Table' }).ariaSnapshot();
+// The no-limit table (P3.6) against a real `serve-nl`, at 2, 6 and 9 seats.
 
-/** Act once so the table is mid-hand with history, and wait for the bots. */
-async function actOnce(page: Page) {
-	await page.getByRole('button', { name: /^(Check|Call \d+)$/ }).click();
-	await expect(
-		page
-			.getByRole('button', { name: /^(Check|Call \d+)$/ })
-			.or(page.getByRole('button', { name: 'Next hand' }))
-	).toBeEnabled();
-	await expect(page.locator('.log li:not(.shown)')).toHaveCount(0);
+for (const seats of [2, 6, 9]) {
+	test(`plays hands at ${seats} seats`, async ({ page, cspViolations }) => {
+		await sitDown(page, seats);
+		await expect(page.locator('.seat[data-seat]')).toHaveCount(seats);
+		await expect(page.locator('.seat .bot')).toHaveCount(seats - 1); // every bot is labelled
+		await expect(page.getByRole('group', { name: /^Your seat/ }).locator('img')).toHaveCount(2);
+		await expect(page.locator('.seat.acting .ring')).toHaveCount(1); // someone's clock is running
+		await noOverflow(page); // the ring stays inside the page at the edge seats too
+		await playUntilHand(page, 3);
+		await expect(page.getByRole('region', { name: 'Hand log' })).toContainText(
+			/Hand #\d+ · .+ has the button/
+		);
+		await noOverflow(page);
+		expect(cspViolations).toEqual([]);
+	});
 }
 
-async function expectNoHorizontalOverflow(page: Page) {
-	const { scrollWidth, clientWidth } = await page.evaluate(() => ({
-		scrollWidth: document.documentElement.scrollWidth,
-		clientWidth: document.documentElement.clientWidth
-	}));
-	expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
-}
-
-test.afterEach(({ cspViolations }) => {
+test('bets with the presets and the slider', async ({ page, cspViolations }) => {
+	await sitDown(page, 6);
+	const panel = page.getByRole('group', { name: 'Your action' });
+	const raise = panel.getByRole('button', { name: /^(Bet|Raise to) \d+/ });
+	await expect(raise).toBeVisible({ timeout: 15_000 });
+	const pot = panel.getByRole('button', { name: /^Pot: \d+$/ });
+	const amount = Number(/(\d+)$/.exec((await pot.getAttribute('aria-label')) ?? '')?.[1]);
+	await pot.click();
+	await expect(raise).toHaveText(new RegExp(`^(Bet|Raise to) ${amount}`));
+	// A typed amount past the maximum is clamped to the all-in.
+	const allIn = panel.getByRole('button', { name: /^All-in: \d+$/ });
+	const max = Number(/(\d+)$/.exec((await allIn.getAttribute('aria-label')) ?? '')?.[1]);
+	const box = panel.getByRole('spinbutton');
+	await box.fill(String(max + 5000));
+	await box.blur();
+	await expect(raise).toHaveText(new RegExp(`${max} \\(all-in\\)$`));
+	await panel.getByRole('button', { name: /^Min: \d+$/ }).click();
+	const min = Number(/(\d+)$/.exec((await raise.textContent()) ?? '')?.[1]);
+	await raise.click();
+	await expect(page.getByRole('region', { name: 'Hand log' })).toContainText(
+		new RegExp(`(bets|raises to) ${min}`)
+	);
 	expect(cspViolations).toEqual([]);
 });
 
-test('plays three consecutive hands against random bots', async ({ page }) => {
-	await sitDown(page);
-	let balance = 0;
-	for (let hand = 1; hand <= 3; hand += 1) {
-		await expect(page.locator('.log li').first()).toHaveText(`Hand ${hand}`);
-		await playHand(page);
-		const payout = Number(await page.locator('[aria-label="Your seat"] .payout').innerText());
-		balance += payout;
-		await expect(page.locator('.balance')).toHaveText(
-			`Session ${balance > 0 ? '+' : ''}${balance}`
-		);
-		if (hand < 3) await page.getByRole('button', { name: 'Next hand' }).click();
-	}
-});
-
-test('rejoins the same seat after a mid-hand reload', async ({ page }) => {
-	await sitDown(page);
-	await actOnce(page);
-	const before = await tableSnapshot(page);
-	await page.reload();
-	await expect(page.locator('.status')).toHaveAttribute('data-state', 'open');
-	await expect(page.locator('.log li:not(.shown)')).toHaveCount(0);
-	expect(await tableSnapshot(page)).toBe(before);
-	await playHand(page);
-});
-
-test('continues after the server process is killed and restarted', async ({ page, server }) => {
-	await sitDown(page);
-	await actOnce(page);
-	const before = await tableSnapshot(page);
-	await server.stop();
-	await expect(page.locator('.status')).toHaveAttribute('data-state', 'closed');
+test('sits out, comes back, rebuys and leaves', async ({ page, cspViolations }) => {
+	await sitDown(page, 3, { buyIn: /40 big blinds/ });
+	await expect(page.getByRole('group', { name: /^Your seat/ })).toContainText(/39\d\d|4000/);
+	await page.getByRole('button', { name: 'Sit out next hand' }).click();
+	await expect(page.getByRole('button', { name: 'I’m back' })).toBeVisible();
+	// The hand plays out; then no hand is dealt while the only person sits out.
+	const sittingOut = page.getByText('You are sitting out.');
+	await playUntil(page, () => sittingOut.isVisible());
+	const hand = await handNumber(page);
+	await page.waitForTimeout(1500);
+	expect(await handNumber(page)).toBe(hand);
+	await page.getByRole('button', { name: 'I’m back' }).click();
+	await expect(page.getByRole('group', { name: 'Your action' })).toBeVisible({ timeout: 15_000 });
+	// Down the blinds, there is room to rebuy, added when the hand ends.
+	const rebuy = page.getByRole('spinbutton', { name: 'Rebuy amount' });
+	await rebuy.fill('25');
+	await page.getByRole('button', { name: 'Rebuy' }).click();
 	await expect(
 		page
-			.getByText('Reconnecting…')
-			.or(page.getByRole('button', { name: /^(Check|Call|Next)/ }).first())
+			.getByText(/^\+25 after this hand$/)
+			.or(page.getByRole('region', { name: 'Hand log' }).getByText(/adds 25/))
 	).toBeVisible();
-	await server.start();
-	await expect(page.locator('.status')).toHaveAttribute('data-state', 'open', { timeout: 20_000 });
-	expect(await tableSnapshot(page)).toBe(before);
-	await playHand(page);
-	await page.getByRole('button', { name: 'Next hand' }).click();
-	await expect(page.locator('.log li').first()).toHaveText(/^Hand \d+$/);
-});
-
-test('shows the closed-table message when the saved table is gone', async ({ page }) => {
-	await sitDown(page);
-	await page.evaluate(() =>
-		localStorage.setItem('rivermind.seat', JSON.stringify({ table_id: 'gone', token: 'x' }))
-	);
-	await page.reload();
-	await expect(
-		page.getByRole('status').filter({ hasText: 'That table has closed. Start a new one.' })
-	).toBeVisible();
-	expect(await page.evaluate(() => localStorage.getItem('rivermind.seat'))).toBeNull();
-	await page.getByRole('button', { name: 'Sit down' }).click();
-	await expect(page.getByRole('region', { name: 'Your seat' })).toBeVisible();
-});
-
-test('leaves the table for the lobby', async ({ page }) => {
-	await sitDown(page);
 	await page.getByRole('button', { name: 'Leave table' }).click();
 	await expect(page.getByRole('button', { name: 'Sit down' })).toBeVisible();
-	await page.reload();
-	await expect(page.getByRole('button', { name: 'Sit down' })).toBeVisible();
+	expect(cspViolations).toEqual([]);
 });
 
-test('has no horizontal overflow at 375×812', async ({ page }) => {
-	await page.setViewportSize({ width: 375, height: 812 });
-	await page.goto('/');
-	await expect(page.getByRole('button', { name: 'Sit down' })).toBeVisible();
-	await expectNoHorizontalOverflow(page);
-	await sitDown(page);
-	await expectNoHorizontalOverflow(page);
-	await playHand(page);
-	await expectNoHorizontalOverflow(page);
+test('rejoins the same table after a reload', async ({ page }) => {
+	await sitDown(page, 9);
+	await playUntilHand(page, 2);
+	const names = await page.locator('.seat .name').allTextContents();
+	const mine = await page
+		.getByRole('group', { name: /^Your seat/ })
+		.locator('img')
+		.evaluateAll((cards) => cards.map((card) => card.getAttribute('alt')));
+	const hand = await handNumber(page);
+	await page.reload();
+	await expect(page.getByRole('group', { name: /^Your seat/ })).toBeVisible();
+	expect(await page.locator('.seat .name').allTextContents()).toEqual(names);
+	if ((await handNumber(page)) === hand) {
+		const again = await page
+			.getByRole('group', { name: /^Your seat/ })
+			.locator('img')
+			.evaluateAll((cards) => cards.map((card) => card.getAttribute('alt')));
+		expect(again).toEqual(mine); // the same hand, the same cards
+	}
+	await playUntilHand(page, hand + 1);
 });
