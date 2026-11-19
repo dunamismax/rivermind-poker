@@ -7,9 +7,9 @@ This file is the single source of truth for project status, from today’s worki
 | | |
 | --- | --- |
 | **Current phase** | Phase 4 · Multiplayer and identity |
-| **Next step** | **P4.5** Safety and abuse controls |
-| **In progress** | _None._ |
-| **Blockers** | _None._ Phases 0 to 3 are complete. Phase 4's exit criteria are met; P4.5 and P4.6 remain, and P4.7 waits on Q-1. |
+| **Next step** | **P4.6** Fair dealing and transparency |
+| **In progress** | **P4.6** Fair dealing and transparency: players' own hand histories with every revealed card, and a rules and fairness page (2026-11-19). |
+| **Blockers** | _None._ Phases 0 to 3 are complete. Phase 4's exit criteria are met; P4.6 remains. P4.7 is declined (D-12). |
 | **Live site** | https://rivermindpoker.com runs no-limit hold’em at 2 to 9 seats against the Phase 2 bots (random, calling station and RiverMind Easy), on `serve-nl` with tables and hand histories in PostgreSQL (`rivermind_poker`), so tables survive restarts. Caddy serves the client from `/srv/rivermindpoker.com/current` and proxies `/api/*` and `/ws` to the app on 127.0.0.1:4316. Players are anonymous with signed session cookies (P4.1) and play from play-chip wallets (P4.2), find each other in the lobby (P4.3: table list, quick seat, bots giving up seats, held seats, waitlists, private tables with invite links), and the site wears the P6.0 pixel-art design. Deployed at `5544a20`; Caddy rate-limits the seating endpoints. The short-deck game left the site (D-11). |
 | **`main`** | Phases 0 to 3, P4.1 to P4.4 and the P6.0 pixel-art redesign are on `main`, pushed and deployed. The engine is in `rivermind/engine`, the bots in `rivermind/bots`, the durable table server (`serve-nl`, protocol v2) in `rivermind/server` and the client in `web/`. The short-deck code (`poker_ai/`, `serve`, the old client components) stays for reference until P7.6. `main` pushes to GitHub and Codeberg, and GitHub Actions runs the Python and web suites on every push. |
 | **Last updated** | 2026-11-19 |
@@ -53,6 +53,7 @@ These were decided with the owner. Build on them; change one only with the owner
 | D-9 | **Hosting:** self-hosted on the owner’s ubuntu-vm behind Caddy with automatic HTTPS, deployed with [`deploy/update.sh`](deploy/update.sh). Every push, deploy and release tag needs the owner’s approval (see [AGENTS.md](AGENTS.md)). |
 | D-10 | **Server administration** (owner, 2026-11-19): agents may SSH into ubuntu-vm as root and install packages, create and change databases, roles, services, files and configuration, and do whatever setup the project needs there, without asking first. Keep other sites on the host working, follow its conventions and record what changed. Pushing, deploying to the live domain and release tags still follow D-9. |
 | D-11 | **Short-deck prototype** (owner, 2026-11-19, answering Q-2): the no-limit game replaces the short-deck game on the live site at the P3.7 cutover. Open short-deck tables are closed with a clear message. Its code stays for reference until P7.6. |
+| D-12 | **No sign-in or user accounts before 1.0** (owner, 2026-11-19, answering Q-1): players stay anonymous guests with a signed session cookie (P4.1). P4.7 is declined for 1.0, and optional sign-in (such as passkeys that claim a guest identity) moves to Phase 8. |
 
 ## Open questions
 
@@ -60,7 +61,7 @@ Each question has a default. Agents build on the default until the owner decides
 
 | ID | Question | Default until decided | Needed by |
 | --- | --- | --- | --- |
-| Q-1 | Accounts: guest-only, or optional sign-in to keep chips across devices? | Anonymous guest identity (P4.1). Optional passkey sign-in (P4.7) can be built later. | P4.7 |
+| Q-1 | Accounts: guest-only, or optional sign-in to keep chips across devices? | **Decided** (D-12): guest-only until after 1.0. | — |
 | Q-2 | When does the short-deck prototype leave the live site? | **Decided** (D-11): it is replaced at the Phase 3 cutover (P3.7). | — |
 | Q-3 | Tournaments in 1.0? | Single-table sit-and-go in 1.0 (P6.4). Multi-table tournaments after 1.0. | P6.4 |
 | Q-4 | Chat? | No free-text chat in 1.0. Preset reactions only (P4.5). | P4.5 |
@@ -314,15 +315,17 @@ Each question has a default. Agents build on the default until the owner decides
   - [x] A Playwright test with two browser contexts covers two humans and one bot playing several hands, including disconnecting and reconnecting.
   - Evidence: `188d532`. The table core refuses a second seat or hold (`already_seated`) under the runner's lock. [test_races.py](test/server/test_races.py) sends requests at once through the app's `Server`, with wallet payments in worker threads so they interleave: one player's three tabs asking for five seats at once get one, paid once; two players racing for the last seat get one winner and one full refund; two tabs acting on one turn count once (the others `stale` or `not_your_turn`); three people with two tabs each send 150 rounds of random concurrent requests (three seeds), checking after each round that nobody holds two seats or holds while seated and every ledger balances; and neither another player, a watcher nor anyone in a bot's seat can act. Removing the one-seat check makes two of them fail. [multiplayer.e2e.ts](web/e2e/multiplayer.e2e.ts) seats two people (separate browser contexts) and a bot, plays two hands, drops one person's socket (their seat shows Away), brings them back to the same seat and plays two more. Running the suites under load (eight busy CPU loops or the browser suite alongside) showed random-play coverage counts, not ledgers, failing when timing kept a rebuy, hold or sit from going through; those checks now accept an attempt, and the race test's host stays seated so its tables stay open. A forced click on the hidden seat-count radio could land elsewhere while the table list above it changed height on phones; the helper clicks in place (Playwright's `dispatchEvent` crashed Firefox pages, `element.click()` does not). pytest 500 passed with the database tests; check, lint, Vitest 62 and build passed; `pnpm e2e --repeat-each 3` 216 of 216. Deployed with P4.3 (see its evidence).
 
-- [ ] **P4.5 · Safety and abuse controls** · Depends on: P4.3
-  - [ ] Rate limits apply in Caddy and the app. Handles are filtered and can be reported, and a player can mute or block another. Q-4’s default applies: preset reactions only, no free text.
-  - [ ] Basic collusion signals are logged, such as the same network address at one table, for later review.
+- [x] **P4.5 · Safety and abuse controls** · Depends on: P4.3
+  - [x] Rate limits apply in Caddy and the app. Handles are filtered and can be reported, and a player can mute or block another. Q-4’s default applies: preset reactions only, no free text.
+  - [x] Basic collusion signals are logged, such as the same network address at one table, for later review.
+  - Evidence: `5c273cc`. [safety.py](rivermind/server/safety.py) and migration `0004` (`player_reports`, `player_relations`, `safety_signals`). The app's token buckets limit unsafe HTTP requests per player or address (429 with `Retry-After`), new players per address and socket messages (a `rate_limited` error, then the socket closes after 50 refusals in a row); Caddy gains a `safety` zone, and `caddy adapt` passed on ubuntu-vm. Behind Caddy the address comes from `X-Forwarded-For`, trusted only from a loopback peer. Eight preset reactions (`react` in, `reaction` out) reach every follower who has not muted or blocked the sender; seats carry a public `ref` (a hash of the id). `POST /api/reports` (once a day per reporter, person and reason, locked against concurrent repeats), `GET`/`PUT`/`DELETE /api/relations`; quick seat skips tables with a blocked player and the lobby tags them. A person sitting with someone from the same address stores one `same_address` signal per table and pair, with an HMAC of the address. `rivermind-poker moderation reports|signals|rename`. Every generated handle passes a word filter that reads each word on its own and spaced-out letters together (all 3,600 word pairs checked). New tests: [test_safety.py](test/server/test_safety.py) (30) and [the database version](test/db/test_safety.py) (3, including eight concurrent identical reports counting once and the CLI); [safety.e2e.ts](web/e2e/safety.e2e.ts) has two browser contexts react, mute, report twice, block and unblock. Against a real `serve-nl` with a scratch database, in the browser pane: the seat menu, reactions on the seat, the Blocked tag in the lobby, and a 375×812 table with no horizontal scroll; curl got 60 requests then 429 with `Retry-After: 1`; `moderation signals` listed the same-address signal from the browser and curl players. pytest 539 passed with the database tests; check, lint, Vitest 64 and build passed; `pnpm e2e` 78 of 78.
 
 - [ ] **P4.6 · Fair dealing and transparency** · Depends on: P3.2
   - [ ] Live shuffles use `secrets.SystemRandom` (D-8). Players can view histories of hands they played, with every revealed card. A rules and fairness page explains how dealing works.
 
-- [ ] **P4.7 · Optional sign-in** · Depends on: P4.2 · **Owner gate:** Q-1
-  - [ ] If the owner approves Q-1: passkey (WebAuthn) sign-in that claims the current guest identity, so chips and history follow the player across devices. Otherwise record the decision and tick this step as declined.
+- [x] **P4.7 · Optional sign-in** · Depends on: P4.2 · **Owner gate:** Q-1 · **Declined for 1.0** (D-12)
+  - [x] If the owner approves Q-1: passkey (WebAuthn) sign-in that claims the current guest identity, so chips and history follow the player across devices. Otherwise record the decision and tick this step as declined.
+  - Evidence: the owner answered Q-1 on 2026-11-19: no logins or user accounts until after 1.0. Recorded as D-12; optional sign-in is listed in Phase 8.
 
 ---
 
@@ -456,6 +459,7 @@ These are possible directions after the release:
 - real-time search for every format;
 - a Rust engine core if training needs it;
 - spectating and table chat with moderation;
+- optional sign-in, such as passkeys that claim a guest identity so chips and history follow a player across devices (D-12);
 - native app wrappers;
 - public research write-ups on the bots.
 
