@@ -13,8 +13,12 @@ on the event loop. Engine transitions themselves take microseconds and run
 on the loop. If the table changed while a bot was thinking, its decision is
 dropped and it is asked again.
 
+While a person is to act, the task waits for their request or for their
+turn's deadline on the runner's clock, then times them out (P3.3). A bot
+that has not decided by its deadline is timed out the same way.
+
 Live tables shuffle with ``secrets.SystemRandom`` (D-8). Tests pass a seeded
-generator and an instant ``sleep``.
+generator, an instant ``sleep`` and a ``ManualClock``.
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ from dataclasses import dataclass, field
 from rivermind.bots import Policy
 from rivermind.engine import Action
 
+from .clock import Clock, SystemClock
 from .table import Departure, ErrorCode, Event, Table, TableConfig, TableError
 
 log = logging.getLogger("rivermind.server")
@@ -50,6 +55,9 @@ class RunnerOptions:
     bot_rebuy: bool = True
     """Bots that lose every chip buy in again for the maximum."""
     sleep: Sleep = field(default=asyncio.sleep)
+    """Waits for the pauses above."""
+    clock: Clock = field(default_factory=SystemClock)
+    """Times each turn (P3.3)."""
     rng_factory: Callable[[], random.Random] = field(default=secrets.SystemRandom)
     """Makes each table's dealing generator (D-8)."""
 
@@ -137,6 +145,11 @@ class TableRunner:
             self.table.sit_in(player_id)
             await self._changed()
 
+    async def set_connected(self, player_id: str, connected: bool) -> None:
+        async with self.lock:
+            self.table.set_connected(player_id, connected)
+            await self._changed()
+
     async def rebuy(self, player_id: str, amount: int) -> None:
         async with self.lock:
             self.table.rebuy(player_id, amount)
@@ -199,7 +212,12 @@ class TableRunner:
         if seat is not None and self._is_bot(seat):
             await self._bot_turn(seat)
             return
-        await self._wake.wait()
+        turn = table.turn if seat is not None else None
+        if await self.options.clock.wait(self._wake, turn.final if turn is not None else None):
+            return  # something changed; look again
+        async with self.lock:
+            if table.turn is turn and table.check_clock():
+                await self._changed()
 
     async def _bot_turn(self, seat: int) -> None:
         table = self.table
@@ -209,10 +227,22 @@ class TableRunner:
         policy = self.bots[player.bot]
         view = table.view(seat)
         assert view is not None
+        turn = table.turn
         if self.options.bot_delay:
             await self.options.sleep(self.options.bot_delay)
+        decided = asyncio.Event()
+        thinking = asyncio.ensure_future(asyncio.to_thread(policy.act, view, self.bot_rng))
+        thinking.add_done_callback(lambda _: decided.set())
+        if not await self.options.clock.wait(decided, turn.final if turn is not None else None):
+            # Out of time. The thread finishes on its own and its answer is ignored.
+            thinking.add_done_callback(lambda task: task.cancelled() or task.exception())
+            log.warning("Bot %s at table %s ran out of time", player.bot, self.table_id)
+            async with self.lock:
+                if table.hand is state and table.check_clock():
+                    await self._changed()
+            return
         try:
-            action = await asyncio.to_thread(policy.act, view, self.bot_rng)
+            action = thinking.result()
         except Exception:
             log.exception("Bot %s at table %s failed; timing it out", player.bot, self.table_id)
             action = None
@@ -259,7 +289,7 @@ class TableManager:
         table_id = table_id or secrets.token_urlsafe(9)
         if table_id in self.tables:
             raise ValueError(f"table {table_id} exists")
-        runner = TableRunner(table_id, Table(config), self.bots, self.options, name=name)
+        runner = TableRunner(table_id, Table(config, self.options.clock.now), self.bots, self.options, name=name)
         self.tables[table_id] = runner
         runner.start()
         return runner

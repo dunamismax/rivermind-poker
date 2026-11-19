@@ -192,11 +192,15 @@ The pots add up to the 1,800 contributed. If B has the best hand, B wins the mai
 
 ## 13. Timeouts and disconnections
 
-13.1. Each turn has a clock (P3.3 sets the default of 20 seconds and adds a time bank). When it runs out, the player checks if checking is legal, and otherwise folds.
+13.1. Each turn has a clock: 20 seconds by default, then the player’s **time bank**. The bank starts at 30 seconds, is spent by any time a player takes beyond the clock, is emptied by a timeout while connected, and regains 2 seconds for every hand the player is dealt into, up to its starting size. When the clock and the bank both run out, the player checks if checking is legal, and otherwise folds. Tables may set other times.
 
-13.2. A disconnected player keeps their seat. Their turns time out as in 13.1. A player disconnected for a full orbit is sat out (P3.3).
+13.2. A disconnected player keeps their seat. Their turns time out as in 13.1, but without their time bank, so the table does not wait longer for someone who is not there. A player who is away for a full orbit is sat out when the hand ends. An orbit is as many hands in a row as there were players dealt into the last of them, and a hand counts as away when the player was dealt in, never acted for themselves and was disconnected or timed out. Acting, or reconnecting, starts the count again. Bots are never sat out this way.
 
 **Example.** On the flop no one has bet and S2’s clock runs out, so S2 checks. Later S4 bets and S2’s clock runs out again, so S2 folds. Pre-flop, a big blind whose clock runs out with no raise checks; a small blind whose clock runs out folds.
+
+**Example (time bank).** S0 acts 26.5 seconds into a 20-second turn, so 6.5 seconds come out of a 30-second bank, leaving 23.5. When S0 is dealt into the next hand the bank grows to 25.5.
+
+**Example (away).** Three players are dealt in and S0 disconnects. S0 times out or is folded out of three hands in a row, so S0 is sat out when the third ends and is not dealt into the fourth.
 
 ## Choices
 
@@ -213,4 +217,5 @@ These are the points where card rooms differ, with the option this game uses.
 | Showing hands | Auto-muck hands that cannot win or tie; all-in hands are tabled (section 12) | Every hand shown at showdown, or players choose | Matches online practice and keeps mucked cards private, which the hand replayer relies on (P6.1). |
 | Burn cards | Burned before each street (rule 1.3) | No burn cards | Matches live dealing, so a deck order replays exactly as a dealer would deal it. |
 | Timeout action | Check if possible, otherwise fold (rule 13.1) | Always fold | The plan’s default; never folds a free hand. |
+| Time bank | 30 seconds, regaining 2 per hand; not used while disconnected (rule 13.1 and 13.2) | A fixed bank per session, or none | Lets players think on big decisions without letting a missing player stall the table. |
 | Straddles, run it twice, insurance, rake | None | Various | Not part of 1.0; play money has no rake. |

@@ -21,12 +21,23 @@ Seating follows ``docs/rules.md``:
 Buy-ins and rebuys keep a stack between the table's minimum and maximum
 buy-in. A rebuy asked for during a hand the player is in is added when the
 hand ends. Chips are play money only (D-1); the wallet arrives in P4.2.
+
+Every turn has a clock (P3.3, rule 13). The player to act has
+``action_seconds``, then their time bank, which starts at ``time_bank_seconds``
+and regains ``bank_refill_seconds`` per hand they are dealt into. A
+disconnected player gets the action time only, so the table does not wait
+on their bank. When the time runs out ``check_clock`` checks for them if
+that is free and folds otherwise. A player who is absent for a full orbit
+(dealt into as many hands as there were players, each time disconnected or
+timed out without acting for themselves) is sat out. The table reads the
+time from the ``clock`` it is given, so tests control it.
 """
 
 from __future__ import annotations
 
 import random
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -83,6 +94,9 @@ class TableConfig:
     ante: int = 0
     min_buy_in: int = 0
     max_buy_in: int = 0
+    action_seconds: float = 20.0
+    time_bank_seconds: float = 30.0
+    bank_refill_seconds: float = 2.0
 
     def __post_init__(self) -> None:
         if type(self.seat_count) is not int or not 2 <= self.seat_count <= 9:
@@ -97,6 +111,10 @@ class TableConfig:
                 raise TypeError(f"{name} must be an int")
         if not 0 < self.min_buy_in <= self.max_buy_in:
             raise ValueError("buy-ins must satisfy 0 < minimum <= maximum")
+        if not self.action_seconds > 0:
+            raise ValueError("the action clock must be positive")
+        if self.time_bank_seconds < 0 or self.bank_refill_seconds < 0:
+            raise ValueError("the time bank and its refill must not be negative")
 
     @property
     def hand_config(self) -> HandConfig:
@@ -123,6 +141,13 @@ class Player:
     """Leave when the current hand ends, folding at every turn until then."""
     pending_rebuy: int = 0
     """Chips to add when the current hand ends."""
+    time_bank: float = 0.0
+    connected: bool = True
+    absent_hands: int = 0
+    """Hands in a row the player was dealt into but was away for."""
+    acted_this_hand: bool = False
+    timed_out_this_hand: bool = False
+    disconnected_this_hand: bool = False
 
     @property
     def is_bot(self) -> bool:
@@ -139,6 +164,18 @@ class Event:
 
 
 @dataclass(frozen=True, slots=True)
+class Turn:
+    """The clock for the player to act."""
+
+    seat: int
+    started: float
+    deadline: float
+    """When the action time runs out; after it the time bank runs."""
+    final: float
+    """When the time bank runs out too and the player is timed out."""
+
+
+@dataclass(frozen=True, slots=True)
 class Departure:
     """A player who left, with the chips they took with them."""
 
@@ -150,8 +187,11 @@ class Departure:
 class Table:
     """One cash table. Every method either applies a whole change or raises ``TableError``."""
 
-    def __init__(self, config: TableConfig) -> None:
+    def __init__(self, config: TableConfig, clock: Callable[[], float] = time.time) -> None:
         self.config = config
+        self.clock = clock
+        self.turn: Turn | None = None
+        """The clock of the player to act, while a hand is in progress."""
         self.seats: list[Player | None] = [None] * config.seat_count
         self.hand: HandState | None = None
         """The current hand, or the last one once it is over, until the next starts."""
@@ -240,7 +280,7 @@ class Table:
         if self.seats[seat] is not None:
             raise TableError(ErrorCode.SEAT_TAKEN, f"S{seat} is taken")
         self._check_buy_in(buy_in, 0)
-        self.seats[seat] = Player(player_id, name, buy_in, bot=bot)
+        self.seats[seat] = Player(player_id, name, buy_in, bot=bot, time_bank=self.config.time_bank_seconds)
         self._emit("seated", seat=seat, name=name, bot=bot, stack=buy_in)
 
     def _check_buy_in(self, amount: int, stack: int) -> None:
@@ -277,7 +317,7 @@ class Table:
             self._emit("sitting_out_next", seat=seat)
         else:
             player.sitting_out = True
-            self._emit("sat_out", seat=seat)
+            self._emit("sat_out", seat=seat, reason="asked")
 
     def sit_in(self, player_id: str) -> None:
         """Come back from sitting out; dealt in from the next hand (rule 2.2)."""
@@ -289,6 +329,20 @@ class Table:
         player.sitting_out = False
         player.sit_out_next = False
         self._emit("sat_in", seat=seat)
+
+    def set_connected(self, player_id: str, connected: bool) -> None:
+        """Record that the player's connection dropped or came back (rule 13.2)."""
+        seat, player = self._seated(player_id)
+        if player.connected == connected:
+            return
+        player.connected = connected
+        if not connected and self.in_hand(seat):
+            player.disconnected_this_hand = True
+        if connected:
+            player.absent_hands = 0
+        self._emit("connected" if connected else "disconnected", seat=seat)
+        if self.turn is not None and self.turn.seat == seat:
+            self._start_turn(keep_start=True)
 
     def rebuy(self, player_id: str, amount: int) -> None:
         """Add chips, keeping the stack within the buy-in range.
@@ -343,6 +397,14 @@ class Table:
         else:
             button = next_button(self.button, dealt, self.config.seat_count)
         state = start_hand(self.config.hand_config, stacks, button, rng=rng)
+        for seat in dealt:
+            player = self.seats[seat]
+            assert player is not None
+            player.acted_this_hand = player.timed_out_this_hand = False
+            player.disconnected_this_hand = not player.connected
+            player.time_bank = min(
+                self.config.time_bank_seconds, player.time_bank + self.config.bank_refill_seconds
+            )
         self.hand = state
         self.hand_no += 1
         self.button = button
@@ -364,7 +426,8 @@ class Table:
         seat, _ = self._seated(player_id)
         self.act_seat(seat, action)
 
-    def act_seat(self, seat: int, action: Action) -> None:
+    def act_seat(self, seat: int, action: Action, *, timed_out: bool = False) -> None:
+        """Apply an action for ``seat``, charging any time past the action clock to its bank."""
         hand = self.hand
         if hand is None or hand.is_over:
             raise TableError(ErrorCode.HAND_OVER, "there is no hand in progress")
@@ -374,6 +437,21 @@ class Table:
             after = apply(hand, action)
         except IllegalActionError as error:
             raise TableError(ErrorCode.ILLEGAL_ACTION, str(error)) from error
+        player = self.seats[seat]
+        assert player is not None
+        turn = self.turn
+        if timed_out:
+            player.timed_out_this_hand = True
+            if player.connected:
+                player.time_bank = 0.0
+        else:
+            player.acted_this_hand = True
+            player.absent_hands = 0
+            if turn is not None and turn.seat == seat:
+                over = self.clock() - turn.deadline
+                if over > 0:
+                    player.time_bank = max(0.0, player.time_bank - over)
+        self.turn = None
         self.hand = after
         self._after_change(hand, after)
         self._fold_absent()
@@ -385,8 +463,33 @@ class Table:
             raise TableError(ErrorCode.HAND_OVER, "there is no hand in progress")
         action = timeout_action(hand)
         self._emit("timed_out", seat=hand.to_act)
-        self.act_seat(hand.to_act, action)
+        self.act_seat(hand.to_act, action, timed_out=True)
         return action
+
+    def check_clock(self) -> bool:
+        """Time out the player to act if their time has run out. Returns whether it did."""
+        turn = self.turn
+        if turn is None or not self.hand_in_progress or self.clock() < turn.final:
+            return False
+        self.time_out()
+        return True
+
+    def _start_turn(self, *, keep_start: bool = False) -> None:
+        seat = self.to_act
+        if seat is None:
+            self.turn = None
+            return
+        player = self.seats[seat]
+        assert player is not None
+        if keep_start and self.turn is not None and self.turn.seat == seat:
+            started = self.turn.started
+        else:
+            started = self.clock()
+        deadline = started + self.config.action_seconds
+        bank = player.time_bank if player.connected else 0.0
+        self.turn = Turn(seat, started, deadline, deadline + bank)
+        if not keep_start:
+            self._emit("turn", seat=seat, started=started, deadline=deadline, final=self.turn.final)
 
     def _fold_absent(self) -> None:
         """Fold for players who have left, whenever their turn comes (rule 2.3)."""
@@ -401,6 +504,7 @@ class Table:
             # A player who is leaving never puts in more chips; checking costs nothing.
             action = Action.check() if legal.can_check else Action.fold()
             before = self.hand
+            self.turn = None
             self.hand = apply(before, action)
             self._after_change(before, self.hand)
 
@@ -422,7 +526,10 @@ class Table:
             self._emit("board", street=after.street.label, cards=[card_str(c) for c in after.board[shown:]],
                        board=[card_str(c) for c in after.board])
         if after.is_over:
+            self.turn = None
             self._finish_hand(after)
+        elif self.turn is None or self.turn.seat != after.to_act:
+            self._start_turn()
 
     def _finish_hand(self, final: HandState) -> None:
         result = final.result
@@ -451,6 +558,17 @@ class Table:
             stacks=list(final.final_stacks),
         )
         self.finished.append((self.hand_no, final))
+        orbit = sum(final.dealt_in)
+        for seat, player in self.players():
+            if not final.dealt_in[seat] or player.is_bot:
+                continue
+            away = not player.connected or player.disconnected_this_hand or player.timed_out_this_hand
+            if player.acted_this_hand or not away:
+                player.absent_hands = 0
+            else:
+                player.absent_hands += 1
+                if player.absent_hands >= orbit and not player.sitting_out:
+                    player.sit_out_next = True
         for seat, player in list(self.players()):
             if player.leaving:
                 self._remove(seat)
@@ -471,7 +589,9 @@ class Table:
             if player.sit_out_next:
                 player.sit_out_next = False
                 player.sitting_out = True
-                self._emit("sat_out", seat=seat)
+                away = player.absent_hands >= orbit
+                player.absent_hands = 0
+                self._emit("sat_out", seat=seat, reason="away" if away else "asked")
 
     # Events
 
@@ -500,4 +620,5 @@ __all__ = [
     "Table",
     "TableConfig",
     "TableError",
+    "Turn",
 ]

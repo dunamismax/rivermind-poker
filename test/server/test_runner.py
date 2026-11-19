@@ -16,6 +16,7 @@ from rivermind.engine.view import SeatView
 from rivermind.server import (
     ErrorCode,
     Event,
+    ManualClock,
     RunnerOptions,
     Table,
     TableConfig,
@@ -32,7 +33,7 @@ async def instant(_: float) -> None:
 
 def options(seed: int = 0, **overrides: object) -> RunnerOptions:
     values: dict[str, object] = dict(
-        hand_pause=0.0, bot_delay=0.0, sleep=instant, rng_factory=lambda: random.Random(seed)
+        hand_pause=0.0, bot_delay=0.0, sleep=instant, clock=ManualClock(), rng_factory=lambda: random.Random(seed)
     )
     values.update(overrides)
     return RunnerOptions(**values)  # type: ignore[arg-type]
