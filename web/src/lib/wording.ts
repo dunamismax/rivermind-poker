@@ -1,18 +1,12 @@
 // How the table reads: card names, button labels, action wording, the
 // result line and the hand log. Pure functions of the server's view.
 
-import type { Action, Card, Position, SeatView, Stage, Suit, TableEvent } from './protocol.ts';
+import type { Action, Card, Position, SeatView, Stage, TableEvent } from './protocol.ts';
 
 /** Pause after each bot action in the hand log so they appear one after another. */
 export const EVENT_DELAY_MS = 450;
 
 export const RANK_LABELS: Record<number, string> = { 11: 'J', 12: 'Q', 13: 'K', 14: 'A' };
-export const SUIT_SYMBOLS: Record<Suit, string> = {
-	spades: '♠',
-	hearts: '♥',
-	diamonds: '♦',
-	clubs: '♣'
-};
 export const POSITION_BADGES: Record<Position, string> = {
 	small_blind: 'SB',
 	big_blind: 'BB',
@@ -33,10 +27,6 @@ export function rankLabel(rank: number): string {
 
 export function cardName(card: Card): string {
 	return `${rankLabel(card.rank)} of ${card.suit}`;
-}
-
-export function isRed(card: Card): boolean {
-	return card.suit === 'hearts' || card.suit === 'diamonds';
 }
 
 /** "Fold", "Check", "Call 150", "Bet 100" or "Raise 250" for an action button. */

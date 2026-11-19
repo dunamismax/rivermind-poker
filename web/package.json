@@ -23,7 +23,8 @@
 		"test": "vitest --run",
 		"test:watch": "vitest",
 		"e2e": "playwright test",
-		"protocol": "cd .. && uv run --locked rivermind-poker protocol-schema --typescript web/src/lib/protocol.ts"
+		"protocol": "cd .. && uv run --locked rivermind-poker protocol-schema --typescript web/src/lib/protocol.ts",
+		"cards": "node scripts/generate-card-art.js"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

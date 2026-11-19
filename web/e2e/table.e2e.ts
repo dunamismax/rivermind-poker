@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, playHand, sitDown, test } from './fixtures.ts';
 
-const tableText = (page: Page) => page.getByRole('region', { name: 'Table' }).innerText();
+const tableSnapshot = (page: Page) => page.getByRole('region', { name: 'Table' }).ariaSnapshot();
 
 /** Act once so the table is mid-hand with history, and wait for the bots. */
 async function actOnce(page: Page) {
@@ -44,18 +44,18 @@ test('plays three consecutive hands against random bots', async ({ page }) => {
 test('rejoins the same seat after a mid-hand reload', async ({ page }) => {
 	await sitDown(page);
 	await actOnce(page);
-	const before = await tableText(page);
+	const before = await tableSnapshot(page);
 	await page.reload();
 	await expect(page.locator('.status')).toHaveAttribute('data-state', 'open');
 	await expect(page.locator('.log li:not(.shown)')).toHaveCount(0);
-	expect(await tableText(page)).toBe(before);
+	expect(await tableSnapshot(page)).toBe(before);
 	await playHand(page);
 });
 
 test('continues after the server process is killed and restarted', async ({ page, server }) => {
 	await sitDown(page);
 	await actOnce(page);
-	const before = await tableText(page);
+	const before = await tableSnapshot(page);
 	await server.stop();
 	await expect(page.locator('.status')).toHaveAttribute('data-state', 'closed');
 	await expect(
@@ -65,7 +65,7 @@ test('continues after the server process is killed and restarted', async ({ page
 	).toBeVisible();
 	await server.start();
 	await expect(page.locator('.status')).toHaveAttribute('data-state', 'open', { timeout: 20_000 });
-	expect(await tableText(page)).toBe(before);
+	expect(await tableSnapshot(page)).toBe(before);
 	await playHand(page);
 	await page.getByRole('button', { name: 'Next hand' }).click();
 	await expect(page.locator('.log li').first()).toHaveText(/^Hand \d+$/);
