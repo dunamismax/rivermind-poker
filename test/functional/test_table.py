@@ -62,7 +62,11 @@ def test_rejects_duplicate_stale_and_out_of_turn_actions():
             assert after["events"][len(snapshot[0]["events"])] == {
                 "seat": snapshot[0]["seats"].index(
                     next(x for x in snapshot[0]["seats"] if x["is_turn"])),
-                "action": "call", "stage": "pre_flop"}
+                "action": "call", "stage": "pre_flop",
+                "chips": snapshot[0]["action_amounts"].get("call")
+                if snapshot[0]["your_turn"] else snapshot[1]["action_amounts"]["call"],
+                "facing": snapshot[0]["action_amounts"].get("call")
+                if snapshot[0]["your_turn"] else snapshot[1]["action_amounts"]["call"]}
             applied += 1
             continue
         with pytest.raises(TableError) as error:
@@ -175,3 +179,38 @@ def test_next_hand_rotates_positions_and_keeps_balances():
     assert positions == ["small_blind", "button", "big_blind"] * 2
     assert sorted(positions[:3]) == sorted(POSITIONS)
     assert sum(balances) == 0
+
+
+def test_action_amounts_follow_fixed_limit_sizes():
+    table = Table([SeatConfig("Ann"), SeatConfig("Bot 1", Always("call")),
+                   SeatConfig("Bot 2", Always("call"))], seed=4)
+    ann = table.tokens[0]
+    seen = set()
+    while True:
+        view = table.view(ann)
+        if view["result"] is not None:
+            break
+        assert view["your_turn"]
+        me = view["seats"][0]
+        to_call = max(s["bet"] for s in view["seats"]) - me["bet"]
+        bet = 200 if view["stage"] in {"turn", "river"} else 100
+        assert view["action_amounts"] == {
+            "fold": 0, "call": to_call, "raise": to_call + bet}
+        seen.add(view["stage"])
+        table.act(ann, "call", view["seq"])
+    assert {"pre_flop", "flop", "turn", "river"} <= seen
+    assert table.view(ann)["action_amounts"] == {}
+
+
+def test_events_record_chips_and_final_pot():
+    table = Table([SeatConfig("Ann"), SeatConfig("Bot 1", Always("call")),
+                   SeatConfig("Bot 2", Always("call"))], seed=4)
+    final = _play_out(table, [table.tokens[0]])
+    # Everyone calls to showdown: preflop the blinds complete, later streets
+    # are checks (calls of zero chips).
+    later = [e for e in final["events"] if e["stage"] != "pre_flop"]
+    assert later and all(e["chips"] == 0 and e["facing"] == 0 for e in later)
+    pre = [e for e in final["events"] if e["stage"] == "pre_flop"]
+    assert sum(e["chips"] for e in pre) + 150 == final["pot"] == 300
+    payouts = final["result"]["payouts"]
+    assert max(payouts.values()) <= final["pot"]

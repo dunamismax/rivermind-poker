@@ -1,6 +1,6 @@
 # RiverMind Poker
 
-RiverMind Poker is an independent poker AI project. The current game is a three-seat terminal table where you can play against two bots using a 20-card deck, tens through aces, with fixed-size raises. The goal is a free, self-hosted browser table at `rivermindpoker.com`.
+RiverMind Poker is an independent poker AI project. The current game is a three-seat table where you play two bots using a 20-card deck, tens through aces, with fixed-size raises. You can play in the browser or the terminal. The goal is a free, self-hosted browser table at `rivermindpoker.com`.
 
 ## Play a hand
 
@@ -20,6 +20,14 @@ uv run rivermind-poker play --agent offline \
 
 Those paths are examples for locally generated files. The terminal records completed hands in `~/.poker/results.yaml`.
 
+### In the browser
+
+```sh
+uv run rivermind-poker serve
+```
+
+Open http://127.0.0.1:8000, choose opponents and sit down. It works on desktop and mobile browsers. Pass the same `--strategy_path` and `--lut_path` to `serve` to offer trained RiverMind opponents next to the random ones. The server keeps tables in memory. A reload or dropped connection rejoins your seat, while a server restart closes the tables.
+
 ## Develop the bot
 
 | Area | Start here |
@@ -31,6 +39,7 @@ Those paths are examples for locally generated files. The terminal records compl
 | Bot decisions from one seat’s information | [Policies](poker_ai/policies.py) |
 | Fixed-seed matches against random bots | [Benchmark](poker_ai/benchmark.py) |
 | Server-owned table for networked clients | [Table](poker_ai/table.py) |
+| Browser client and WebSocket server | [Web](poker_ai/web/) |
 | Playable client | [Terminal](poker_ai/terminal/) |
 | Tests | [Unit and functional tests](test/) |
 

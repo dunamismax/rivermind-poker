@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d3b2a">
+  <title>RiverMind Poker</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>RiverMind Poker</h1>
+    <div class="topbar-right">
+      <span id="balance" class="balance" hidden></span>
+      <span id="status" class="status" data-state="idle" title="Connection"></span>
+    </div>
+  </header>
+
+  <main>
+    <section id="lobby" class="lobby">
+      <p class="lede">Three-seat limit hold’em with a 20-card deck (tens through aces). Play chips only.</p>
+      <fieldset class="opponents">
+        <legend>Opponents</legend>
+        <div id="opponent-choices"></div>
+      </fieldset>
+      <button id="start" class="primary" type="button">Sit down</button>
+      <p id="lobby-message" class="message" role="status"></p>
+    </section>
+
+    <section id="table" class="table" hidden>
+      <div class="opponents-row">
+        <div class="seat" data-seat="1"></div>
+        <div class="seat" data-seat="2"></div>
+      </div>
+
+      <div class="felt">
+        <div class="stage" id="stage"></div>
+        <div class="board" id="board" aria-label="Board"></div>
+        <div class="pot" id="pot"></div>
+        <div class="result" id="result" role="status" hidden></div>
+      </div>
+
+      <div class="seat hero" data-seat="0"></div>
+
+      <div class="controls" id="controls" aria-live="polite"></div>
+
+      <details class="log" open>
+        <summary>Hand log</summary>
+        <ol id="log"></ol>
+      </details>
+
+      <button id="leave" class="link" type="button">Leave table</button>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="alert" hidden></div>
+</body>
+</html>

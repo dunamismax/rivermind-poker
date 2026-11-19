@@ -70,12 +70,30 @@ class _Event:
     seat: int
     action: str
     stage: str
+    chips: int  # chips the action put in
+    facing: int  # chips the seat needed to call before acting
+
+
+def _action_amounts(state: ShortDeckPokerState) -> Dict[str, int]:
+    """Chips the acting player would add for each legal action.
+
+    Fixed-limit raises are one big blind before the turn and two from the
+    turn on, on top of the amount to call.
+    """
+    me = state.current_player
+    to_call = max(p.n_bet_chips for p in state.players) - me.n_bet_chips
+    bet = state.big_blind * (2 if state.betting_stage in {"turn", "river"} else 1)
+    amounts = {"fold": 0, "call": min(to_call, me.n_chips)}
+    if "raise" in state.legal_actions:
+        amounts["raise"] = min(to_call + bet, me.n_chips)
+    return amounts
 
 
 @dataclass
 class _HandResult:
     payouts: Dict[int, int]
     showdown: bool
+    pot: int
     revealed: Dict[int, List[Dict[str, Any]]] = field(default_factory=dict)
 
 
@@ -192,13 +210,17 @@ class Table:
     def _apply(self, action: str):
         before = self._state
         stage = before.betting_stage
+        amounts = _action_amounts(before)
         with _ENGINE_LOCK:
             utils.random.seed(self._rng.randrange(2**32))
             self._state = before.apply_action(action)
         self._seq += 1
-        self._events.append(
-            _Event(self._seat_of_player(before.player_i), action, stage)
-        )
+        self._events.append(_Event(
+            self._seat_of_player(before.player_i), action, stage,
+            chips=amounts[action], facing=amounts["call"],
+        ))
+        # The engine empties the pot when it pays out, so keep the total.
+        final_pot = before._table.pot.total + amounts[action]
         state = self._state
         if state.betting_stage == "terminal":
             # Everyone else folded. The engine deals a flop it never shows
@@ -207,9 +229,9 @@ class Table:
         else:
             self._board = list(state.community_cards)
         if state.is_terminal:
-            self._finish_hand(showdown=state.betting_stage == "show_down")
+            self._finish_hand(state.betting_stage == "show_down", final_pot)
 
-    def _finish_hand(self, showdown: bool):
+    def _finish_hand(self, showdown: bool, pot: int):
         payouts = {
             self._seat_of_player(p): chips for p, chips in self._state.payout.items()
         }
@@ -222,7 +244,7 @@ class Table:
                     revealed[self._seat_of_player(p)] = [
                         c.to_dict() for c in player.cards
                     ]
-        self._result = _HandResult(payouts, showdown, revealed)
+        self._result = _HandResult(payouts, showdown, pot, revealed)
 
     def _run_bots(self):
         while self._result is None:
@@ -260,16 +282,18 @@ class Table:
                 "cards": cards,
             })
         your_turn = acting_seat == seat
+        amounts = _action_amounts(state) if your_turn else {}
         return {
             "hand": self._hand,
             "seq": self._seq,
             "seat": seat,
             "stage": state.betting_stage,
             "board": [c.to_dict() for c in self._board],
-            "pot": state._table.pot.total,
+            "pot": self._result.pot if over else state._table.pot.total,
             "seats": seats,
             "your_turn": your_turn,
             "legal_actions": list(state.legal_actions) if your_turn else [],
+            "action_amounts": amounts,
             "events": [vars(e).copy() for e in self._events],
             "result": None if not over else {
                 "payouts": dict(self._result.payouts),

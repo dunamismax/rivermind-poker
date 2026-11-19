@@ -15,6 +15,7 @@ dependencies = [
     "blessed>=1.20",
     "click>=8.1",
     "enlighten>=1.12",
+    "fastapi>=0.165.0",
     "joblib>=1.4",
     "numpy>=2",
     "PyYAML>=6",
@@ -22,6 +23,8 @@ dependencies = [
     "scikit-learn>=1.5",
     "scipy>=1.13",
     "tqdm>=4.66",
+    "uvicorn>=0.54.0",
+    "websockets>=17.4",
 ]
 
 [project.urls]
@@ -35,8 +38,14 @@ poker_ai = "poker_ai.cli.runner:cli"
 include = ["poker_ai", "poker_ai.*"]
 namespaces = false
 
+[tool.setuptools.package-data]
+"poker_ai.web" = ["static/*"]
+
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "httpx2>=2.16.2",
+    "pytest>=8",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

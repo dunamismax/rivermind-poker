@@ -10,7 +10,7 @@ The first browser milestone is one human completing a hand against two bots usin
 | Build the browser table | Display the current hand, let the player choose a legal action and show bot actions and the result. | A visitor can play consecutive hands on desktop and mobile with random or trained opponents. |
 | Self-host the free game | Package the service for the existing server and route the domain to it over HTTPS. Keep offline training separate from serving a pinned bot checkpoint. | A fresh browser can play through rivermindpoker.com and the service recovers after a restart. |
 
-The browser client, hosted service and production deployment are future work. Choose their frameworks when implementing the table API. A change to full-deck or no-limit rules will also need new action representations, training data and evaluation coverage.
+The browser table runs locally on FastAPI with a WebSocket protocol and a small JavaScript client. Hosting and production deployment are the remaining work. A change to full-deck or no-limit rules will also need new action representations, training data and evaluation coverage.
 
 ## Training issues resolved before benchmarking
 
