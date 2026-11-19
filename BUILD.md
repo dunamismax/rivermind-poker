@@ -7,9 +7,9 @@ This file is the single source of truth for project status, from today’s worki
 | | |
 | --- | --- |
 | **Current phase** | Phase 3 · Table server v2 |
-| **Next step** | **P3.3** Action clock and disconnects |
-| **In progress** | **P3.3** Action clock, time bank and sitting out disconnected players (claimed 2026-11-19). |
-| **Blockers** | _None._ Phases 1 and 2, P3.1 and P3.2 are complete. |
+| **Next step** | **P3.4** Protocol v2 |
+| **In progress** | **P3.4** Protocol v2: typed messages for tables, seats, events and timers over one WebSocket (claimed 2026-11-19). |
+| **Blockers** | _None._ Phases 1 and 2 and P3.1 to P3.3 are complete. |
 | **Live site** | https://rivermindpoker.com runs the Phase 0 game (three seats, fixed limit, 20 cards, against random bots or the RM-06 checkpoint) in the SvelteKit client. Caddy serves the client from `/srv/rivermindpoker.com/current` and proxies `/api/*` and `/ws` to the FastAPI app. Tables survive restarts. Deployed at `a172a17`. The site database `rivermind_poker` exists on ubuntu-vm and is migrated to `0001`, but the deployed app does not use it yet. The next deploy installs the database-aware `update.sh` steps and the unit’s `EnvironmentFile`. |
 | **`main`** | Phases 0 to 2, the P3.1 database foundation and the P6.5 card artwork are on `main` and pushed to both remotes. The no-limit engine is in `rivermind/engine` and the simple bots in `rivermind/bots`, but the live site still runs the Phase 0 game until P3.7. `main` pushes to GitHub and Codeberg, and GitHub Actions runs the Python and web suites on every push. |
 | **Last updated** | 2026-11-19 |
@@ -258,9 +258,10 @@ Each question has a default. Agents build on the default until the owner decides
   - [x] Each table runs as an asyncio task. Engine calls stay off the event loop where they could block it.
   - Evidence: `ed07e2a`. [rivermind/server](rivermind/server/) has the synchronous `Table` (seats, buy-ins kept within the range, sitting out and leaving between hands, a leaving player folding or checking at each turn, rebuys added when the hand ends, numbered public events with no unshown cards) and `TableRunner`/`TableManager` (one asyncio task per table, bots deciding through `asyncio.to_thread`, stale decisions dropped, failing bots timed out, busted bots rebuying). [test_table.py](test/server/test_table.py) plays every rules section 5 example and rules 2.2 and 2.3 through the table, and a 4,000-step random fuzz of seating, rebuys and play at 2, 3, 6 and 9 seats conserves chips; [test_runner.py](test/server/test_runner.py) covers automatic hands at 2, 6 and 9 seats, a person playing with bots, a bot blocked in its thread while another table plays 20 hands, and injected sleeps. `uv run python -m rivermind.server.simulate --seats 2,6,9 --hands 500 --seed 0` played 4,903, 678 and 501 hands on three concurrent tables in 2.2 s with chips conserved; a 5 ms heartbeat saw event-loop lag of 0.18 ms median, 0.88 ms p99 and 2.8 ms at most. pytest 391 passed with the database tests.
 
-- [ ] **P3.3 · Action clock and disconnects** · Depends on: P3.2
-  - [ ] Each action has a configurable clock (default 20 seconds) plus a time bank. On timeout the seat checks if it can, otherwise folds. A player disconnected for a full orbit is sat out.
-  - [ ] Clock and timeout tests use an injected clock, not real sleeps.
+- [x] **P3.3 · Action clock and disconnects** · Depends on: P3.2
+  - [x] Each action has a configurable clock (default 20 seconds) plus a time bank. On timeout the seat checks if it can, otherwise folds. A player disconnected for a full orbit is sat out.
+  - [x] Clock and timeout tests use an injected clock, not real sleeps.
+  - Evidence: `fd61fc1`. `TableConfig` gains `action_seconds` (20), `time_bank_seconds` (30) and `bank_refill_seconds` (2 per hand dealt in); `Table.check_clock` times out the player to act, and runners wait on `RunnerOptions.clock` ([clock.py](rivermind/server/clock.py)), a `SystemClock` live and a `ManualClock` in tests. Disconnected players get no bank, and anyone away (disconnected or timed out without acting) for an orbit is sat out; rules 13.1 and 13.2 and the Choices table now say so. [test_clock.py](test/server/test_clock.py) (11 tests, no sleeping) covers deadlines, bank spending and refill, the section 13 example played through the table, disconnecting and reconnecting mid-turn, sitting out after an orbit, resetting the count, idle connected players, bots, and runners timing out a person and a stuck bot. A real-time run (0.5 s clock and bank) showed a 1.0 s first turn, 0.6 s turns after the bank emptied and the idle player sat out after three hands. pytest 402 passed with the database tests.
 
 - [ ] **P3.4 · Protocol v2** · Depends on: P3.2, P1.2
   - [ ] Typed messages cover joining and leaving tables, seat views, ordered events with `seq`, timers, errors and several tables per connection. TypeScript is generated as in P1.2.
