@@ -22,6 +22,9 @@ User=rivermind-poker
 Group=rivermind-poker
 WorkingDirectory=/home/sawyer/github/rivermind-poker
 Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+# DATABASE_URL for the rivermind_poker_web role, from deploy/setup-database.sh.
+# The app does not use it until Phase 3 moves tables into PostgreSQL.
+EnvironmentFile=-/etc/rivermind-poker/web.env
 StateDirectory=rivermind-poker
 StateDirectoryMode=0700
 ExecStart=/home/sawyer/github/rivermind-poker/.venv/bin/rivermind-poker serve \
