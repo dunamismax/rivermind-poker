@@ -26,7 +26,7 @@ Those paths are examples for locally generated files. The terminal records compl
 uv run rivermind-poker serve
 ```
 
-Open http://127.0.0.1:8000, choose opponents and sit down. It works on desktop and mobile browsers. Pass the same `--strategy_path` and `--lut_path` to `serve` to offer trained RiverMind opponents next to the random ones. The server keeps tables in memory. A reload or dropped connection rejoins your seat, while a server restart closes the tables.
+Open http://127.0.0.1:8000, choose opponents and sit down. It works on desktop and mobile browsers. Pass the same `--strategy_path` and `--lut_path` to `serve` to offer trained RiverMind opponents next to the random ones. A reload or dropped connection rejoins your seat. Add `--state_path tables.sqlite3` to keep tables, mid-hand included, across server restarts.
 
 ## Develop the bot
 

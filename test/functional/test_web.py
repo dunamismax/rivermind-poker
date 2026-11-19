@@ -155,3 +155,63 @@ def test_idle_tables_are_evicted_when_full():
     _new(client)  # evicts the least recently used idle table
     assert len(app.state.registry._tables) == 2
     assert app.state.registry.get(first["table_id"]) is None
+
+
+def _app(path, **kwargs):
+    return create_app(card_info_lut=LUT, strategy={}, state_path=str(path), **kwargs)
+
+
+@pytest.mark.parametrize("opponents", ["random", "checkpoint"])
+def test_tables_survive_a_restart_mid_hand(tmp_path, opponents):
+    db = tmp_path / "tables.sqlite3"
+    client = TestClient(_app(db))
+    seat = _new(client, opponents)
+    with client.websocket_connect("/ws") as ws:
+        view = _join(ws, seat)
+        ws.send_json({"type": "act", "action": "call", "seq": view["seq"]})
+        before = ws.receive_json()["view"]
+    # A new app on the same file stands in for a restarted server.
+    restarted = TestClient(_app(db))
+    with restarted.websocket_connect("/ws") as ws:
+        assert _join(ws, seat) == before
+        final = _play_hand(ws, before)
+        ws.send_json({"type": "next_hand", "seq": final["seq"]})
+        after = ws.receive_json()["view"]
+        assert after["hand"] == before["hand"] + 1
+        assert after["seats"][0]["balance"] == final["seats"][0]["balance"]
+    # And again, after the next hand started.
+    with TestClient(_app(db)).websocket_connect("/ws") as ws:
+        assert _join(ws, seat) == after
+
+
+def test_checkpoint_tables_wait_for_the_checkpoint(tmp_path):
+    db = tmp_path / "tables.sqlite3"
+    seat = _new(TestClient(_app(db)), "checkpoint")
+    without = create_app(state_path=str(db))  # started without a checkpoint
+    assert without.state.registry.get(seat["table_id"]) is None
+    assert _app(db).state.registry.get(seat["table_id"]) is not None
+
+
+def test_unreadable_and_expired_tables_are_dropped(tmp_path):
+    from poker_ai.web.store import TableStore
+    db = tmp_path / "tables.sqlite3"
+    keep = _new(TestClient(_app(db)))
+    store = TableStore(db)
+    store.save("broken", "random", 9e18, {"version": 999})
+    store.close()
+    app = _app(db)
+    assert app.state.registry.get(keep["table_id"]) is not None
+    ids = [row[0] for row in TableStore(db).rows()]
+    assert "broken" not in ids and keep["table_id"] in ids
+    _app(db, idle_seconds=-1)  # everything is now too old
+    assert list(TableStore(db).rows()) == []
+
+
+def test_eviction_removes_saved_tables(tmp_path):
+    from poker_ai.web.store import TableStore
+    db = tmp_path / "tables.sqlite3"
+    client = TestClient(_app(db, max_tables=1))
+    first = _new(client)
+    second = _new(client)
+    ids = [row[0] for row in TableStore(db).rows()]
+    assert ids == [second["table_id"]] and first["table_id"] not in ids

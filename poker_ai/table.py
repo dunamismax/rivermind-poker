@@ -6,6 +6,9 @@ their own hole cards, the public board, stacks, bets, the pot, the actions
 they may take and the public action log. Opponents' cards are disclosed only
 for players who reach a showdown.
 
+`snapshot()` and `Table.restore()` let a server persist tables so they
+survive restarts mid-hand.
+
 Every applied action (human or bot) increments `seq`. A client must send
 the `seq` of the view it acted on, so duplicate submissions and actions from
 a stale view are rejected without changing the hand. Reconnecting is just
@@ -14,6 +17,7 @@ HTTP or WebSocket server wraps these calls.
 """
 from __future__ import annotations
 
+import pickle
 import random
 import secrets
 import threading
@@ -24,6 +28,8 @@ from poker_ai import utils
 from poker_ai.games.short_deck.state import (
     InfoSetLookupTable, ShortDeckPokerState, new_game,
 )
+from poker_ai.poker.card import Card
+from poker_ai.poker.evaluation import Evaluator
 from poker_ai.policies import Policy, seat_view
 
 N_SEATS = 3
@@ -35,6 +41,32 @@ POSITIONS = ["small_blind", "big_blind", "button"]
 # from its own generator before every action. Python's generators are not
 # cryptographic: this is adequate for a free play-chip game.
 _ENGINE_LOCK = threading.Lock()
+# Bump when the snapshot layout changes; older snapshots are then rejected.
+SNAPSHOT_VERSION = 1
+
+
+def _pack_state(state: ShortDeckPokerState) -> bytes:
+    """Pickle an engine state without the shared card table and evaluator.
+
+    The evaluator's lookup tables are ~56 KB of the ~59 KB and identical for
+    every table, and the card table is shared by all tables.
+    """
+    lut, evaluator = state.card_info_lut, state._poker_engine.evaluator
+    state.card_info_lut, state._poker_engine.evaluator = {}, None
+    try:
+        return pickle.dumps(state, protocol=pickle.HIGHEST_PROTOCOL)
+    finally:
+        state.card_info_lut, state._poker_engine.evaluator = lut, evaluator
+
+
+def _unpack_state(
+    data: bytes, card_info_lut: Optional[InfoSetLookupTable]
+) -> ShortDeckPokerState:
+    # Only ever called on snapshots this server wrote (pickle runs code).
+    state = pickle.loads(data)
+    state.card_info_lut = card_info_lut or {}
+    state._poker_engine.evaluator = Evaluator()
+    return state
 
 
 class TableError(Exception):
@@ -166,6 +198,64 @@ class Table:
             self._button_offset = (self._button_offset + 1) % N_SEATS
             self._start_hand()
             return self._view(seat)
+
+    def snapshot(self) -> Dict[str, Any]:
+        """Everything needed to rebuild this table, except bot policies.
+
+        Contains the seat tokens, so store it where only the server can read
+        it. Plain data apart from the engine state, which is pickled.
+        """
+        with self._lock:
+            return {
+                "version": SNAPSHOT_VERSION,
+                "seats": [
+                    {"name": s.name, "token": s.token, "bot": not s.is_human,
+                     "balance": s.balance}
+                    for s in self._seats
+                ],
+                "card_tables": bool(self._card_info_lut),
+                "rng": self._rng.getstate(),
+                "hand": self._hand,
+                "seq": self._seq,
+                "button_offset": self._button_offset,
+                "events": [vars(e).copy() for e in self._events],
+                "board": [c.to_dict() for c in self._board],
+                "result": None if self._result is None else vars(self._result).copy(),
+                "state": _pack_state(self._state),
+            }
+
+    @classmethod
+    def restore(
+        cls,
+        snapshot: Dict[str, Any],
+        bots: Dict[int, Policy],
+        card_info_lut: Optional[InfoSetLookupTable] = None,
+    ) -> "Table":
+        """Rebuild a table from `snapshot()`, giving each bot seat a policy."""
+        if snapshot.get("version") != SNAPSHOT_VERSION:
+            raise ValueError(f"Unsupported table snapshot {snapshot.get('version')!r}")
+        if snapshot["card_tables"] and not card_info_lut:
+            raise ValueError("This table's bots need the card tables.")
+        table = cls.__new__(cls)
+        table._seats = [
+            _Seat(name=s["name"], token=s["token"],
+                  policy=bots[i] if s["bot"] else None, balance=s["balance"])
+            for i, s in enumerate(snapshot["seats"])
+        ]
+        table._card_info_lut = card_info_lut if snapshot["card_tables"] else {}
+        table._rng = random.Random()
+        table._rng.setstate(snapshot["rng"])
+        table._lock = threading.RLock()
+        table._hand = snapshot["hand"]
+        table._seq = snapshot["seq"]
+        table._button_offset = snapshot["button_offset"]
+        table._events = [_Event(**e) for e in snapshot["events"]]
+        table._board = [Card.from_dict(c) for c in snapshot["board"]]
+        table._result = (
+            None if snapshot["result"] is None else _HandResult(**snapshot["result"])
+        )
+        table._state = _unpack_state(snapshot["state"], table._card_info_lut)
+        return table
 
     # Internals ------------------------------------------------------------
 

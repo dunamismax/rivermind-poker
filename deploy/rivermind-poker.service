@@ -5,6 +5,9 @@
 # The dedicated rivermind-poker user only needs traverse access to /home/sawyer
 # (ACL) and read access to the checkout, its .venv, the Python under
 # /opt/uv-python and the pinned checkpoint/tables in artifacts/.
+# Open tables are saved to /var/lib/rivermind-poker/tables.sqlite3 (private
+# state directory) after every change and restored on start, so restarts and
+# deploys keep every game.
 [Unit]
 Description=RiverMind Poker browser table (rivermindpoker.com)
 Documentation=https://github.com/dunamismax/rivermind-poker
@@ -19,10 +22,13 @@ User=rivermind-poker
 Group=rivermind-poker
 WorkingDirectory=/home/sawyer/github/rivermind-poker
 Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+StateDirectory=rivermind-poker
+StateDirectoryMode=0700
 ExecStart=/home/sawyer/github/rivermind-poker/.venv/bin/rivermind-poker serve \
     --host 127.0.0.1 --port 4316 \
     --strategy_path /home/sawyer/github/rivermind-poker/artifacts/rm06/baseline_2026_11_18_20_45_30_074222/agent.joblib \
-    --lut_path /home/sawyer/github/rivermind-poker/artifacts/rm06/tables
+    --lut_path /home/sawyer/github/rivermind-poker/artifacts/rm06/tables \
+    --state_path /var/lib/rivermind-poker/tables.sqlite3
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=15

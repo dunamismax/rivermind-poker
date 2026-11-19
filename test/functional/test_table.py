@@ -214,3 +214,55 @@ def test_events_record_chips_and_final_pot():
     assert sum(e["chips"] for e in pre) + 150 == final["pot"] == 300
     payouts = final["result"]["payouts"]
     assert max(payouts.values()) <= final["pot"]
+
+
+def _always_bots():
+    return {1: Always("call"), 2: Always("raise")}
+
+
+def test_restored_table_continues_exactly_like_the_original():
+    """Snapshots carry the engine state, deck RNG, log and balances."""
+    import pickle
+    original = Table([SeatConfig("Ann"), SeatConfig("Bot 1", Always("call")),
+                      SeatConfig("Bot 2", Always("raise"))], seed=12)
+    ann = original.tokens[0]
+    # Finish one hand and start the next, then stop mid-hand.
+    final = _play_out(original, [ann])
+    view = original.next_hand(ann, final["seq"])
+    original.act(ann, "call", view["seq"])
+    snapshot = pickle.loads(pickle.dumps(original.snapshot()))
+    # The shared evaluator (~56 KB) is left out of every saved table.
+    assert len(snapshot["state"]) < 20_000
+    copy_ = Table.restore(snapshot, _always_bots())
+    assert copy_.view(ann) == original.view(ann)
+    # Both tables now play identically: same future cards and results.
+    for _ in range(3):
+        for table in (original, copy_):
+            v = table.view(ann)
+            if v["result"] is None:
+                table.act(ann, "raise" if "raise" in v["legal_actions"] else "call",
+                          v["seq"])
+            else:
+                table.next_hand(ann, v["seq"])
+        assert copy_.view(ann) == original.view(ann)
+
+
+def test_restore_rejects_other_snapshot_versions():
+    table, ann, _ = _two_humans()
+    snapshot = table.snapshot()
+    snapshot["version"] = 0
+    with pytest.raises(ValueError):
+        Table.restore(snapshot, {2: Always("call")})
+
+
+def test_snapshot_of_checkpoint_table_needs_card_tables():
+    from collections import defaultdict
+    from test.functional.training_helpers import STAGES
+    lut = {stage: defaultdict(int) for stage in STAGES}
+    table = Table([SeatConfig("Ann"), SeatConfig("Bot 1", Always("call")),
+                   SeatConfig("Bot 2", Always("call"))], card_info_lut=lut, seed=1)
+    snapshot = table.snapshot()
+    with pytest.raises(ValueError):
+        Table.restore(snapshot, _always_bots())
+    restored = Table.restore(snapshot, _always_bots(), card_info_lut=lut)
+    assert restored.view(table.tokens[0]) == table.view(table.tokens[0])
