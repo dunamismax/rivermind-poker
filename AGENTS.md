@@ -2,11 +2,13 @@
 
 ## Start and finish a session
 
-1. Read [BUILD.md](BUILD.md) first. Run `git status --short --branch` and `git log -5 --oneline --decorate`. Identify existing edits and preserve unrelated work. Use the [development guide](CONTRIBUTING.md) for local commands and the [roadmap](docs/roadmap.md) for milestone intent.
-2. The owner’s current request takes priority over the backlog. Otherwise pick the first unblocked task whose dependencies are met. Check its acceptance criteria against the relevant source and tests. Move its ID, outcome and acceptance check into **Active work** when you start.
-3. Verify the acceptance check through the affected entry point. For engine changes, exercise a reproducible hand or action sequence. For training changes, record the rules, seat count, settings and artifacts used. Run the full suite before proposing a change to `main`.
-4. Update task status only in BUILD.md. Move verified work to **Completed work** with evidence. For partial work, keep the task active and record exactly what remains, which checks could not run and why. Put genuine impediments under **Blockers** and undecided choices under **Open questions**. Refresh the first-screen summary and recommended task when priorities change.
-5. For each session that changes project state, prepend a dated BUILD.md handoff with task IDs, outcome, checks actually run and the next concrete action. Review the final working tree and diff, including new files.
+[BUILD.md](BUILD.md) is the phased plan to 1.0 and the record of where work stands. Its **How to work this file** section is the session procedure; the essentials are below.
+
+1. Read **Now** in BUILD.md, then run `git status --short --branch` and `git log -5 --oneline --decorate`. Preserve unrelated work in the tree.
+2. The owner’s current request comes first. Otherwise take **Next step**, or the first unchecked step in the current phase whose dependencies are checked. Claim it under **In progress** before you start.
+3. Verify every **Done when** criterion through the real entry point (CLI, browser, server or live site) as well as with tests. For engine changes, exercise a reproducible hand or action sequence. For training changes, record the rules, seat count, settings and artifacts used. Run the full suites before committing.
+4. Tick verified criteria, add an `Evidence:` line, then update **Now**. For partial work, add a `Remaining:` line instead of ticking the step. Build on the settled decisions (`D-n`). Use the open questions’ defaults (`Q-n`) rather than waiting, and stop only at **Owner gate** steps.
+5. Prepend a dated entry to the handoff log (keep eight; archive older ones in [docs/build-history.md](docs/build-history.md)). Review the final working tree and diff, including new files.
 
 ## Local development and play
 
@@ -53,4 +55,4 @@ Use Context7 MCP whenever the user asks about a library, framework, SDK, API, CL
 4. Answer using the fetched documentation.
 <!-- context7 -->
 
-At session end, agents may edit AGENTS.md when they discover a durable convention, verified command or recurring pitfall that will help future contributors. Put session results, temporary workarounds and backlog changes in BUILD.md.
+At session end, agents may edit AGENTS.md when they discover a durable convention, verified command or recurring pitfall that will help future contributors. Put session results, temporary workarounds and plan changes in BUILD.md. The [development guide](CONTRIBUTING.md) has local commands, and the [roadmap](docs/roadmap.md) explains the architecture and why the phases are ordered as they are.

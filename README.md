@@ -45,7 +45,7 @@ Open http://127.0.0.1:8000, choose opponents and sit down. It works on desktop a
 
 Run `uv run pytest` for the development suite. The installed command is `rivermind-poker`. The Python namespace and legacy command `poker_ai` remain available for existing scripts and serialized artifacts.
 
-[Development and training](CONTRIBUTING.md) · [Roadmap to the browser table](docs/roadmap.md)
+[Development and training](CONTRIBUTING.md) · [Build tracker](BUILD.md) · [Roadmap to 1.0](docs/roadmap.md)
 
 ## Origins and license
 
