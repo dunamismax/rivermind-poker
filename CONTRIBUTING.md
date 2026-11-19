@@ -67,6 +67,16 @@ Clients ask a policy for a decision by passing `seat_view(state)`. It contains t
 
 `rivermind-poker serve` runs a FastAPI app under Uvicorn. It serves the dependency-free JavaScript client from [`poker_ai/web/static`](poker_ai/web/static/) and wraps `Table`. `POST /api/tables` with `{"opponents": "random"}` or `"checkpoint"` returns a table id and the human seat’s token. Play then runs over one WebSocket at `/ws`. The client first sends `{"type": "join", "table_id", "token"}`, so the token never appears in a URL or access log. After that it sends `act` with an action and `seq`, `next_hand` with `seq`, or `refresh`. Each change sends every connected socket its own seat’s view. A rejected message returns an error code with the current view. The browser stores the seat in `localStorage` and rejoins after reloads and dropped connections with backoff. Tables live in memory and idle ones are evicted at `--max_tables`. The server binds to 127.0.0.1 by default. Put it behind an HTTPS reverse proxy before exposing it. [App](poker_ai/web/app.py) · [Tests](test/functional/test_web.py)
 
+## Deploy rivermindpoker.com
+
+The site runs on the owner’s ubuntu-vm from the checkout at `/home/sawyer/github/rivermind-poker`. Caddy terminates HTTPS and proxies to `rivermind-poker.service` on `127.0.0.1:4316`. After pushing `main`, update the live site with the following command.
+
+```sh
+ssh root@ubuntu-vm 'bash /home/sawyer/github/rivermind-poker/deploy/update.sh'
+```
+
+[The script](deploy/update.sh) fast-forwards the checkout and syncs the locked environment on Python 3.12. It runs the full test suite and stops if anything fails, then installs the [systemd unit](deploy/rivermind-poker.service) and [Caddy site](deploy/rivermindpoker.com.caddy), restarts the service and reloads Caddy. A restart closes every open table, and the card table takes about 23 seconds to load. Checkpoints and tables are not in Git. To serve a new pair, copy both into `artifacts/` on the server, update the paths in the unit file and run the script. Deploying to the live domain needs the owner’s authorization.
+
 For bot changes, record the rules, seat count, training settings, checkpoint and evaluation opponent along with results. For engine changes, add a reproducible hand or action sequence that exercises the rule. Run the full suite before proposing a change to `main`.
 
 ## Project history

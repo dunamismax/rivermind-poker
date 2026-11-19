@@ -1,6 +1,6 @@
 # RiverMind Poker
 
-RiverMind Poker is an independent poker AI project. The current game is a three-seat table where you play two bots using a 20-card deck, tens through aces, with fixed-size raises. You can play in the browser or the terminal. The goal is a free, self-hosted browser table at `rivermindpoker.com`.
+RiverMind Poker is an independent poker AI project. The current game is a three-seat table where you play two bots using a 20-card deck, tens through aces, with fixed-size raises. Play it at https://rivermindpoker.com, or run it yourself in the browser or the terminal. The goal is a free, self-hosted browser table at `rivermindpoker.com`.
 
 ## Play a hand
 
