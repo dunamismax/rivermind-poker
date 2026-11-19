@@ -9,7 +9,7 @@ This file is the single source of truth for project status, from today’s worki
 | **Current phase** | Phase 3 · Table server v2 |
 | **Next step** | **P3.4** Protocol v2 |
 | **In progress** | **P3.4** Protocol v2: typed messages for tables, seats, events and timers over one WebSocket (claimed 2026-11-19). |
-| **Blockers** | _None._ Phases 1 and 2 and P3.1 to P3.3 are complete. |
+| **Blockers** | _None._ Phases 1 and 2 and P3.1 to P3.3 are complete. P3.4 is partly built and uncommitted; see its Remaining line. |
 | **Live site** | https://rivermindpoker.com runs the Phase 0 game (three seats, fixed limit, 20 cards, against random bots or the RM-06 checkpoint) in the SvelteKit client. Caddy serves the client from `/srv/rivermindpoker.com/current` and proxies `/api/*` and `/ws` to the FastAPI app. Tables survive restarts. Deployed at `a172a17`. The site database `rivermind_poker` exists on ubuntu-vm and is migrated to `0001`, but the deployed app does not use it yet. The next deploy installs the database-aware `update.sh` steps and the unit’s `EnvironmentFile`. |
 | **`main`** | Phases 0 to 2, the P3.1 database foundation and the P6.5 card artwork are on `main` and pushed to both remotes. The no-limit engine is in `rivermind/engine` and the simple bots in `rivermind/bots`, but the live site still runs the Phase 0 game until P3.7. `main` pushes to GitHub and Codeberg, and GitHub Actions runs the Python and web suites on every push. |
 | **Last updated** | 2026-11-19 |
@@ -266,6 +266,7 @@ Each question has a default. Agents build on the default until the owner decides
 - [ ] **P3.4 · Protocol v2** · Depends on: P3.2, P1.2
   - [ ] Typed messages cover joining and leaving tables, seat views, ordered events with `seq`, timers, errors and several tables per connection. TypeScript is generated as in P1.2.
   - [ ] Server tests cover stale or duplicate actions, actions from the wrong seat, hidden cards and reconnecting at every seat count.
+  - Remaining (2026-11-19, uncommitted in the working tree): `rivermind/server/{protocol,views,auth,app,cli}.py`, the TypeScript generator moved to `rivermind/server/typescript.py` with `protocol-schema --version 2`, `web/src/lib/protocol-v2.ts`, `rivermind-poker serve-nl` and `test/server/test_protocol_v2.py`. A manual TestClient run worked (players, a table with bots, welcome, views, legal actions and a real 50 s timeout). The new test file was not finished: its first six tests passed, then the run stopped responding, probably a `Socket.until` waiting on a message that never comes. Debug that, run the full suites, then commit.
 
 - [ ] **P3.5 · Durable tables and histories** · Depends on: P3.1, P3.2
   - [ ] Table state is stored as versioned JSON in PostgreSQL and saved before any change is broadcast. Finished hands are stored as histories. Tables are restored at startup, matching the RM-10 behaviour.
@@ -447,6 +448,8 @@ These are possible directions after the release:
 ## Handoff log
 
 Newest first. Keep eight entries and move older ones to [docs/build-history.md](docs/build-history.md). Each entry gives the date, the step IDs, what changed, the checks actually run and the next concrete action.
+
+**2026-11-19 · P3.2 and P3.3 complete, P3.4 partly.** The owner asked for as much of the build as possible. Built `rivermind/server`: the table core, asyncio runners and manager (P3.2, `ed07e2a`), and action clocks, time banks and sitting out absent players (P3.3, `fd61fc1`; rules section 13 updated). The checks are in each step’s evidence. P3.4 (protocol v2 app, `serve-nl`) is in the working tree, not committed, because its new test file hung partway through; see the P3.4 Remaining line. Nothing was pushed or deployed. Next action: finish P3.4.
 
 **2026-11-19 · P3.1 complete, server set up.** The owner lifted the owner gate on server setup (now D-10). Added [`deploy/setup-database.sh`](deploy/setup-database.sh) and ran it on ubuntu-vm, following the host’s pattern of owner, web and migration roles. It created `rivermind_poker` and `rivermind_poker_test` on PostgreSQL 18 and migrated the site database to `0001`. `update.sh` now runs the database tests and migrations, the unit reads `DATABASE_URL`, and CI uses `postgres:18`. Checks are in the P3.1 evidence. Two pitfalls while checking: copying a tree with macOS `tar` adds `._*` files that Alembic tries to load (use `COPYFILE_DISABLE=1` and `--no-mac-metadata`), and root’s `git` refuses the sawyer-owned checkout, so run git as sawyer. Not deployed. Next action: P3.2.
 
