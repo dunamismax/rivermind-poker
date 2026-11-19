@@ -67,6 +67,27 @@ Clients ask a policy for a decision by passing `seat_view(state)`. It contains t
 
 `rivermind-poker serve` runs a FastAPI app under Uvicorn. It serves the dependency-free JavaScript client from [`poker_ai/web/static`](poker_ai/web/static/) and wraps `Table`. `POST /api/tables` with `{"opponents": "random"}` or `"checkpoint"` returns a table id and the human seat’s token. Play then runs over one WebSocket at `/ws`. The client first sends `{"type": "join", "table_id", "token"}`, so the token never appears in a URL or access log. After that it sends `act` with an action and `seq`, `next_hand` with `seq`, or `refresh`. Each change sends every connected socket its own seat’s view. A rejected message returns an error code with the current view. The browser stores the seat in `localStorage` and rejoins after reloads and dropped connections with backoff. With `--state_path`, the [store](poker_ai/web/store.py) saves each table to SQLite after every change, before anyone sees the new state. Tables are restored at startup, so a restart or crash mid-hand only shows players a brief reconnect. A saved table is about 6 KB, because the shared hand evaluator and card table are left out. Tables idle for a week are dropped. So are snapshots that a newer engine cannot restore, which is logged. Checkpoint tables are kept but not loaded when the server starts without a checkpoint. Snapshots are pickled and include seat tokens, so the file must stay private to the service. Without `--state_path`, tables live only in memory. Either way, idle tables are evicted when `--max_tables` is reached. The server binds to 127.0.0.1 by default. Put it behind an HTTPS reverse proxy before exposing it. [App](poker_ai/web/app.py) · [Tests](test/functional/test_web.py)
 
+## SvelteKit client
+
+The new browser client lives in [`web/`](web/). It is a SvelteKit single-page app (Svelte 5, strict TypeScript) built with `adapter-static`, and every route is served by the `200.html` fallback. It replaces the vanilla client during Phase 1. Use the Node LTS major in [`web/.node-version`](web/.node-version) (mise reads it) and the pnpm version in `package.json`, which corepack provides. Run these from `web/`.
+
+```sh
+pnpm install --frozen-lockfile
+pnpm check   # svelte-kit sync and svelte-check, warnings fail
+pnpm lint    # Prettier and ESLint; `pnpm format` rewrites files
+pnpm test    # Vitest unit tests
+pnpm build   # static site in web/build
+```
+
+For development, run the table server and the Vite dev server side by side. Vite proxies `/api` and `/ws` to `http://127.0.0.1:8000`, so the client stays same-origin as it is behind Caddy. Set `RIVERMIND_BACKEND` to proxy somewhere else.
+
+```sh
+uv run --locked rivermind-poker serve --port 8000
+pnpm dev
+```
+
+`pnpm e2e` runs the Playwright tests in `web/e2e/`. It starts `rivermind-poker serve` on port 8000 and the built client under `vite preview` on port 4173, reusing servers that are already running outside CI. Install the browsers once with `pnpm exec playwright install`.
+
 ## Deploy rivermindpoker.com
 
 The site runs on the owner’s ubuntu-vm from the checkout at `/home/sawyer/github/rivermind-poker`. Caddy terminates HTTPS and proxies to `rivermind-poker.service` on `127.0.0.1:4316`. After pushing `main`, update the live site with the following command.

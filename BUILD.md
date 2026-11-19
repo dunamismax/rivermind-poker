@@ -8,7 +8,7 @@ This file is the single source of truth for project status, from today’s worki
 | --- | --- |
 | **Current phase** | Phase 1 · SvelteKit client |
 | **Next step** | **P1.1** Scaffold the SvelteKit app |
-| **In progress** | _None_ |
+| **In progress** | **P1.1** Scaffold the SvelteKit app in `web/` with the dev proxy and a placeholder page (claimed 2026-11-19) |
 | **Blockers** | _None_ |
 | **Live site** | https://rivermindpoker.com runs the Phase 0 prototype: a three-seat, fixed-limit, 20-card game against random bots or the RM-06 checkpoint. It uses FastAPI, WebSockets and a vanilla JavaScript client. Tables survive restarts. |
 | **`main`** | All Phase 0 work is on `main`, which pushes to GitHub and Codeberg. GitHub Actions passes on every push. |
