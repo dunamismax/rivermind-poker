@@ -3,11 +3,16 @@ import type { Page } from '@playwright/test';
 import {
 	expect,
 	handNumber,
+	nameOf,
 	newTableForm,
 	noOverflow,
 	playUntil,
 	playUntilHand,
+	row,
+	seated,
 	sitDown,
+	stranger,
+	tableIdOf,
 	withCsp as test
 } from './fixtures.ts';
 
@@ -80,6 +85,26 @@ test('sits out, comes back and rebuys', async ({ page }) => {
 			.getByText(/^\+25 after this hand$/)
 			.or(page.getByRole('region', { name: 'Hand log' }).getByText(/adds 25/))
 	).toBeVisible();
+	await leave(page);
+});
+
+test('two people play together from the lobby', async ({ page, browser }) => {
+	await sitDown(page, 3, { bots: /RiverMind Easy/ });
+	const tableId = await tableIdOf(page);
+	const bob = await stranger(browser);
+	await bob.goto('/');
+	await row(bob, tableId).getByRole('button', { name: 'Sit down' }).click();
+	// The bot whose seat Bob takes finishes its hand first; then Bob sits.
+	await playUntil(page, async () => seated(bob).isVisible(), LIVE_HAND_MS);
+	await expect(page.locator('.seat').filter({ hasText: await nameOf(bob) })).toBeVisible();
+	await expect(page.locator('.seat .bot')).toHaveCount(1);
+	const target = (await handNumber(page)) + 1;
+	await Promise.all([
+		playUntilHand(page, target, LIVE_HAND_MS),
+		playUntilHand(bob, target, LIVE_HAND_MS)
+	]);
+	await leave(bob);
+	await bob.context().close();
 	await leave(page);
 });
 
