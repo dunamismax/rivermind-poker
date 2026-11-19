@@ -37,12 +37,16 @@ import random
 import secrets
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import TypeVar
 
 from rivermind.bots import Policy
 from rivermind.engine import Action
 
 from .clock import Clock, SystemClock
 from .table import Departure, ErrorCode, Event, Table, TableConfig, TableError
+
+R = TypeVar("R")
+T = TypeVar("T")
 
 log = logging.getLogger("rivermind.server")
 
@@ -161,18 +165,13 @@ class TableRunner:
     # Requests from players. Each raises TableError and leaves the table unchanged on refusal.
 
     async def sit(self, seat: int, player_id: str, name: str, buy_in: int) -> None:
-        async with self.lock:
-            self.table.sit(seat, player_id, name, buy_in)
-            await self._changed()
+        await self._change(lambda: self.table.sit(seat, player_id, name, buy_in))
 
     async def seat_bot(self, seat: int, kind: str, buy_in: int | None = None) -> str:
         """Seat a bot of ``kind``, labelled as a bot (D-7). Returns its player id."""
         if kind not in self.bots:
             raise TableError(ErrorCode.BAD_REQUEST, f"no bot called {kind!r}")
-        async with self.lock:
-            player_id = self._sit_bot(seat, kind, buy_in)
-            await self._changed()
-            return player_id
+        return await self._change(lambda: self._sit_bot(seat, kind, buy_in))
 
     def _sit_bot(self, seat: int, kind: str, buy_in: int | None = None) -> str:
         self._bot_count += 1
@@ -183,61 +182,74 @@ class TableRunner:
 
     async def reserve(self, player_id: str, name: str, seat: int | None = None) -> tuple[int, bool]:
         """Hold a seat (rule 2.4). Returns the seat and whether it is free to sit in now."""
-        async with self.lock:
-            held = self.table.reserve(player_id, name, seat)
-            await self._changed()
+
+        def ready(held: int) -> tuple[int, bool]:
             hold = self.table.reservations.get(held)
             return held, hold is not None and hold.ready
 
+        return await self._change_then(lambda: self.table.reserve(player_id, name, seat), ready)
+
     async def cancel_reservation(self, player_id: str) -> None:
-        async with self.lock:
-            self.table.cancel_reservation(player_id)
-            await self._changed()
+        await self._change(lambda: self.table.cancel_reservation(player_id))
 
     async def join_waitlist(self, player_id: str, name: str) -> int:
-        async with self.lock:
-            place = self.table.join_waitlist(player_id, name)
-            await self._changed()
-            return self.table.waitlist_position(player_id) or place
+        return await self._change_then(
+            lambda: self.table.join_waitlist(player_id, name),
+            lambda place: self.table.waitlist_position(player_id) or place,
+        )
 
     async def leave_waitlist(self, player_id: str) -> None:
-        async with self.lock:
-            self.table.leave_waitlist(player_id)
-            await self._changed()
+        await self._change(lambda: self.table.leave_waitlist(player_id))
 
     async def leave(self, player_id: str) -> Departure | None:
-        async with self.lock:
-            departure = self.table.leave(player_id)
-            await self._changed()
-            return departure
+        return await self._change(lambda: self.table.leave(player_id))
 
     async def sit_out(self, player_id: str) -> None:
-        async with self.lock:
-            self.table.sit_out(player_id)
-            await self._changed()
+        await self._change(lambda: self.table.sit_out(player_id))
 
     async def sit_in(self, player_id: str) -> None:
-        async with self.lock:
-            self.table.sit_in(player_id)
-            await self._changed()
+        await self._change(lambda: self.table.sit_in(player_id))
 
     async def set_connected(self, player_id: str, connected: bool) -> None:
-        async with self.lock:
-            self.table.set_connected(player_id, connected)
-            await self._changed()
+        await self._change(lambda: self.table.set_connected(player_id, connected))
 
     async def rebuy(self, player_id: str, amount: int) -> None:
-        async with self.lock:
-            self.table.rebuy(player_id, amount)
-            await self._changed()
+        await self._change(lambda: self.table.rebuy(player_id, amount))
 
     async def act(self, player_id: str, action: Action, seq: int | None = None) -> None:
-        async with self.lock:
+        def apply() -> None:
             seat = self.table.seat_of(player_id)
             if seat is not None and self._is_bot(seat):
                 raise TableError(ErrorCode.NOT_YOUR_TURN, "bots act for themselves")
             self.table.act(player_id, action, seq)
-            await self._changed()
+
+        await self._change(apply)
+
+    async def _change(self, apply: Callable[[], T]) -> T:
+        return await self._change_then(apply, lambda result: result)
+
+    async def _change_then(self, apply: Callable[[], R], after: Callable[[R], T]) -> T:
+        """Apply a request under the lock, then save and publish it; ``after``
+        reads the answer from the table once it is published.
+
+        The change runs as its own task, shielded from its caller: a socket
+        that closes mid-request cancels the caller, but a change once started is
+        applied, saved, accounted for and published as one unit. Otherwise a
+        save could be dropped after the table changed (the store falls behind),
+        or its bookkeeping skipped after it committed (departing chips paid
+        again by the next save).
+        """
+
+        async def run() -> T:
+            async with self.lock:
+                result = apply()
+                await self._changed()
+                return after(result)
+
+        task = asyncio.ensure_future(run())
+        # A caller that went away never reads a refusal; retrieve it so it is not logged.
+        task.add_done_callback(lambda t: t.cancelled() or t.exception())
+        return await asyncio.shield(task)
 
     # The task
 

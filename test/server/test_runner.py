@@ -107,6 +107,49 @@ def test_busted_bots_buy_in_again() -> None:
     asyncio.run(main())
 
 
+def test_a_change_is_saved_and_published_even_if_its_caller_is_cancelled() -> None:
+    """A socket that closes mid-request cancels its handler (Starlette's test
+    client does so at once). The change it asked for is still saved, finishes
+    its bookkeeping and is published, so the store never falls a change behind
+    the table and departing chips are never paid twice."""
+
+    async def main() -> None:
+        manager = TableManager(default_bots(), options())
+        runner = manager.create(TableConfig(6, 50, 100))
+        await runner.sit(2, "alice", "Alice", 10_000)
+        started = threading.Event()
+        release = threading.Event()
+        saved: list[int] = []
+        """The seq of each change whose save returned, as TableSaver's bookkeeping runs."""
+
+        async def slow_save(r: TableRunner, events: Sequence[Event]) -> None:
+            def write() -> None:
+                started.set()
+                assert release.wait(5)
+
+            await asyncio.to_thread(write)
+            saved.append(r.table.seq)
+
+        recorder = Recorder()
+        runner.before_publish.append(slow_save)
+        runner.listeners.append(recorder)
+        caller = asyncio.ensure_future(runner.set_connected("alice", False))
+        while not started.is_set():
+            await asyncio.sleep(0.001)
+        caller.cancel()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await caller
+        await runner.wait_until(lambda t: bool(saved), timeout=5)
+        await manager.shutdown()
+        alice = runner.table.seats[2]
+        assert alice is not None and not alice.connected
+        assert saved == [runner.table.seq]
+        assert recorder.events and recorder.events[-1].seq == runner.table.seq  # published after its save
+
+    asyncio.run(main())
+
+
 def test_hands_wait_for_a_second_player() -> None:
     async def main() -> None:
         manager = TableManager(default_bots(), options())
