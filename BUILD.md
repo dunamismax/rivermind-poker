@@ -7,11 +7,11 @@ This file is the single source of truth for project status, from today’s worki
 | | |
 | --- | --- |
 | **Current phase** | Phase 1 · SvelteKit client |
-| **Next step** | **P1.3** Port the table UI to components |
-| **In progress** | **P1.3** Port the table UI to Svelte components with parity and the CSP intact (claimed 2026-11-19) |
+| **Next step** | **P1.4** Unit and browser tests |
+| **In progress** | _None_ |
 | **Blockers** | _None_ |
 | **Live site** | https://rivermindpoker.com runs the Phase 0 prototype: a three-seat, fixed-limit, 20-card game against random bots or the RM-06 checkpoint. It uses FastAPI, WebSockets and a vanilla JavaScript client. Tables survive restarts. |
-| **`main`** | Phase 0, the P1.1 scaffold in `web/` and the P1.2 typed protocol are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python suite on every push. |
+| **`main`** | Phase 0, the P1.1 scaffold, the P1.2 typed protocol and the P1.3 SvelteKit table UI are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python suite on every push. |
 | **Last updated** | 2026-11-19 |
 
 ## The 1.0 product
@@ -125,9 +125,9 @@ Each question has a default. Agents build on the default until the owner decides
   - [x] A test fails if the generated TypeScript is stale. The existing WebSocket tests still pass.
   - Evidence: `ab6789b`. `uv run --locked pytest` 136 passed, including the new `test_protocol.py` (stale-TypeScript check, schema export, every message from three played hands parsing as `ServerMessage`, strict `seq`, error-code coverage); against a live `serve`, a Node WebSocket client got `bad_request`, `illegal_action` and `stale` as expected and a bad body returned 400 with a string `detail`. Web check, lint, Vitest, build and Playwright passed.
 
-- [ ] **P1.3 · Port the table UI to components** · Depends on: P1.2
-  - [ ] Components: `Lobby`, `Table`, `Seat`, `PlayingCard`, `Board`, `ActionBar`, `HandLog`, `ResultBanner` and `ConnectionStatus`. A typed socket store handles join, `seq`, the reconnect backoff and the seat saved in `localStorage`.
-  - [ ] **Parity list.** Each item is verified in the browser:
+- [x] **P1.3 · Port the table UI to components** · Depends on: P1.2
+  - [x] Components: `Lobby`, `Table`, `Seat`, `PlayingCard`, `Board`, `ActionBar`, `HandLog`, `ResultBanner` and `ConnectionStatus`. A typed socket store handles join, `seq`, the reconnect backoff and the seat saved in `localStorage`.
+  - [x] **Parity list.** Each item is verified in the browser:
     - opponent choice from `/api/config`;
     - button amounts ("Check", "Call 150", "Bet 100", "Raise 250");
     - action wording ("checks", "calls 100", "bets 100", "calls 100 and raises 100", with pre-flop raises worded correctly);
@@ -138,7 +138,8 @@ Each question has a default. Agents build on the default until the owner decides
     - Next hand and Leave table;
     - the closed-table message;
     - rejoining after a reload and after a server restart.
-  - [ ] Layout has no horizontal overflow at 375×812 and is comfortable at 1440×900. Reduced motion is respected and there is no inline script or style, so the current CSP holds.
+  - [x] Layout has no horizontal overflow at 375×812 and is comfortable at 1440×900. Reduced motion is respected and there is no inline script or style, so the current CSP holds.
+  - Evidence: `8a4c757`. In the browser pane against `serve --client_dir web/build --state_path …` (and the RM-06 checkpoint for the opponent choice), checked every parity item: both opponent kinds with the checkpoint preselected; Check, Call, Bet and Raise labels; "checks", "bets 200", "calls 50 and raises 100" wording; log lines revealing in sequence (sampled 1/1, 3/5, 4/5, 5/5 over a second); last action per seat; showdown reveal and hidden cards on fold-outs; result, payouts and session balance; Next hand and Leave table; the closed-table message after a restart without state; rejoining after a reload and after killing and restarting the server. No CSP violations were logged, `scrollWidth` equalled the 375 px viewport at the table and the result, and 1440×900 shows the centred 760 px table. pytest 138 passed; web check, lint, Vitest, build and Playwright (Chromium desktop and phone) passed.
 
 - [ ] **P1.4 · Unit and browser tests** · Depends on: P1.3
   - [ ] Vitest covers the wording and amount helpers and the socket store (against a mock socket: join, stale error, reconnect).
@@ -426,6 +427,8 @@ These are possible directions after the release:
 ## Handoff log
 
 Newest first. Keep eight entries and move older ones to [docs/build-history.md](docs/build-history.md). Each entry gives the date, the step IDs, what changed, the checks actually run and the next concrete action.
+
+**2026-11-19 · P1.3.** Ported the table to Svelte components with a `TableConnection` store and `wording.ts` helpers that match the vanilla client, plus a visible "Bot" label on bot seats (D-7). Found that SvelteKit's SPA fallback uses an inline bootstrap script and its route announcer an inline style, both blocked by the site CSP; the build now externalizes the script and fails on any inline code, and a Vite plugin drops the style. Added `serve --client_dir` so the built client runs locally with the production headers (P1.6 still removes the legacy client), and a Playwright harness that starts its own server per worker. Checks are in the P1.3 evidence. Next action: P1.4.
 
 **2026-11-19 · P1.2.** Added Pydantic models for the whole protocol (`poker_ai/web/protocol.py`), used them for validation and for every outgoing message, and added `rivermind-poker protocol-schema` with a small JSON-Schema-to-TypeScript generator (`poker_ai/web/typescript.py`, no new dependency). Behaviour changes: malformed messages (a string `seq`, extra fields) are now `bad_request`, and HTTP body errors are 400 instead of 422. Ran pytest (136 passed), a live WebSocket check and the web suite. Next action: P1.3.
 
