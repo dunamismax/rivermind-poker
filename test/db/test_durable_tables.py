@@ -120,7 +120,8 @@ def test_tables_are_saved_before_publishing_and_restored_at_startup(engine: Engi
             turn = ws.my_turn(table_id)
         seated = runner.table.seats[0]
         assert seated is not None
-        wait_for(lambda: not seated.connected)
+        # The disconnect is applied, then saved in a worker thread: wait for both.
+        wait_for(lambda: not seated.connected and (saved_state(engine, table_id) or {}).get("seq") == runner.table.seq)
         before = copy.deepcopy(saved_state(engine, table_id))
         live = table_to_dict(runner.table)
     assert published and all(seq == saved for seq, saved in published)  # nothing was shown before it was saved
