@@ -21,8 +21,7 @@
 	});
 
 	onMount(() => {
-		connection.resume();
-		ready = true;
+		void connection.start().finally(() => (ready = true));
 		return () => {
 			clearTimeout(toastTimer);
 			connection.disconnect();

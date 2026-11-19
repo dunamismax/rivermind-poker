@@ -100,3 +100,27 @@ test('rejoins the same table after a reload', async ({ page }) => {
 	}
 	await playUntilHand(page, hand + 1);
 });
+
+test('keeps the player in an HttpOnly session cookie', async ({ page, context, browser }) => {
+	await page.goto('/');
+	const me = page.locator('header .me');
+	await expect(me).toHaveText(/^[A-Z][a-z]+ [A-Z][a-z]+ \d{1,2}$/);
+	const name = await me.textContent();
+	const [cookie] = (await context.cookies()).filter((c) => c.name === 'rm_session');
+	expect(cookie).toMatchObject({ httpOnly: true, sameSite: 'Lax', path: '/' });
+	expect(cookie.expires).toBeGreaterThan(Date.now() / 1000 + 170 * 24 * 3600);
+	// The page can neither read the session nor keeps a token of its own.
+	expect(await page.evaluate(() => document.cookie)).not.toContain('rm_session');
+	expect(await page.evaluate(() => JSON.stringify({ ...localStorage }))).not.toMatch(/token|s1\./);
+	// The same browser is the same player after a reload; another browser is someone else.
+	await sitDown(page, 2);
+	await expect(page.getByRole('group', { name: /^Your seat/ })).toContainText(name ?? '');
+	await page.reload();
+	await expect(me).toHaveText(name ?? '');
+	const other = await browser.newContext();
+	const stranger = await other.newPage();
+	await stranger.goto(page.url());
+	await expect(stranger.locator('header .me')).toHaveText(/^[A-Z][a-z]+ [A-Z][a-z]+ \d{1,2}$/);
+	expect(await stranger.locator('header .me').textContent()).not.toBe(name);
+	await other.close();
+});

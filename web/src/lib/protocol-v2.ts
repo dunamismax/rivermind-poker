@@ -99,7 +99,6 @@ export interface HandResult {
 /** Must be the first message on a socket. */
 export interface HelloMessage {
 	type: 'hello';
-	token: string;
 	protocol: 2;
 }
 
@@ -138,14 +137,7 @@ export interface Legal {
 	max_to: number;
 }
 
-/** `POST /api/players`, status 201. Keep the token secret: it is the player. */
-export interface NewPlayerResponse {
-	player_id: string;
-	name: string;
-	token: string;
-}
-
-/** `POST /api/tables` with the player's bearer token. The player takes seat 0. */
+/** `POST /api/tables` with the session cookie. The player takes seat 0. */
 export interface NewTableRequest {
 	seats?: number;
 	/** The kind of bot in every other seat. */
@@ -220,6 +212,20 @@ export type SeatKind = 'human' | 'bot';
 
 /** Any message the server sends. */
 export type ServerMessage = WelcomeMessage | TableMessage | LeftTableMessage | TableClosedMessage | ErrorMessage;
+
+/** `POST /api/session`, with an optional body. */
+export interface SessionRequest {
+	/** The bearer token a Phase 3 client kept, to move that player onto a session cookie. */
+	legacy_token?: string | null;
+}
+
+/** `POST /api/session`: the player this browser is. The session itself is in an `HttpOnly` cookie. */
+export interface SessionResponse {
+	player_id: string;
+	name: string;
+	/** Whether this request made a new player. */
+	created: boolean;
+}
 
 export interface SitInMessage {
 	type: 'sit_in';

@@ -11,6 +11,11 @@ that table closes, and connected again when one follows it; the table's
 clock then sits them out if they stay away (P3.3). A table closes when no
 person holds a seat, and idle tables are evicted when the server needs room.
 
+Players are anonymous (P4.1). ``POST /api/session`` makes one on the first
+visit and sets a signed session cookie (``auth``), which authenticates every
+later request and socket. Requests and sockets from pages on other origins
+are refused, so another site cannot act with a visitor's cookie.
+
 With a ``TableStore`` (P3.5) every table is saved to PostgreSQL after each
 change and before any socket hears of it, and the open tables are restored
 when the app starts. Nobody is connected to a restored table yet, so its
@@ -24,11 +29,12 @@ import contextlib
 import json
 import logging
 import secrets
-from collections.abc import AsyncIterator, Mapping, Sequence
+import time
+from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ValidationError
@@ -40,6 +46,7 @@ from . import auth
 from . import protocol as p
 from rivermind.engine.history import FormatError
 
+from .players import DatabasePlayers, MemoryPlayers, PlayerRecord, PlayerStore
 from .runner import BOT_LABELS, RunnerOptions, TableManager, TableRunner, default_bots
 from .snapshot import table_from_dict
 from .store import TableSaver, TableStore
@@ -80,6 +87,7 @@ class Connection:
 
     ws: WebSocket
     player_id: str
+    name: str
     queue: asyncio.Queue[BaseModel | None] = field(default_factory=lambda: asyncio.Queue(QUEUE_LIMIT))
     tables: dict[str, object] = field(default_factory=dict)
     """Table id -> the listener registered on that table's runner."""
@@ -109,9 +117,14 @@ class Server:
         max_tables: int,
         idle_seconds: float,
         store: TableStore | None = None,
+        players: PlayerStore | None = None,
     ) -> None:
         self.secret = secret
         self.store = store
+        if players is None:
+            players = DatabasePlayers(store.engine) if store is not None else MemoryPlayers()
+        self.players = players
+        self._known: dict[str, PlayerRecord] = {}
         self.bots = dict(bots)
         self.options = options
         self.max_tables = max_tables
@@ -158,6 +171,25 @@ class Server:
         if restored:
             log.info("Restored %d table(s) from the database", restored)
 
+    # Players
+
+    async def player(self, player_id: str) -> PlayerRecord | None:
+        """The stored player with this id. Handles never change, so they are cached."""
+        record = self._known.get(player_id)
+        if record is None:
+            record = await asyncio.to_thread(self.players.get, player_id)
+            if record is not None:
+                self._known[player_id] = record
+        return record
+
+    async def session_player(self, cookie: str | None) -> tuple[PlayerRecord, int] | None:
+        """The player a genuine, unexpired session cookie belongs to, and when it was issued."""
+        session = auth.read_session(self.secret, cookie, time.time())
+        if session is None:
+            return None
+        record = await self.player(session[0])
+        return None if record is None else (record, session[1])
+
     async def stop(self) -> None:
         if self.manager is not None:
             await self.manager.shutdown()
@@ -171,7 +203,7 @@ class Server:
             if not watched and now - runner.last_active > self.idle_seconds:
                 self._schedule_close(table_id, "The table closed after being idle.")
 
-    async def create_table(self, player_id: str, request: p.NewTableRequest) -> tuple[str, int]:
+    async def create_table(self, player: PlayerRecord, request: p.NewTableRequest) -> tuple[str, int]:
         if request.bots not in self.bots:
             raise HTTPException(400, f"bots must be one of {sorted(self.bots)}")
         stakes = dict((big, small) for small, big in STAKES)
@@ -189,7 +221,7 @@ class Server:
         # Bots first: with require_person, nothing is dealt until the person sits.
         for seat in range(1, request.seats):
             await runner.seat_bot(seat, request.bots)
-        await runner.sit(0, player_id, auth.guest_name(player_id), buy_in)
+        await runner.sit(0, player.player_id, player.handle, buy_in)
         return runner.table_id, 0
 
     async def _watch_table(self, runner: TableRunner, events: Sequence[Event]) -> None:
@@ -285,7 +317,7 @@ class Server:
             await self.unfollow(connection, table_id)
             connection.send(p.LeftTableMessage(type="left_table", table_id=table_id))
         elif isinstance(message, p.SitMessage):
-            await runner.sit(message.seat, player_id, auth.guest_name(player_id), message.buy_in)
+            await runner.sit(message.seat, player_id, connection.name, message.buy_in)
         elif isinstance(message, p.SitOutMessage):
             await runner.sit_out(player_id)
         elif isinstance(message, p.SitInMessage):
@@ -309,6 +341,10 @@ def _error(code: object, message: str, table_id: str | None = None) -> p.ErrorMe
     return p.ErrorMessage(type="error", code=p.ErrorCode(str(code)), message=message, table_id=table_id)
 
 
+RELOAD_MESSAGE = "RiverMind Poker was updated. Reload the page to keep playing."
+NO_SESSION_MESSAGE = "Your session has ended. Reload the page to start a new one."
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
 LEGACY_CLOSED = (
     "The short-deck tables have closed: RiverMind Poker now plays no-limit hold'em. Reload the page to play."
 )
@@ -320,6 +356,20 @@ def _message_type(text: str) -> object:
     except ValueError:
         return None
     return message.get("type") if isinstance(message, dict) else None
+
+
+def _is_token_hello(text: str) -> bool:
+    """A hello from a Phase 3 page, which sent its bearer token instead of a cookie."""
+    try:
+        message = json.loads(text)
+    except ValueError:
+        return False
+    return isinstance(message, dict) and message.get("type") == "hello" and "token" in message
+
+
+def _cookie_is_secure(scheme: str, host: str | None) -> bool:
+    """Secure everywhere except plain HTTP on this machine, where browsers would drop it."""
+    return not (scheme in ("http", "ws") and auth.is_loopback(host or ""))
 
 
 def _describe_invalid(text: str) -> str:
@@ -341,21 +391,29 @@ def create_app(
     idle_seconds: float = 24 * 3600,
     client_dir: str | None = None,
     store: TableStore | None = None,
+    players: PlayerStore | None = None,
+    allowed_origins: Iterable[str] = (),
 ) -> FastAPI:
     """Build the no-limit table server.
 
-    ``secret`` signs player tokens; without one a random secret is made, so
-    tokens last only as long as the process. With ``client_dir`` (the
+    ``secret`` signs session cookies; without one a random secret is made,
+    so sessions last only as long as the process. With ``client_dir`` (the
     SvelteKit build) the app also serves the client, as Caddy does live.
-    With ``store`` tables are saved to PostgreSQL and restored at startup;
-    without one they live only in memory.
+    With ``store`` tables are saved to PostgreSQL and restored at startup,
+    and players are stored there too, unless ``players`` says otherwise;
+    without one both live only in memory. Pages on ``allowed_origins``
+    (such as ``https://example.com``) may use the API besides the server's
+    own origin.
     """
     if secret is None:
-        log.warning("No secret given: player tokens will not survive a restart")
+        log.warning("No secret given: sessions will not survive a restart")
         secret = secrets.token_bytes(32)
     if options is None:
         options = RunnerOptions(require_person=True)
-    server = Server(secret, bots if bots is not None else default_bots(), options, max_tables, idle_seconds, store)
+    server = Server(
+        secret, bots if bots is not None else default_bots(), options, max_tables, idle_seconds, store, players
+    )
+    origins = frozenset(origin.rstrip("/") for origin in allowed_origins)
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -371,6 +429,10 @@ def create_app(
 
     @app.middleware("http")
     async def client_headers(request: Request, call_next):  # type: ignore[no-untyped-def]
+        if request.method not in SAFE_METHODS and not auth.origin_allowed(
+            request.headers.get("origin"), request.headers.get("host"), origins
+        ):
+            return JSONResponse(p.HttpError(detail="Requests from other sites are not allowed.").model_dump(), status_code=403)
         response = await call_next(request)
         path = request.url.path
         if client is not None and not path.startswith("/api/"):
@@ -392,12 +454,11 @@ def create_app(
         detail = f"Invalid request body: {where or 'body'}: {first.get('msg', 'invalid')}"
         return JSONResponse(p.HttpError(detail=detail).model_dump(), status_code=400)
 
-    def player_of(authorization: str | None) -> str:
-        token = authorization[7:] if authorization and authorization.startswith("Bearer ") else None
-        player_id = auth.verify(server.secret, token)
-        if player_id is None:
-            raise HTTPException(401, "Send a player token as Authorization: Bearer <token>.")
-        return player_id
+    async def player_of(request: Request) -> PlayerRecord:
+        session = await server.session_player(request.cookies.get(auth.COOKIE_NAME))
+        if session is None:
+            raise HTTPException(401, NO_SESSION_MESSAGE)
+        return session[0]
 
     @app.get("/api/config", response_model=p.ConfigResponse)
     async def config() -> p.ConfigResponse:
@@ -408,12 +469,32 @@ def create_app(
             stakes=[p.Stakes(small_blind=small, big_blind=big) for small, big in STAKES],
         )
 
-    @app.post("/api/players", status_code=201, response_model=p.NewPlayerResponse)
-    async def new_player() -> p.NewPlayerResponse:
-        player_id = auth.new_player_id()
-        return p.NewPlayerResponse(
-            player_id=player_id, name=auth.guest_name(player_id), token=auth.issue(server.secret, player_id)
-        )
+    @app.post("/api/session", response_model=p.SessionResponse, responses={403: {"model": p.HttpError}})
+    async def session(request: Request, response: Response, body: p.SessionRequest | None = None) -> p.SessionResponse:
+        """The player this browser is, made on the first visit, with a fresh session cookie."""
+        now = time.time()
+        current = await server.session_player(request.cookies.get(auth.COOKIE_NAME))
+        record, issued = current if current is not None else (None, 0)
+        created = False
+        if record is None and body is not None and body.legacy_token:
+            legacy_id = auth.verify(server.secret, body.legacy_token)
+            if legacy_id is not None:
+                record = await asyncio.to_thread(server.players.claim, legacy_id)
+        if record is None:
+            record = await asyncio.to_thread(server.players.create)
+            created = True
+        if current is None or now - issued > auth.RENEW_AFTER_SECONDS:
+            response.set_cookie(
+                auth.COOKIE_NAME,
+                auth.issue_session(server.secret, record.player_id, now),
+                max_age=auth.SESSION_SECONDS,
+                path="/",
+                httponly=True,
+                secure=_cookie_is_secure(request.url.scheme, request.headers.get("host")),
+                samesite="lax",
+            )
+        await asyncio.to_thread(server.players.seen, record.player_id)
+        return p.SessionResponse(player_id=record.player_id, name=record.handle, created=created)
 
     @app.post(
         "/api/tables",
@@ -421,9 +502,9 @@ def create_app(
         response_model=p.NewTableResponse,
         responses={400: {"model": p.HttpError}, 401: {"model": p.HttpError}, 503: {"model": p.HttpError}},
     )
-    async def new_table(body: p.NewTableRequest, authorization: str | None = Header(default=None)) -> p.NewTableResponse:
-        player_id = player_of(authorization)
-        table_id, seat = await server.create_table(player_id, body)
+    async def new_table(body: p.NewTableRequest, request: Request) -> p.NewTableResponse:
+        player = await player_of(request)
+        table_id, seat = await server.create_table(player, body)
         return p.NewTableResponse(table_id=table_id, seat=seat)
 
     @app.exception_handler(HTTPException)
@@ -432,11 +513,21 @@ def create_app(
 
     @app.websocket("/ws")
     async def socket(ws: WebSocket) -> None:
+        # Browsers always send Origin on a handshake; refusing before accepting answers 403.
+        if not auth.origin_allowed(ws.headers.get("origin"), ws.headers.get("host"), origins):
+            await ws.close(code=1008)
+            return
         await ws.accept()
         raw = ""
         try:
             raw = await asyncio.wait_for(ws.receive_text(), 30)
-            hello = p.HelloMessage.model_validate_json(raw)
+            if _is_token_hello(raw):
+                # A page loaded before P4.1: its token no longer opens a socket.
+                with contextlib.suppress(Exception):
+                    await ws.send_text(_error("unauthorized", RELOAD_MESSAGE).model_dump_json())
+                    await ws.close(code=1008)
+                return
+            p.HelloMessage.model_validate_json(raw)
         except (TimeoutError, ValidationError, WebSocketDisconnect):
             # A page of the short-deck prototype still open since the cutover
             # (P3.7) joins with v1's `join`; its client shows unknown_table
@@ -451,15 +542,16 @@ def create_app(
                 await ws.send_text(error.model_dump_json())
                 await ws.close(code=1008)
             return
-        player_id = auth.verify(server.secret, hello.token)
-        if player_id is None:
-            await ws.send_text(_error("unauthorized", "That player token is not valid.").model_dump_json())
+        session = await server.session_player(ws.cookies.get(auth.COOKIE_NAME))
+        if session is None:
+            await ws.send_text(_error("unauthorized", NO_SESSION_MESSAGE).model_dump_json())
             await ws.close(code=1008)
             return
-        connection = Connection(ws, player_id)
+        player = session[0]
+        connection = Connection(ws, player.player_id, player.handle)
         server.connections.add(connection)
         connection.send(
-            p.WelcomeMessage(type="welcome", protocol=p.PROTOCOL_VERSION, player_id=player_id, name=auth.guest_name(player_id))
+            p.WelcomeMessage(type="welcome", protocol=p.PROTOCOL_VERSION, player_id=player.player_id, name=player.handle)
         )
 
         async def sender() -> None:

@@ -140,7 +140,7 @@ def test_tables_are_saved_before_publishing_and_restored_at_startup(engine: Engi
         runner = server_runner(client, table_id)
         # The player had already disconnected, so nothing changed on restoring.
         assert table_to_dict(runner.table) == before
-        player.client = client  # the same player and token, on the new server
+        player.client = client  # the same player and session, on the new server
         with player.socket() as ws:
             ws.send(type="join_table", table_id=table_id)
             again = ws.receive()["view"]
@@ -198,13 +198,15 @@ class Server:
                 assert time.monotonic() < deadline, "the server did not start"
                 time.sleep(0.1)
 
-    def post(self, path: str, body: dict[str, Any], token: str | None = None) -> dict[str, Any]:
+    def post(self, path: str, body: dict[str, Any], cookie: str | None = None) -> tuple[dict[str, Any], str | None]:
+        """The response body and the session cookie it set, if any."""
         headers = {"Content-Type": "application/json"}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+        if cookie:
+            headers["Cookie"] = cookie
         request = urllib.request.Request(self.base + path, json.dumps(body).encode(), headers, method="POST")
         with urllib.request.urlopen(request, timeout=10) as response:
-            return dict(json.loads(response.read()))
+            set_cookie = response.headers.get("Set-Cookie")
+            return dict(json.loads(response.read())), set_cookie.split(";", 1)[0] if set_cookie else None
 
     def kill(self) -> None:
         self.process.send_signal(signal.SIGKILL)
@@ -230,9 +232,9 @@ def test_a_server_killed_mid_hand_restores_the_table_identically(
     port = free_port()
     log = tmp_path / "server.log"
     servers.append(Server(database_url, tmp_path / "secret", port, log))
-    player = servers[0].post("/api/players", {})
-    token = player["token"]
-    table_id = servers[0].post("/api/tables", {"seats": 6, "bots": "heuristic"}, token)["table_id"]
+    _, cookie = servers[0].post("/api/session", {})
+    assert cookie is not None and cookie.startswith("rm_session=")
+    table_id = servers[0].post("/api/tables", {"seats": 6, "bots": "heuristic"}, cookie)[0]["table_id"]
 
     answered = [0]
 
@@ -251,8 +253,8 @@ def test_a_server_killed_mid_hand_restores_the_table_identically(
         action = "check" if legal["can_check"] else "call" if legal["call"] <= 1_000 else "fold"
         ws.send(json.dumps({"type": "act", "table_id": table_id, "seq": view["seq"], "action": action}))
 
-    with connect(servers[0].ws_url) as ws:
-        ws.send(json.dumps({"type": "hello", "token": token, "protocol": 2}))
+    with connect(servers[0].ws_url, additional_headers={"Cookie": cookie}) as ws:
+        ws.send(json.dumps({"type": "hello", "protocol": 2}))
         ws.send(json.dumps({"type": "join_table", "table_id": table_id}))
         for _ in range(6):
             act(ws, my_turn(ws))
@@ -274,8 +276,8 @@ def test_a_server_killed_mid_hand_restores_the_table_identically(
     expected["turn"]["final"] = expected["turn"]["deadline"]
     assert after == expected
 
-    with connect(servers[1].ws_url) as ws:
-        ws.send(json.dumps({"type": "hello", "token": token, "protocol": 2}))
+    with connect(servers[1].ws_url, additional_headers={"Cookie": cookie}) as ws:
+        ws.send(json.dumps({"type": "hello", "protocol": 2}))
         ws.send(json.dumps({"type": "join_table", "table_id": table_id}))
         again = my_turn(ws)
         for key in ("hand", "settings", "seats"):

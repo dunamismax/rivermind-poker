@@ -2,8 +2,9 @@
 
 Chips are whole numbers stored as ``bigint``. Table state and hand histories
 are versioned JSON documents from ``rivermind.engine.history`` (D-4), stored
-as ``jsonb`` with their format number beside them. Player identity arrives in
-P4.1 with its own migration.
+as ``jsonb`` with their format number beside them. Anonymous players (P4.1,
+migration ``0002``) have a random display handle; their session cookie is
+signed by the server, so no session rows are stored.
 """
 
 from __future__ import annotations
@@ -44,6 +45,21 @@ class Base(DeclarativeBase):
 
 def _now() -> Any:
     return mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class Player(Base):
+    """An anonymous player, made on their first visit (P4.1)."""
+
+    __tablename__ = "players"
+    __table_args__ = (
+        UniqueConstraint("handle", name="uq_players_handle"),
+        CheckConstraint("char_length(handle) BETWEEN 1 AND 32", name="handle"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    handle: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = _now()
+    last_seen_at: Mapped[datetime] = _now()
 
 
 class PokerTable(Base):

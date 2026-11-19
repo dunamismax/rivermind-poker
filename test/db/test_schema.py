@@ -15,13 +15,13 @@ from sqlalchemy import Engine, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from rivermind.db import Base, Hand, HandHistory, PokerTable, Seat, alembic_config, downgrade, make_engine, upgrade
+from rivermind.db import Base, Hand, HandHistory, Player, PokerTable, Seat, alembic_config, downgrade, make_engine, upgrade
 from rivermind.db.connection import database_url, normalize_url
 from rivermind.engine.fuzz import play_random_hand
 from rivermind.engine.history import FORMAT, hand_record, replay_record
 
 ROOT = Path(__file__).resolve().parents[2]
-TABLES = {"poker_tables", "seats", "hands", "hand_histories"}
+TABLES = {"players", "poker_tables", "seats", "hands", "hand_histories"}
 
 
 def head(url: str) -> str:
@@ -73,7 +73,7 @@ def test_alembic_command_line(empty_database: str) -> None:
             [sys.executable, "-m", "alembic", *args], cwd=ROOT, env=env, capture_output=True, text=True, check=False
         )
         assert done.returncode == 0, done.stderr
-    assert "0001" in subprocess.run(
+    assert "0002" in subprocess.run(
         [sys.executable, "-m", "alembic", "current"], cwd=ROOT, env=env, capture_output=True, text=True, check=True
     ).stdout
 
@@ -132,12 +132,16 @@ def test_tables_seats_hands_and_histories_round_trip(engine: Engine) -> None:
         "INSERT INTO seats (table_id, seat_no, display_name, is_bot, stack) VALUES ('missing', 1, 'x', false, 10)",
         "INSERT INTO hands (table_id, hand_no, button) VALUES ('t1', 1, 0)",
         "INSERT INTO hands (table_id, hand_no, button) VALUES ('t1', 2, 9)",
+        "INSERT INTO players (id, handle) VALUES ('p_2', '')",
+        "INSERT INTO players (id, handle) VALUES ('p_2', 'Taken')",
+        "INSERT INTO players (id, handle) VALUES ('p_1', 'Another')",
     ],
 )
 def test_constraints_reject_bad_rows(engine: Engine, sql: str) -> None:
     with Session(engine) as session:
         add_table(session)
         session.add(Hand(table_id="t1", hand_no=1, button=0))
+        session.add(Player(id="p_1", handle="Taken"))
         session.commit()
     with engine.connect() as conn, pytest.raises(IntegrityError):
         conn.execute(text(sql))

@@ -24,6 +24,7 @@ from poker_ai.cli.runner import cli
 from rivermind.engine import card_str
 from rivermind.server import ErrorCode as TableErrorCode
 from rivermind.server import RunnerOptions, TableRunner
+from rivermind.server import auth
 from rivermind.server import protocol as p
 from rivermind.server.clock import ManualClock
 from rivermind.server.app import create_app
@@ -49,16 +50,25 @@ def make_app(seed: int = 0) -> Any:
 
 
 class Player:
+    """One browser: a player made by ``POST /api/session``, holding its own session cookie.
+
+    Several players share one ``TestClient``, so the client's cookie jar is
+    emptied and each player sends its cookie itself.
+    """
+
     def __init__(self, client: TestClient) -> None:
-        response = client.post("/api/players")
-        assert response.status_code == 201
+        response = client.post("/api/session")
+        assert response.status_code == 200, response.text
         body = response.json()
+        assert body["created"] is True
         self.client = client
         self.player_id: str = body["player_id"]
-        self.token: str = body["token"]
+        self.name: str = body["name"]
+        self.session: str = response.cookies[auth.COOKIE_NAME]
+        client.cookies.clear()
 
     def headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.token}"}
+        return {"Cookie": f"{auth.COOKIE_NAME}={self.session}"}
 
     def new_table(self, seats: int, bots: str = "random", buy_in: int | None = None) -> str:
         body: Message = {"seats": seats, "bots": bots}
@@ -71,11 +81,12 @@ class Player:
 
     @contextmanager
     def socket(self) -> Iterator[Socket]:
-        with self.client.websocket_connect("/ws") as ws:
+        with self.client.websocket_connect("/ws", headers=self.headers()) as ws:
             socket = Socket(ws)
-            socket.send(type="hello", token=self.token, protocol=2)
+            socket.send(type="hello", protocol=2)
             welcome = socket.receive()
             assert welcome["type"] == "welcome" and welcome["player_id"] == self.player_id
+            assert welcome["name"] == self.name
             yield socket
 
 
@@ -256,7 +267,7 @@ def test_http_endpoints() -> None:
         assert {bot["kind"] for bot in config["bots"]} == {"random", "calling_station", "heuristic"}
         player = Player(client)
         assert client.post("/api/tables", json={"seats": 6}).status_code == 401
-        bad = {"Authorization": f"Bearer {player.token}x"}
+        bad = {"Cookie": f"{auth.COOKIE_NAME}={player.session}0"}
         assert client.post("/api/tables", json={"seats": 6}, headers=bad).status_code == 401
         for body in ({"seats": 10}, {"seats": "6"}, {"bots": "nobody"}, {"big_blind": 7}, {"buy_in": 1}, {"x": 1}):
             response = client.post("/api/tables", json=body, headers=player.headers())
@@ -264,7 +275,7 @@ def test_http_endpoints() -> None:
             p.HttpError.model_validate(response.json())
 
 
-def test_sockets_must_say_hello_with_a_real_token() -> None:
+def test_sockets_must_say_hello_with_a_real_session() -> None:
     with TestClient(make_app()) as client:
         player = Player(client)
         with client.websocket_connect("/ws") as ws:
@@ -274,8 +285,8 @@ def test_sockets_must_say_hello_with_a_real_token() -> None:
             ws.send_text(json.dumps({"type": "join", "table_id": "old", "token": "x"}))
             closed = json.loads(ws.receive_text())
             assert closed["code"] == "unknown_table" and "no-limit" in closed["message"]
-        with client.websocket_connect("/ws") as ws:
-            ws.send_text(json.dumps({"type": "hello", "token": player.token + "0", "protocol": 2}))
+        with client.websocket_connect("/ws") as ws:  # no session cookie
+            ws.send_text(json.dumps({"type": "hello", "protocol": 2}))
             assert json.loads(ws.receive_text())["code"] == "unauthorized"
         with player.socket() as socket:
             socket.send(type="join_table", table_id="nope")

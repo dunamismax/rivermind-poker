@@ -1,25 +1,27 @@
-// The browser side of the no-limit table (protocol v2, P3.6). One WebSocket
-// says hello with the player's token and follows the player's table. Each
+// The browser side of the no-limit table (protocol v2, P3.6). The page first
+// asks the server who this browser is (`POST /api/session`, P4.1), which sets
+// the session cookie that authenticates everything after. One WebSocket says
+// hello and follows the player's table. Each
 // `table` message carries this player's whole view, so the newest one is all
 // the page needs; its events feed the hand log. Actions carry the view's `seq`,
 // so an action meant for an earlier turn is refused rather than misapplied.
 // After a dropped connection or a server restart the socket says hello again
-// and rejoins with backoff. The player and table are kept in localStorage so
-// a reload rejoins them.
+// and rejoins with backoff. The table is kept in localStorage so a reload
+// rejoins it; the player lives in the cookie, which the page cannot read.
 
 import type {
 	ActMessage,
 	ActionKind,
 	ClientMessage,
-	NewPlayerResponse,
 	NewTableRequest,
 	ServerMessage,
 	TableEvent,
 	TableView
 } from '../protocol-v2.ts';
-import { createPlayer, createTable } from './api.ts';
+import { createTable, startSession } from './api.ts';
 
-export const PLAYER_KEY = 'rivermind.nl.player';
+/** Where a Phase 3 page kept its player and bearer token, until P4.1. */
+export const LEGACY_PLAYER_KEY = 'rivermind.nl.player';
 export const TABLE_KEY = 'rivermind.nl.table';
 export const MAX_BACKOFF_MS = 8000;
 export const LOG_LIMIT = 60;
@@ -31,7 +33,10 @@ export const LEGACY_CLOSED_MESSAGE =
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'open' | 'closed';
 
-export type Player = NewPlayerResponse;
+export interface Player {
+	player_id: string;
+	name: string;
+}
 
 /** The part of the WebSocket API the connection uses. */
 export interface SocketLike {
@@ -74,11 +79,11 @@ function defaultStorage(): Storage | null {
 	}
 }
 
-function isPlayer(value: unknown): value is Player {
-	if (typeof value !== 'object' || value === null) return false;
-	const p = value as Record<string, unknown>;
+function legacyToken(value: unknown): value is { token: string } {
 	return (
-		typeof p.player_id === 'string' && typeof p.name === 'string' && typeof p.token === 'string'
+		typeof value === 'object' &&
+		value !== null &&
+		typeof (value as Record<string, unknown>).token === 'string'
 	);
 }
 
@@ -118,37 +123,46 @@ export class NlConnection {
 		this.#now = options.now ?? (() => Date.now() / 1000);
 	}
 
-	/** Rejoin the table saved by an earlier page load. Returns whether there was one. */
-	resume(): boolean {
+	/**
+	 * Find out who this browser is (making a player on the first visit), then
+	 * rejoin the table saved by an earlier page load. Returns whether there was one.
+	 */
+	async start(): Promise<boolean> {
 		if (this.#storage?.getItem(LEGACY_SEAT_KEY) != null) {
 			this.#remove(LEGACY_SEAT_KEY);
 			this.closedMessage = LEGACY_CLOSED_MESSAGE;
 		}
-		this.player = this.#load(PLAYER_KEY, isPlayer);
+		try {
+			await this.#session();
+		} catch {
+			// The server may be restarting; the socket retries, and its welcome names the player.
+		}
 		const tableId = this.#load(TABLE_KEY, (v): v is string => typeof v === 'string');
-		if (!this.player || !tableId) return false;
+		if (!tableId) return false;
 		this.#follow(tableId);
 		return true;
 	}
 
-	/** Start a table with bots and sit at it, making a player first if needed. */
+	/** Start a table with bots and sit at it. */
 	async newTable(request: NewTableRequest): Promise<void> {
-		if (!this.player) {
-			this.player = await createPlayer(this.#fetch);
-			this.#save(PLAYER_KEY, this.player);
-		}
+		if (!this.player) await this.#session();
 		let created;
 		try {
-			created = await createTable(this.player.token, request, this.#fetch);
+			created = await createTable(request, this.#fetch);
 		} catch (error) {
-			if ((error as { status?: number }).status === 401) {
-				// The server no longer knows this player (its secret changed): start afresh.
-				this.#remove(PLAYER_KEY);
-				this.player = null;
-			}
-			throw error;
+			if ((error as { status?: number }).status !== 401) throw error;
+			// The session ended (it expired, or the server's secret changed): start a new one.
+			await this.#session();
+			created = await createTable(request, this.#fetch);
 		}
 		this.#follow(created.table_id);
+	}
+
+	async #session(): Promise<void> {
+		const legacy = this.#load(LEGACY_PLAYER_KEY, legacyToken);
+		const session = await startSession(legacy?.token ?? null, this.#fetch);
+		this.player = { player_id: session.player_id, name: session.name };
+		if (legacy) this.#remove(LEGACY_PLAYER_KEY);
 	}
 
 	/** Leave the table: give up the seat, forget the table and close the socket. */
@@ -214,16 +228,15 @@ export class NlConnection {
 	}
 
 	#open(): void {
-		const player = this.player;
 		const tableId = this.tableId;
-		if (!player || !tableId) return;
+		if (!tableId) return;
 		const socket = this.#connect();
 		this.#socket = socket;
 		this.status = 'connecting';
 		socket.onopen = () => {
 			if (this.#socket !== socket) return;
 			this.connected = true;
-			socket.send(JSON.stringify({ type: 'hello', token: player.token, protocol: 2 }));
+			socket.send(JSON.stringify({ type: 'hello', protocol: 2 }));
 			socket.send(JSON.stringify({ type: 'join_table', table_id: tableId }));
 		};
 		socket.onmessage = (event) => {
@@ -254,6 +267,7 @@ export class NlConnection {
 		}
 		switch (message.type) {
 			case 'welcome':
+				this.player = { player_id: message.player_id, name: message.name };
 				return;
 			case 'table': {
 				if (message.table_id !== this.tableId) return;
@@ -280,10 +294,9 @@ export class NlConnection {
 					return;
 				}
 				if (message.code === 'unauthorized') {
-					this.#remove(PLAYER_KEY);
 					this.player = null;
 					this.#stop();
-					this.closedMessage = 'Your player is no longer known here. Start a new table.';
+					this.closedMessage = message.message;
 					return;
 				}
 				this.notice = { id: ++this.#notices, text: message.message };

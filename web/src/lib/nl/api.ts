@@ -5,9 +5,10 @@
 import type {
 	ConfigResponse,
 	HttpError,
-	NewPlayerResponse,
 	NewTableRequest,
-	NewTableResponse
+	NewTableResponse,
+	SessionRequest,
+	SessionResponse
 } from '../protocol-v2.ts';
 
 export class ApiError extends Error {
@@ -46,25 +47,40 @@ export async function fetchConfig(fetcher: typeof fetch = fetch): Promise<Config
 	return value as unknown as ConfigResponse;
 }
 
-/** A new anonymous player. Keep the token: it is the player. */
-export async function createPlayer(fetcher: typeof fetch = fetch): Promise<NewPlayerResponse> {
-	const value = await body(await fetcher('/api/players', { method: 'POST' }));
-	if (!isRecord(value) || typeof value.token !== 'string' || typeof value.player_id !== 'string') {
-		throw new ApiError('Unexpected /api/players response', 201);
+/**
+ * The player this browser is. The first visit makes one; the server keeps the
+ * session in an `HttpOnly` cookie, so the page never sees it. A Phase 3 page
+ * kept a bearer token instead; sending it once moves that player onto a cookie.
+ */
+export async function startSession(
+	legacyToken: string | null = null,
+	fetcher: typeof fetch = fetch
+): Promise<SessionResponse> {
+	const request: SessionRequest = legacyToken ? { legacy_token: legacyToken } : {};
+	const value = await body(
+		await fetcher('/api/session', {
+			method: 'POST',
+			credentials: 'same-origin',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(request)
+		})
+	);
+	if (!isRecord(value) || typeof value.player_id !== 'string' || typeof value.name !== 'string') {
+		throw new ApiError('Unexpected /api/session response', 200);
 	}
-	return value as unknown as NewPlayerResponse;
+	return value as unknown as SessionResponse;
 }
 
-/** Start a table with bots; the player takes seat 0. */
+/** Start a table with bots; the session's player takes seat 0. */
 export async function createTable(
-	token: string,
 	request: NewTableRequest,
 	fetcher: typeof fetch = fetch
 ): Promise<NewTableResponse> {
 	const value = await body(
 		await fetcher('/api/tables', {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+			credentials: 'same-origin',
+			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(request)
 		})
 	);

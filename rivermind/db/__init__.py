@@ -7,12 +7,13 @@ from the repository root, or call ``upgrade`` from code.
 
 from .connection import database_url, make_engine, normalize_url
 from .migrate import alembic_config, downgrade, upgrade
-from .models import Base, Hand, HandHistory, PokerTable, Seat
+from .models import Base, Hand, HandHistory, Player, PokerTable, Seat
 
 __all__ = [
     "Base",
     "Hand",
     "HandHistory",
+    "Player",
     "PokerTable",
     "Seat",
     "alembic_config",

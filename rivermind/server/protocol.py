@@ -7,16 +7,18 @@ protocol-schema --version 2`` exports their JSON Schema, and
 `--typescript` writes the client's types (`web/src/lib/protocol-v2.ts`).
 A test fails if the checked-in TypeScript is stale.
 
-Flow. `POST /api/players` returns a player id and a secret token. The
-client keeps the token and sends it as `Authorization: Bearer <token>` to
-create tables and in the `hello` message that must open every socket.
+Flow. `POST /api/session` makes an anonymous player on the first visit, or
+returns the one this browser already is, and sets the signed session cookie
+(P4.1). The cookie authenticates `POST /api/tables` and the WebSocket, and
+the server refuses both from pages on other origins. Every socket opens
+with a `hello` message.
 One socket can follow several tables: `join_table` subscribes to one and
 sends its current `table` message. After every change at a table, each
 subscribed socket receives a `table` message with that viewer's view and
 the new public events, numbered by `seq` without gaps. Views and events
 never contain another seat's hidden cards. An `act` carries the `seq` of
 the view it answers; an action sent for an earlier turn is refused as
-`stale`. Phase 4 replaces the bearer token with a session cookie.
+`stale`.
 """
 
 from __future__ import annotations
@@ -306,16 +308,26 @@ class ConfigResponse(_Model):
     stakes: list[Stakes]
 
 
-class NewPlayerResponse(_Model):
-    """`POST /api/players`, status 201. Keep the token secret: it is the player."""
+class SessionRequest(_Model):
+    """`POST /api/session`, with an optional body."""
+
+    legacy_token: str | None = Field(
+        default=None,
+        max_length=200,
+        description="The bearer token a Phase 3 client kept, to move that player onto a session cookie.",
+    )
+
+
+class SessionResponse(_Model):
+    """`POST /api/session`: the player this browser is. The session itself is in an `HttpOnly` cookie."""
 
     player_id: str
     name: str
-    token: str
+    created: bool = Field(description="Whether this request made a new player.")
 
 
 class NewTableRequest(_Model):
-    """`POST /api/tables` with the player's bearer token. The player takes seat 0."""
+    """`POST /api/tables` with the session cookie. The player takes seat 0."""
 
     seats: StrictInt = Field(default=6, ge=2, le=9)
     bots: str = Field(default="heuristic", description="The kind of bot in every other seat.")
@@ -343,7 +355,6 @@ class HelloMessage(_Model):
     """Must be the first message on a socket."""
 
     type: Literal["hello"]
-    token: str
     protocol: Literal[2]
 
 
@@ -467,7 +478,8 @@ class ServerMessage(
 
 MODELS: list[type[BaseModel]] = [
     ConfigResponse,
-    NewPlayerResponse,
+    SessionRequest,
+    SessionResponse,
     NewTableRequest,
     NewTableResponse,
     HttpError,

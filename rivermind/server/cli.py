@@ -13,7 +13,7 @@ SECRET_ENV = "RIVERMIND_SECRET"
 
 
 def load_secret(secret_file: str | None) -> bytes | None:
-    """The token secret from ``RIVERMIND_SECRET`` or a file, made if missing."""
+    """The session secret from ``RIVERMIND_SECRET`` or a file, made if missing."""
     value = os.environ.get(SECRET_ENV)
     if value:
         return value.encode()
@@ -34,8 +34,8 @@ def load_secret(secret_file: str | None) -> bytes | None:
 @click.option(
     "--secret_file",
     default=None,
-    help=f"File holding the secret that signs player tokens; made if missing. {SECRET_ENV} overrides it. "
-    "Without either, tokens last only until a restart.",
+    help=f"File holding the secret that signs session cookies; made if missing. {SECRET_ENV} overrides it. "
+    "Without either, sessions last only until a restart.",
 )
 @click.option("--max_tables", default=200, show_default=True)
 @click.option("--hand_pause", default=3.0, show_default=True, help="Seconds between hands.")
@@ -46,6 +46,13 @@ def load_secret(secret_file: str | None) -> bytes | None:
     default=None,
     help="PostgreSQL URL for durable tables (default: DATABASE_URL). Migrate it first with "
     "`alembic upgrade head`. Without one, tables live only in memory.",
+)
+@click.option(
+    "--allowed_origin",
+    "allowed_origins",
+    multiple=True,
+    help="Another origin whose pages may use the API, such as https://example.com. Repeatable. "
+    "The server's own origin, and loopback pages calling a loopback server, are always allowed.",
 )
 @click.option(
     "--client_dir",
@@ -60,6 +67,7 @@ def serve_nl(
     hand_pause: float,
     bot_delay: float,
     database_url: str | None,
+    allowed_origins: tuple[str, ...],
     client_dir: str | None,
 ) -> None:
     """Serve no-limit tables of 2 to 9 seats against the Phase 2 bots."""
@@ -80,6 +88,11 @@ def serve_nl(
     else:
         logging.getLogger("rivermind.server").warning("No DATABASE_URL: tables will not survive a restart")
     app = create_app(
-        secret=load_secret(secret_file), options=options, max_tables=max_tables, client_dir=client_dir, store=store
+        secret=load_secret(secret_file),
+        options=options,
+        max_tables=max_tables,
+        client_dir=client_dir,
+        store=store,
+        allowed_origins=allowed_origins,
     )
     uvicorn.run(app, host=host, port=port, log_level="info", ws_max_size=64 * 1024, server_header=False)
