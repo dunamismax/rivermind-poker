@@ -10,6 +10,18 @@ uv run rivermind-poker --help
 
 For a quick edit-and-test cycle, run `uv run pytest test/unit` or point pytest at the functional test for the component you changed. The suite includes action order, payouts, hand evaluation, card combinations and training checkpoint smoke tests. The smoke tests group all hands into one synthetic bucket per street so that training can run on a fresh checkout.
 
+## No-limit engine
+
+`rivermind/engine` is the engine for the main game: 52-card no-limit hold’em at 2 to 9 seats, implementing [the rules specification](docs/rules.md). It is pure. States are immutable, nothing global changes, and randomness comes only from the caller. `start_hand(config, stacks, button, deck=… or rng=…)` posts antes and blinds and deals. `legal_actions(state)` gives fold, check or call, and the bet or raise range as street totals. `apply(state, action)` returns the next state, or raises `IllegalActionError`. A finished state’s `result` holds the returned uncalled bet, the pots with their winners and shares, and who showed or mucked. `seating` moves the button between hands, and `history` writes versioned JSON (`"format": 1`) for states and replayable hand records, plus plain-text histories for one viewer. Bots decide from `view.seat_view(state, seat)`, which holds only that seat’s cards and public information, and the simple bots are in [`rivermind/bots`](rivermind/bots/). [Engine](rivermind/engine/) · [Tests](test/engine/)
+
+```sh
+uv run pytest test/engine
+uv run python -m rivermind.engine.fuzz --hands 100000      # long self-play fuzz, all seat counts
+uv run python -m rivermind.engine.bench                    # random self-play speed for 2, 6 and 9 seats
+```
+
+The engine tests check every rule’s example and more than 30 fixed hands with their payouts, and run Hypothesis property tests and a short fuzz. To add a rule test, write the hand in `test/engine/fixtures.py`: the stacks, button, cards and an action script such as `"S5:r300 S0:c S1:f"`, with final stacks worked out by hand from the rules.
+
 ## Work with a learned bot
 
 Clustering turns the two hole cards and the shared board into a bucket for each betting stage. Training uses those buckets and the betting history to learn an action distribution through self-play. Keep tables and checkpoints from the same experiment together. Load artifacts that you generated or trust because joblib uses Python pickle serialization.

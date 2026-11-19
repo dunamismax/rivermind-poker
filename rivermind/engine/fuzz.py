@@ -64,23 +64,31 @@ def random_stacks(num_seats: int, config: HandConfig, rng: random.Random) -> lis
 
 
 def random_action(state: HandState, legal: LegalActions, rng: random.Random) -> Action:
-    """A random legal action, with bet sizes spread across the legal range."""
-    choices: list[Action] = []
-    if legal.can_fold:
-        choices.append(Action.fold())
-    choices.append(Action.check() if legal.can_check else Action.call())
-    if legal.raise_kind is not None:
-        lo, hi = legal.min_to, legal.max_to
-        pot_to = state.current_bet + state.pot + (state.current_bet - state.street_bets[legal.seat])
-        sizes = {
-            lo,
-            hi,
-            rng.randint(lo, hi),
-            min(max(lo, pot_to // 2), hi),
-            min(max(lo, pot_to), hi),
-        }
-        choices.extend(Action(legal.raise_kind, size) for size in sorted(sizes))
-    return rng.choice(choices)
+    """A random legal action, weighted so hands often reach later streets.
+
+    Folds, passive and aggressive actions are weighted 2:6:2 (when legal), and
+    bet sizes mix the minimum, half pot, pot, a uniform pick and all-in.
+    """
+    roll = rng.random()
+    passive = Action.check() if legal.can_check else Action.call()
+    if legal.can_fold and roll < 0.2:
+        return Action.fold()
+    if legal.raise_kind is None or roll < 0.8:
+        return passive
+    lo, hi = legal.min_to, legal.max_to
+    pot_to = state.current_bet + state.pot + (state.current_bet - state.street_bets[legal.seat])
+    size_roll = rng.random()
+    if size_roll < 0.4:
+        size = lo
+    elif size_roll < 0.6:
+        size = pot_to // 2
+    elif size_roll < 0.8:
+        size = pot_to
+    elif size_roll < 0.95:
+        size = rng.randint(lo, hi)
+    else:
+        size = hi
+    return Action(legal.raise_kind, min(max(lo, size), hi))
 
 
 def illegal_near(state: HandState, legal: LegalActions) -> list[Action]:
@@ -194,7 +202,7 @@ def run(hands: int, seat_counts: Sequence[int], seed: int) -> dict[str, object]:
     started = time.perf_counter()
     for num_seats in seat_counts:
         rng = random.Random(f"{seed}:{num_seats}")
-        counts: Counter[str] = Counter(dict.fromkeys(("showdown", "fold_out", "tabled", "side_pots", "uncalled_returned", "actions"), 0))
+        counts: Counter[str] = Counter(dict.fromkeys(("showdown", "fold_out", "tabled", "ordered_showdown", "with_muck", "side_pots", "uncalled_returned", "actions"), 0))
         longest = 0
         for _ in range(hands):
             state = play_random_hand(num_seats, rng)
@@ -202,6 +210,8 @@ def run(hands: int, seat_counts: Sequence[int], seed: int) -> dict[str, object]:
             assert result is not None
             counts["showdown" if result.showdown else "fold_out"] += 1
             counts["tabled"] += result.tabled
+            counts["ordered_showdown"] += result.showdown and not result.tabled
+            counts["with_muck"] += bool(result.mucked)
             counts["side_pots"] += len(result.pots) > 1
             counts["uncalled_returned"] += result.uncalled is not None
             counts["actions"] += len(state.actions)

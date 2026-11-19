@@ -95,3 +95,13 @@ def test_fuzz_report_counts_hands() -> None:
     for seat_count in ("2", "9"):
         assert counts[seat_count]["showdown"] + counts[seat_count]["fold_out"] == 20
     assert report["failures"] == 0
+
+
+def test_benchmark_report() -> None:
+    from rivermind.engine.bench import run as bench
+
+    report = bench([2, 6], hands=50, repeats=1, seed=0, mode="view")
+    counts = report["seat_counts"]
+    assert isinstance(counts, dict) and set(counts) == {"2", "6"}
+    assert counts["6"]["hands_per_second_median"] > 0
+    assert report["meets_target"] in (True, False)
