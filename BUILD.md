@@ -6,12 +6,12 @@ This file is the single source of truth for project status, from today’s worki
 
 | | |
 | --- | --- |
-| **Current phase** | Phase 1 · SvelteKit client |
-| **Next step** | **P1.6** Deploy the SvelteKit client (**Owner gate:** deploy) |
+| **Current phase** | Phase 2 · No-limit hold’em engine |
+| **Next step** | **P2.2** State machine and legal actions |
 | **In progress** | _None_ |
-| **Blockers** | P1.6 waits for the owner’s approval to deploy to rivermindpoker.com (it also needs Node 26 and pnpm on ubuntu-vm). P2.1 is done; the rest of Phase 2 waits for the Phase 1 exit criteria, which need P1.6. |
-| **Live site** | https://rivermindpoker.com runs the Phase 0 prototype: a three-seat, fixed-limit, 20-card game against random bots or the RM-06 checkpoint. It uses FastAPI, WebSockets and a vanilla JavaScript client. Tables survive restarts. |
-| **`main`** | Phase 0, the P1.1 scaffold, the P1.2 typed protocol, the P1.3 SvelteKit table UI, the P1.4 tests, the P1.5 CI job, the P2.1 rules and the P6.5 card artwork are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python and web suites on every push. |
+| **Blockers** | _None._ Phase 1 is complete. Before P2.2 builds on them, the owner may still change the [rules choices](docs/rules.md#choices) listed in the P2.1 handoff. |
+| **Live site** | https://rivermindpoker.com runs the Phase 0 game (three seats, fixed limit, 20 cards, against random bots or the RM-06 checkpoint) in the SvelteKit client. Caddy serves the client from `/srv/rivermindpoker.com/current` and proxies `/api/*` and `/ws` to the FastAPI app. Tables survive restarts. Deployed at `a172a17`. |
+| **`main`** | Phases 0 and 1, the P2.1 rules and the P6.5 card artwork are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python and web suites on every push. |
 | **Last updated** | 2026-11-19 |
 
 ## The 1.0 product
@@ -69,7 +69,7 @@ Each question has a default. Agents build on the default until the owner decides
 ## Phase overview
 
 - [x] **Phase 0 · Prototype and foundation.** Training repairs, a bot baseline, a server-owned table, the browser client, self-hosting and restart-safe tables.
-- [ ] **Phase 1 · SvelteKit client.** Replace the vanilla client with SvelteKit on the existing protocol, with browser tests and CI.
+- [x] **Phase 1 · SvelteKit client.** Replace the vanilla client with SvelteKit on the existing protocol, with browser tests and CI.
 - [ ] **Phase 2 · No-limit hold’em engine.** A correct, tested 52-card no-limit engine for 2 to 9 seats, with hand histories.
 - [ ] **Phase 3 · Table server v2.** Multi-seat tables on the new engine with PostgreSQL persistence, action clocks and the live cutover.
 - [ ] **Phase 4 · Multiplayer and identity.** Anonymous players, a play-chip wallet, a lobby, safe multi-human tables and fair dealing.
@@ -106,7 +106,7 @@ Each question has a default. Agents build on the default until the owner decides
 **Goal.** Replace the vanilla JavaScript client with a SvelteKit app that speaks today’s protocol, so later phases build on the chosen frontend stack. Gameplay does not change.
 
 **Exit criteria**
-- [ ] The live site serves the SvelteKit client, and every behaviour on the P1.3 parity list works there.
+- [x] The live site serves the SvelteKit client, and every behaviour on the P1.3 parity list works there. (P1.6 evidence)
 - [x] Browser tests pass in Chromium, Firefox and WebKit, at desktop and phone sizes. (P1.4 evidence)
 - [x] CI runs the Python and web suites and passes on GitHub. (P1.5 evidence)
 
@@ -157,11 +157,12 @@ Each question has a default. Agents build on the default until the owner decides
   - [x] Evidence names a passing GitHub Actions run (`gh run list`).
   - Evidence: `81856bd`. `gh run list` shows run [44461612198](https://github.com/dunamismax/rivermind-poker/actions/runs/44461612198) for `81856bd` succeeded: the `test` job (pytest) and the new `web` job (frozen install, check, lint, Vitest 28 passed, build, Playwright 36 passed in Chromium, Firefox and WebKit).
 
-- [ ] **P1.6 · Deploy the SvelteKit client** · Depends on: P1.5 · **Owner gate:** deploy
-  - [ ] Caddy serves `web/build` as static files and keeps the SPA fallback. Hashed assets under `/_app/immutable/*` are cached as immutable, while HTML revalidates. `/api/*` and `/ws` are proxied to the app.
-  - [ ] [`deploy/update.sh`](deploy/update.sh) builds the web app on the server with a frozen lockfile before restarting, and stops if the build fails.
-  - [ ] The legacy `poker_ai/web/static/` client and its serving code are removed. FastAPI serves only `/api` and `/ws`, plus the built client when run locally without Caddy.
-  - [ ] A Playwright smoke test against https://rivermindpoker.com completes a hand against each opponent type. A live mid-hand service restart is checked again in the new client.
+- [x] **P1.6 · Deploy the SvelteKit client** · Depends on: P1.5 · **Owner gate:** deploy
+  - [x] Caddy serves `web/build` as static files and keeps the SPA fallback. Hashed assets under `/_app/immutable/*` are cached as immutable, while HTML revalidates. `/api/*` and `/ws` are proxied to the app.
+  - [x] [`deploy/update.sh`](deploy/update.sh) builds the web app on the server with a frozen lockfile before restarting, and stops if the build fails.
+  - [x] The legacy `poker_ai/web/static/` client and its serving code are removed. FastAPI serves only `/api` and `/ws`, plus the built client when run locally without Caddy.
+  - [x] A Playwright smoke test against https://rivermindpoker.com completes a hand against each opponent type. A live mid-hand service restart is checked again in the new client.
+  - Evidence: `a172a17`, deployed with the owner’s approval. Caddy serves releases from `/srv/rivermindpoker.com/current` (an atomic symlink to `20261119T061029Z-a172a17d12e9`) and proxies only `/api/*` and `/ws`. Before deploying, the site file (minus the rate-limit plugin) ran under a local Caddy in front of `serve`: HTML `no-cache`, hashed assets immutable, routes fall back to `200.html`, missing `/_app/` files 404. `pnpm e2e:live` against the live site passed 8 of 8 (Chromium desktop and WebKit phone): headers and fallback, a hand against random and RiverMind bots, and a mid-hand `systemctl restart` over ssh that resumed the same table. pytest 138, Vitest 32 and Playwright 36 of 36 passed, as did check, lint and build.
 
 ---
 
@@ -434,6 +435,8 @@ These are possible directions after the release:
 
 Newest first. Keep eight entries and move older ones to [docs/build-history.md](docs/build-history.md). Each entry gives the date, the step IDs, what changed, the checks actually run and the next concrete action.
 
+**2026-11-19 · P1.6, Phase 1 complete.** With the owner’s approval, deployed the SvelteKit client. Caddy now serves each build as a release under `/srv/rivermindpoker.com/` and proxies only `/api/*` and `/ws`. `update.sh` builds the client from the frozen lockfile before changing the live site, using Node 26.13 from mise and pnpm from corepack on ubuntu-vm. The legacy `poker_ai/web/static/` client is gone, and `pnpm e2e:live` smoke-tests a deployment. One fix came out of local testing behind Caddy: a missing `/_app/` asset had fallen through to the app page and now returns 404. The checks are in the P1.6 evidence. The owner asked to stop once Phase 1 was done, so Phase 2 has not started. Next action: P2.2.
+
 **2026-11-19 · P6.5 artwork.** At the owner’s request a separate session created the original card deck (52 standard faces, four-colour clubs and diamonds, three backs) and wired it into the SvelteKit table, documented in [docs/card-art.md](docs/card-art.md). This session then reviewed it, moved the in-memory rendering into `web/scripts/card-art/render.js`, added `pnpm cards` and a stale-artwork test, fixed a docs link into the ignored `artifacts/` folder, and committed it as `e826f94`. Checks are in the P6.5 evidence; follow-ups are under Remaining. P1.6 is still the next phase step and awaits deployment approval.
 
 **2026-11-19 · P2.1.** Wrote [docs/rules.md](docs/rules.md), the no-limit specification for the Phase 2 engine. For the owner, the choices where card rooms differ: a moving button rather than a dead button; new and returning players dealt in at once with no missed-blind charges; an optional per-player ante; a short big blind still requires a full big blind to call; only a full raise in total reopens betting; odd chips go left of the button per pot; losing hands are auto-mucked and all-in hands tabled; burn cards are dealt; timeouts check or fold. Change any of them before P2.2 builds on them. Next action: P1.6 after the owner approves the deploy.
@@ -447,5 +450,3 @@ Newest first. Keep eight entries and move older ones to [docs/build-history.md](
 **2026-11-19 · P1.2.** Added Pydantic models for the whole protocol (`poker_ai/web/protocol.py`), used them for validation and for every outgoing message, and added `rivermind-poker protocol-schema` with a small JSON-Schema-to-TypeScript generator (`poker_ai/web/typescript.py`, no new dependency). Behaviour changes: malformed messages (a string `seq`, extra fields) are now `bad_request`, and HTTP body errors are 400 instead of 422. Ran pytest (136 passed), a live WebSocket check and the web suite. Next action: P1.3.
 
 **2026-11-19 · P1.1.** Scaffolded `web/` with `sv create` (SvelteKit 3.3, which configures the kit in `vite.config.ts`; `#lib/…` subpath imports take the file extension). Added the 200.html fallback, `ssr = false`, the Node 26 pin, the scripts, the `/api` and `/ws` proxy and a placeholder page, and documented them in CONTRIBUTING. Ran the clean-clone install, check, lint and build, Vitest, Playwright in Chromium, a browser check against `serve`, and pytest (123 passed). Note for P1.3: the SPA fallback bootstraps with an inline `<script>`, which the current `script-src 'self'` CSP blocks. Next action: P1.2.
-
-**2026-11-19 · Plan to 1.0.** At the owner’s request, rewrote this tracker into phases toward 1.0 with checkable steps. It now covers the expanded scope (multiplayer, 2 to 9 seats, no-limit, strong bots, a full site) and records the stack decisions as D-1 to D-9. Phase 0 evidence and earlier handoffs moved verbatim to [docs/build-history.md](docs/build-history.md), and [AGENTS.md](AGENTS.md) and the [roadmap](docs/roadmap.md) were aligned with the new format. GitHub Actions showed passing runs for the latest pushes. Next action: P1.1.
