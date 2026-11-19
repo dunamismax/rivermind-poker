@@ -292,9 +292,14 @@ def check_outcome(outcome: dict[str, Any]) -> None:
     # Every chip is accounted for: people hold what grants and top-ups paid,
     # plus what the bots brought to the tables minus what the bots kept.
     assert sum(outcome["balances"].values()) == outcome["paid_in"] + outcome["bots_injected"] - outcome["bots_held"]
-    # The random play reached the interesting cases.
-    for kind in ("new_table", "rebuy", "leave", "act", "visit", "take_seat", "quick_seat", "hold"):
+    # The random play reached the interesting cases. Some always go through;
+    # others only need to have been tried, since timing decides whether they
+    # can (a rebuy is refused, and refunded, while the stack is full).
+    for kind in ("new_table", "leave", "act", "visit", "quick_seat"):
         assert counts.get(kind, 0) > 0, (kind, sorted(counts.items()))
+    for kind in ("rebuy", "take_seat", "hold"):
+        tried = sum(n for key, n in counts.items() if key.split(":")[0] == kind)
+        assert tried > 0, (kind, sorted(counts.items()))
     # Sitting in a seat a bot or a hold has is refused after being paid for:
     # the payment must come back.
     assert counts.get("sit:TableError", 0) > 0, sorted(counts.items())

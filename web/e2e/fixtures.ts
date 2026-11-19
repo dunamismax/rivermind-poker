@@ -1,4 +1,4 @@
-import { test as base, expect, type Page } from '@playwright/test';
+import { test as base, expect, type Browser, type Page } from '@playwright/test';
 import { TableServer } from './server.ts';
 
 /** Records Content-Security-Policy violations; tests assert there are none. */
@@ -50,10 +50,19 @@ export async function sitDown(
 	}: { bots?: RegExp; buyIn?: RegExp; privateTable?: boolean } = {}
 ): Promise<void> {
 	await page.goto('/');
+	await expect(page.getByText('Looking for tables…')).toHaveCount(0);
 	const form = newTableForm(page);
-	await form.getByRole('radio', { name: String(seats), exact: true }).check({ force: true });
-	await form.getByRole('radio', { name: bots }).check({ force: true });
-	if (privateTable) await form.getByRole('checkbox', { name: /Private table/ }).check();
+	// The live table list above the form can change height between scrolling
+	// and clicking, so the choices are clicked in place rather than by position.
+	for (const choice of [
+		form.getByRole('radio', { name: String(seats), exact: true }),
+		form.getByRole('radio', { name: bots }),
+		...(privateTable ? [form.getByRole('checkbox', { name: /Private table/ })] : [])
+	]) {
+		// (Playwright's dispatchEvent crashes Firefox pages here; the element's own click does not.)
+		await choice.evaluate((input: HTMLInputElement) => input.click());
+		await expect(choice).toBeChecked();
+	}
 	if (buyIn) {
 		const select = form.getByRole('combobox', { name: 'Buy-in' });
 		const option = select.getByRole('option', { name: buyIn });
@@ -108,3 +117,23 @@ export async function noOverflow(page: Page): Promise<void> {
 	const widths = await page.evaluate(() => [document.documentElement.scrollWidth, innerWidth]);
 	expect(widths[0]).toBeLessThanOrEqual(widths[1]);
 }
+
+/** Another person: a new browser context, so a new player. */
+export async function stranger(browser: Browser): Promise<Page> {
+	const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+	return context.newPage();
+}
+
+export async function nameOf(page: Page): Promise<string> {
+	const me = page.locator('header .me');
+	await expect(me).toHaveText(/\S/);
+	return (await me.textContent()) ?? '';
+}
+
+/** A table's row in the lobby list. */
+export function row(page: Page, tableId: string) {
+	return page.locator(`li[data-table="${tableId}"]`);
+}
+
+/** The viewer's own seat at the table. */
+export const seated = (page: Page) => page.getByRole('group', { name: /^Your seat/ });

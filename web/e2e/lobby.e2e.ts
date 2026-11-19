@@ -1,12 +1,15 @@
-import type { Browser, Page } from '@playwright/test';
 import {
 	expect,
 	handNumber,
+	nameOf,
 	newTableForm,
 	noOverflow,
 	playUntil,
 	playUntilHand,
+	row,
+	seated,
 	sitDown,
+	stranger,
 	tableIdOf,
 	test
 } from './fixtures.ts';
@@ -14,23 +17,6 @@ import {
 // The lobby (P4.3): people find each other's tables in the live list, take a
 // bot's seat, join a private table by its invite link and wait in line for a
 // full table. Each person is a separate browser context, so a separate player.
-
-async function stranger(browser: Browser): Promise<Page> {
-	const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-	return context.newPage();
-}
-
-async function nameOf(page: Page): Promise<string> {
-	const me = page.locator('header .me');
-	await expect(me).toHaveText(/\S/);
-	return (await me.textContent()) ?? '';
-}
-
-function row(page: Page, tableId: string) {
-	return page.locator(`li[data-table="${tableId}"]`);
-}
-
-const seated = (page: Page) => page.getByRole('group', { name: /^Your seat/ });
 
 test('two people find each other in the lobby and play together', async ({
 	page,
