@@ -7,9 +7,9 @@ This file is the single source of truth for project status, from today’s worki
 | | |
 | --- | --- |
 | **Current phase** | Phase 3 · Table server v2 |
-| **Next step** | **P3.4** Protocol v2 |
-| **In progress** | **P3.4** Protocol v2: typed messages for tables, seats, events and timers over one WebSocket (claimed 2026-11-19). |
-| **Blockers** | _None._ Phases 1 and 2 and P3.1 to P3.3 are complete. P3.4 is partly built and uncommitted; see its Remaining line. |
+| **Next step** | **P3.5** Durable tables and histories |
+| **In progress** | **P3.5** Durable tables and histories: no-limit tables saved to PostgreSQL before each broadcast and restored at startup (claimed 2026-11-19). |
+| **Blockers** | _None._ Phases 1 and 2 and P3.1 to P3.4 are complete. |
 | **Live site** | https://rivermindpoker.com runs the Phase 0 game (three seats, fixed limit, 20 cards, against random bots or the RM-06 checkpoint) in the SvelteKit client. Caddy serves the client from `/srv/rivermindpoker.com/current` and proxies `/api/*` and `/ws` to the FastAPI app. Tables survive restarts. Deployed at `a172a17`. The site database `rivermind_poker` exists on ubuntu-vm and is migrated to `0001`, but the deployed app does not use it yet. The next deploy installs the database-aware `update.sh` steps and the unit’s `EnvironmentFile`. |
 | **`main`** | Phases 0 to 2, the P3.1 database foundation and the P6.5 card artwork are on `main` and pushed to both remotes. The no-limit engine is in `rivermind/engine` and the simple bots in `rivermind/bots`, but the live site still runs the Phase 0 game until P3.7. `main` pushes to GitHub and Codeberg, and GitHub Actions runs the Python and web suites on every push. |
 | **Last updated** | 2026-11-19 |
@@ -263,10 +263,10 @@ Each question has a default. Agents build on the default until the owner decides
   - [x] Clock and timeout tests use an injected clock, not real sleeps.
   - Evidence: `fd61fc1`. `TableConfig` gains `action_seconds` (20), `time_bank_seconds` (30) and `bank_refill_seconds` (2 per hand dealt in); `Table.check_clock` times out the player to act, and runners wait on `RunnerOptions.clock` ([clock.py](rivermind/server/clock.py)), a `SystemClock` live and a `ManualClock` in tests. Disconnected players get no bank, and anyone away (disconnected or timed out without acting) for an orbit is sat out; rules 13.1 and 13.2 and the Choices table now say so. [test_clock.py](test/server/test_clock.py) (11 tests, no sleeping) covers deadlines, bank spending and refill, the section 13 example played through the table, disconnecting and reconnecting mid-turn, sitting out after an orbit, resetting the count, idle connected players, bots, and runners timing out a person and a stuck bot. A real-time run (0.5 s clock and bank) showed a 1.0 s first turn, 0.6 s turns after the bank emptied and the idle player sat out after three hands. pytest 402 passed with the database tests.
 
-- [ ] **P3.4 · Protocol v2** · Depends on: P3.2, P1.2
-  - [ ] Typed messages cover joining and leaving tables, seat views, ordered events with `seq`, timers, errors and several tables per connection. TypeScript is generated as in P1.2.
-  - [ ] Server tests cover stale or duplicate actions, actions from the wrong seat, hidden cards and reconnecting at every seat count.
-  - Remaining (2026-11-19, uncommitted in the working tree): `rivermind/server/{protocol,views,auth,app,cli}.py`, the TypeScript generator moved to `rivermind/server/typescript.py` with `protocol-schema --version 2`, `web/src/lib/protocol-v2.ts`, `rivermind-poker serve-nl` and `test/server/test_protocol_v2.py`. A manual TestClient run worked (players, a table with bots, welcome, views, legal actions and a real 50 s timeout). The new test file was not finished: its first six tests passed, then the run stopped responding, probably a `Socket.until` waiting on a message that never comes. Debug that, run the full suites, then commit.
+- [x] **P3.4 · Protocol v2** · Depends on: P3.2, P1.2
+  - [x] Typed messages cover joining and leaving tables, seat views, ordered events with `seq`, timers, errors and several tables per connection. TypeScript is generated as in P1.2.
+  - [x] Server tests cover stale or duplicate actions, actions from the wrong seat, hidden cards and reconnecting at every seat count.
+  - Evidence: `e86da16`. [protocol.py](rivermind/server/protocol.py), [app.py](rivermind/server/app.py) and `rivermind-poker serve-nl`; `protocol-schema --version 2` writes `web/src/lib/protocol-v2.ts`. [test_protocol_v2.py](test/server/test_protocol_v2.py) (18 tests, 1.3 s, 8 repeated runs green) runs on a `ManualClock`; the earlier hang was the test discarding the join snapshot, which was already the player's turn. Against a real `serve-nl` on port 8790, one socket followed heuristic-bot tables at 2, 6 and 9 seats for 11, 7 and 6 hands: an old-`seq` fold was refused as `stale`, 12 shown cards and no hidden ones reached the player, and rejoining mid-hand returned the same hand, cards and turn with a `connected` event; after a restart the same token was welcomed (tables are not yet durable). pytest 420 passed with the database tests; web check, lint, Vitest 32, build and Playwright 36 of 36 passed.
 
 - [ ] **P3.5 · Durable tables and histories** · Depends on: P3.1, P3.2
   - [ ] Table state is stored as versioned JSON in PostgreSQL and saved before any change is broadcast. Finished hands are stored as histories. Tables are restored at startup, matching the RM-10 behaviour.
