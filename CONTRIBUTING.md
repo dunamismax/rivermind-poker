@@ -88,7 +88,18 @@ pnpm dev
 
 The wire protocol is defined once, as Pydantic models in [`poker_ai/web/protocol.py`](poker_ai/web/protocol.py). The server validates every incoming message with them and builds every outgoing one from them. `rivermind-poker protocol-schema` prints the JSON Schema, and `pnpm protocol` regenerates [`web/src/lib/protocol.ts`](web/src/lib/protocol.ts) from it. After changing a model, regenerate the file and commit both; `test/functional/test_protocol.py` fails while the TypeScript is stale. Malformed messages, including a `seq` sent as a string, are rejected with `bad_request`.
 
-`pnpm e2e` runs the Playwright tests in `web/e2e/`. It starts `rivermind-poker serve` on port 8000 and the built client under `vite preview` on port 4173, reusing servers that are already running outside CI. Install the browsers once with `pnpm exec playwright install`.
+To run the production build the way the site serves it, pass the build to the table server. `serve --client_dir web/build` serves the client's files, falls back to `200.html` for every other path, caches `/_app/immutable/*` as immutable and sends the same security headers and Content-Security-Policy as the Caddy site.
+
+```sh
+pnpm build
+cd .. && uv run --locked rivermind-poker serve --client_dir web/build --state_path artifacts/tables.sqlite3
+```
+
+The CSP allows no inline script or style. `pnpm build` therefore moves SvelteKit's inline bootstrap script into a hashed file (`web/scripts/externalize-bootstrap.js`) and fails if any page or module still carries inline code, and a small Vite plugin in `web/vite.config.ts` removes the inline style from SvelteKit's route announcer. Svelte transitions also inject styles at run time, so animate with CSS classes instead.
+
+The UI is a set of components in `web/src/lib/components/`. `TableConnection` (`web/src/lib/table-connection.svelte.ts`) owns the socket: it joins with the saved seat, sends actions with the view's `seq`, rejoins with backoff (1, 2, 4, then 8 seconds) and keeps the seat in `localStorage`. The wording of buttons, actions, results and the hand log lives in `web/src/lib/wording.ts`.
+
+`pnpm e2e` runs the Playwright tests in `web/e2e/` in Chromium, Firefox and WebKit at desktop (1440×900) and phone (375×812) sizes. It builds the client once, then each worker starts its own `rivermind-poker serve --client_dir web/build --state_path …` on port 8700 and up, which some tests kill and restart. Install the browsers once with `pnpm exec playwright install`, and pass `--project chromium` for a quick run.
 
 ## Deploy rivermindpoker.com
 

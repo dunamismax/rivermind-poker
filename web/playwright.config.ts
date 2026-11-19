@@ -1,25 +1,25 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test';
 
-// Browser tests run the built client under `vite preview`, which proxies
-// /api and /ws to a real `rivermind-poker serve` on port 8000.
+// Browser tests drive the production build (built once in global-setup)
+// served by a real `rivermind-poker serve` per worker; see e2e/fixtures.ts.
+const desktop = { viewport: { width: 1440, height: 900 } };
+const phone = { viewport: { width: 375, height: 812 }, hasTouch: true };
+
 export default defineConfig({
 	testDir: 'e2e',
 	testMatch: '**/*.e2e.ts',
+	globalSetup: './e2e/global-setup.ts',
 	forbidOnly: !!process.env.CI,
-	webServer: [
-		{
-			command: 'uv run --locked rivermind-poker serve --port 8000',
-			cwd: '..',
-			url: 'http://127.0.0.1:8000/api/config',
-			reuseExistingServer: !process.env.CI,
-			timeout: 120_000
-		},
-		{
-			command: 'pnpm build && pnpm preview --port 4173 --strictPort',
-			url: 'http://127.0.0.1:4173',
-			reuseExistingServer: !process.env.CI,
-			timeout: 120_000
-		}
-	],
-	use: { baseURL: 'http://127.0.0.1:4173' }
+	retries: process.env.CI ? 1 : 0,
+	timeout: 60_000,
+	reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
+	use: { trace: 'retain-on-failure' },
+	projects: [
+		{ name: 'chromium', use: { ...devices['Desktop Chrome'], ...desktop } },
+		{ name: 'firefox', use: { ...devices['Desktop Firefox'], ...desktop } },
+		{ name: 'webkit', use: { ...devices['Desktop Safari'], ...desktop } },
+		{ name: 'chromium-phone', use: { ...devices['Desktop Chrome'], ...phone } },
+		{ name: 'firefox-phone', use: { ...devices['Desktop Firefox'], ...phone } },
+		{ name: 'webkit-phone', use: { ...devices['Desktop Safari'], ...phone } }
+	]
 });

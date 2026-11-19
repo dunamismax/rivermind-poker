@@ -215,3 +215,46 @@ def test_eviction_removes_saved_tables(tmp_path):
     second = _new(client)
     ids = [row[0] for row in TableStore(db).rows()]
     assert ids == [second["table_id"]] and first["table_id"] not in ids
+
+
+@pytest.fixture
+def built_client(tmp_path):
+    root = tmp_path / "build"
+    (root / "_app" / "immutable").mkdir(parents=True)
+    (root / "200.html").write_text("<!doctype html><title>RiverMind Poker</title>")
+    (root / "_app" / "immutable" / "start.abc.js").write_text("export {};")
+    (root / "robots.txt").write_text("User-agent: *\n")
+    (tmp_path / "secret.txt").write_text("outside")
+    return root
+
+
+def test_serves_the_built_client_with_the_site_headers(built_client):
+    client = TestClient(create_app(client_dir=str(built_client)))
+    for path in ("/", "/some/route", "/..%2fsecret.txt"):
+        page = client.get(path)
+        assert page.status_code == 200 and "RiverMind Poker" in page.text, path
+        assert page.headers["cache-control"] == "no-cache"
+        csp = page.headers["content-security-policy"]
+        assert "script-src 'self';" in csp and "style-src 'self';" in csp
+        assert "connect-src 'self' ws://testserver" in csp
+        assert page.headers["x-frame-options"] == "DENY"
+    asset = client.get("/_app/immutable/start.abc.js")
+    assert asset.status_code == 200
+    assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert client.head("/").status_code == 200
+    assert client.get("/robots.txt").headers["cache-control"] == "no-cache"
+    assert client.get("/_app/immutable/missing.js").status_code == 404
+    assert client.get("/api/missing").status_code == 404
+    # The legacy client is off: its path is just another SPA route.
+    assert "RiverMind Poker" in client.get("/static/app.js").text
+    config = client.get("/api/config")
+    assert config.json() == {"opponents": ["random"]}
+    assert "content-security-policy" not in config.headers
+    seat = _new(client)
+    with client.websocket_connect("/ws") as ws:
+        assert _join(ws, seat)["hand"] == 1
+
+
+def test_client_dir_must_be_built(tmp_path):
+    with pytest.raises(ValueError, match="200.html"):
+        create_app(client_dir=str(tmp_path))

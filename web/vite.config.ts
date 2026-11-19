@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig, type Plugin } from 'vitest/config';
 import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 
@@ -11,8 +11,28 @@ const proxy = {
 	'/ws': { target: backend, ws: true, changeOrigin: true }
 };
 
+// SvelteKit's route announcer hides itself with an inline style attribute,
+// which the site's CSP (`style-src 'self'`) blocks. Drop the attribute; the
+// `#svelte-announcer` rule in app.css hides it instead. Fails loudly if a
+// SvelteKit upgrade changes the markup, so the CSP is never silently broken.
+function announcerWithoutInlineStyle(): Plugin {
+	return {
+		name: 'rivermind:announcer-without-inline-style',
+		enforce: 'pre',
+		transform(code, id) {
+			if (!id.split('?')[0].endsWith('@sveltejs/kit/src/runtime/components/root.svelte')) return;
+			const pattern = /(id="svelte-announcer"[^>]*?)\s+style="[^"]*"/;
+			if (!pattern.test(code)) {
+				throw new Error('SvelteKit root.svelte changed: re-check the announcer for inline styles.');
+			}
+			return code.replace(pattern, '$1');
+		}
+	};
+}
+
 export default defineConfig({
 	plugins: [
+		announcerWithoutInlineStyle(),
 		sveltekit({
 			compilerOptions: {
 				// Force runes mode for the project, except for libraries. Can be removed in svelte 6.

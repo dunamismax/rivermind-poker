@@ -24,8 +24,12 @@ log = logging.getLogger("poker_ai.web")
 @click.option("--state_path", default=None,
               help="SQLite file that keeps tables across restarts. Without it, "
                    "a restart closes every table.")
+@click.option("--client_dir", default=None,
+              help="Serve this SvelteKit build (web/build) instead of the legacy "
+                   "client, with the site's security headers.")
 def serve(host: str, port: int, strategy_path: Optional[str],
-          lut_path: Optional[str], max_tables: int, state_path: Optional[str]):
+          lut_path: Optional[str], max_tables: int, state_path: Optional[str],
+          client_dir: Optional[str]):
     """Serve the browser table. Without a checkpoint, opponents are random."""
     import uvicorn
 
@@ -43,7 +47,8 @@ def serve(host: str, port: int, strategy_path: Optional[str],
         strategy = joblib.load(strategy_path)["strategy"]
         card_info_lut = joblib.load(Path(lut_path) / "card_info_lut.joblib")
     app = create_app(card_info_lut=card_info_lut, strategy=strategy,
-                     max_tables=max_tables, state_path=state_path)
+                     max_tables=max_tables, state_path=state_path,
+                     client_dir=client_dir)
     # Client messages are tiny; cap them well below Uvicorn's 16 MB default.
     uvicorn.run(app, host=host, port=port, log_level="info",
                 ws_max_size=64 * 1024, server_header=False)

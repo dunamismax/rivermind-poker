@@ -55,6 +55,16 @@ from poker_ai.web.store import TableStore
 log = logging.getLogger("poker_ai.web")
 
 STATIC_DIR = Path(__file__).parent / "static"
+# Mirrors deploy/rivermindpoker.com.caddy, so the built client is tested
+# locally under the policy it gets in production.
+CLIENT_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+}
+CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
+       "connect-src 'self' {ws}; object-src 'none'; frame-ancestors 'none'; "
+       "base-uri 'self'; form-action 'self'")
 OPPONENTS = {"random": "Random", "checkpoint": "RiverMind"}
 
 
@@ -180,12 +190,17 @@ def create_app(
     max_tables: int = 500,
     idle_seconds: float = 7 * 24 * 3600,
     state_path: Optional[str] = None,
+    client_dir: Optional[str] = None,
 ) -> FastAPI:
     """Build the app. Checkpoint opponents need both `strategy` and tables.
 
     With `state_path`, tables are saved to that SQLite file after every
     change and restored from it at startup. Idle tables expire after
     `idle_seconds` (a week by default).
+
+    With `client_dir` (the SvelteKit build, `web/build`), the app serves that
+    client instead of the legacy one: its files, the `200.html` fallback for
+    every other path, immutable caching for hashed assets and the site's CSP.
     """
     if (strategy is None) != (not card_info_lut):
         raise ValueError("Checkpoint opponents need both a strategy and card tables.")
@@ -193,20 +208,38 @@ def create_app(
     registry = TableRegistry(card_info_lut, strategy, max_tables, idle_seconds, store)
     app = FastAPI(title="RiverMind Poker", docs_url=None, redoc_url=None)
     app.state.registry = registry
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    client = Path(client_dir).resolve() if client_dir else None
+    if client is not None and not (client / "200.html").is_file():
+        raise ValueError(f"{client} has no 200.html; build the web client first.")
+    if client is None:
+        app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.middleware("http")
-    async def revalidate_client_files(request, call_next):
-        # Browsers would otherwise keep a stale client after an upgrade;
-        # no-cache still lets them reuse it when the ETag matches.
+    async def client_headers(request, call_next):
         response = await call_next(request)
-        if request.url.path == "/" or request.url.path.startswith("/static/"):
+        path = request.url.path
+        if client is not None:
+            if path.startswith("/api/"):
+                return response
+            for name, value in CLIENT_HEADERS.items():
+                response.headers[name] = value
+            ws = ("wss://" if request.url.scheme == "https" else "ws://") + request.url.netloc
+            response.headers["Content-Security-Policy"] = CSP.format(ws=ws)
+            # Hashed build output never changes; everything else revalidates.
+            response.headers["Cache-Control"] = (
+                "public, max-age=31536000, immutable"
+                if path.startswith("/_app/immutable/") and response.status_code == 200
+                else "no-cache")
+        elif path == "/" or path.startswith("/static/"):
+            # Browsers would otherwise keep a stale client after an upgrade;
+            # no-cache still lets them reuse it when the ETag matches.
             response.headers["Cache-Control"] = "no-cache"
         return response
 
-    @app.get("/", include_in_schema=False)
-    async def index():
-        return FileResponse(STATIC_DIR / "index.html")
+    if client is None:
+        @app.get("/", include_in_schema=False)
+        async def index():
+            return FileResponse(STATIC_DIR / "index.html")
 
     @app.exception_handler(RequestValidationError)
     async def bad_body(request: Request, exc: RequestValidationError):
@@ -309,6 +342,18 @@ def create_app(
         finally:
             if entry is not None:
                 entry.sockets.pop(ws, None)
+
+    if client is not None:
+        @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
+        async def client_file(path: str):
+            if path.startswith("api/"):
+                raise HTTPException(404, "Not found.")
+            target = (client / path).resolve()
+            if path and target.is_file() and target.is_relative_to(client):
+                return FileResponse(target)
+            if path.startswith("_app/"):
+                raise HTTPException(404, "Not found.")  # a missing asset, not a page
+            return FileResponse(client / "200.html", media_type="text/html")
 
     return app
 
