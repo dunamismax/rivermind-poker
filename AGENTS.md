@@ -62,6 +62,12 @@ Socket tests of the table server (`test/server/test_protocol_v2.py`) run with a 
 
 In the browser tests, the turn’s action panel opens above the table controls and pushes them down. Wait for the `Your action` group before clicking a button below it, or the click can land where the button was. The lobby lists every open table on the test server, each with its own “Sit down”, and has its own “Blinds” filter, so reach the new-table form through `newTableForm()` and a listed table through its `li[data-table]` row.
 
+`create_app` applies the app's rate limits (P4.5) by default. Tests that send requests faster than people could pass `limits=safety.UNLIMITED`; a `Server` built directly has no limits.
+
+When the browser pane is hidden, the page runs in the background and CSS animations stay on their first frame, so an element with an entrance animation (a reaction bubble, a win label) looks invisible. Finish them with `document.getAnimations()` before judging a screenshot.
+
+Other sessions may work in this checkout at the same time and leave staged or half-finished changes. Commit only your own files (`git commit -- <paths>`, or a temporary index when a file mixes your hunks with theirs), and if their edits break the build, verify in a scratch copy of `main` plus your changes.
+
 Training workers are separate processes, and macOS starts them with spawn, so pytest monkeypatches do not reach them. To test server scheduling with deterministic updates, use the thread workers in [the training test helpers](test/functional/training_helpers.py). Keep a real-worker CLI run for the end-to-end check.
 
 Keep the `poker_ai` Python namespace and legacy CLI alias. Existing scripts import it, and serialized objects can refer to its module paths. Load only trusted pickle/joblib artifacts. When changing saved state, check the writer and its consumers (resume and offline play as applicable). Exercise existing-format data and document any required migration or regeneration. Keep checkpoints paired with the tables that define their buckets.
