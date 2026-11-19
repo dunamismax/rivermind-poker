@@ -49,7 +49,7 @@ export interface ConfigResponse {
 }
 
 /** Stable codes clients branch on. */
-export type ErrorCode = 'bad_request' | 'unauthorized' | 'stale' | 'illegal_action' | 'not_your_turn' | 'hand_over' | 'hand_in_progress' | 'unknown_table' | 'unknown_seat' | 'seat_taken' | 'already_seated' | 'not_seated' | 'bad_buy_in' | 'not_subscribed';
+export type ErrorCode = 'bad_request' | 'unauthorized' | 'stale' | 'illegal_action' | 'not_your_turn' | 'hand_over' | 'hand_in_progress' | 'unknown_table' | 'unknown_seat' | 'seat_taken' | 'already_seated' | 'not_seated' | 'bad_buy_in' | 'not_subscribed' | 'insufficient_chips';
 
 /** A refused message. The table and the view are unchanged. */
 export interface ErrorMessage {
@@ -118,6 +118,19 @@ export interface LeaveTableMessage {
 	type: 'leave_table';
 	table_id: string;
 }
+
+/** One change to the wallet. */
+export interface LedgerItem {
+	kind: LedgerKind;
+	/** Positive for chips paid in, negative for chips paid out. */
+	amount: number;
+	balance_after: number;
+	table_id: string | null;
+	/** Seconds since the epoch. */
+	at: number;
+}
+
+export type LedgerKind = 'grant' | 'top_up' | 'buy_in' | 'rebuy' | 'cash_out' | 'refund';
 
 export interface LeftTableMessage {
 	type: 'left_table';
@@ -225,6 +238,8 @@ export interface SessionResponse {
 	name: string;
 	/** Whether this request made a new player. */
 	created: boolean;
+	/** Play chips in the wallet, after any grant or top-up this visit paid. */
+	balance: number;
 }
 
 export interface SitInMessage {
@@ -326,6 +341,14 @@ export interface Turn {
 export interface Uncalled {
 	seat: number;
 	amount: number;
+}
+
+/** `GET /api/wallet` with the session cookie: the balance and the newest entries first. */
+export interface WalletResponse {
+	balance: number;
+	/** The play-money statement (D-1), to show with the chips. */
+	notice: string;
+	entries: LedgerItem[];
 }
 
 export interface WelcomeMessage {

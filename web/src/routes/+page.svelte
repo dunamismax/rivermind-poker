@@ -20,6 +20,15 @@
 		toastTimer = setTimeout(() => (toast = null), 3500);
 	});
 
+	// In the lobby, keep the wallet current: leaving mid-hand cashes out
+	// only when that hand ends, a moment after the page is back here.
+	$effect(() => {
+		if (!ready || connection.tableId !== null) return;
+		void connection.refreshBalance();
+		const timer = setInterval(() => void connection.refreshBalance(), 3000);
+		return () => clearInterval(timer);
+	});
+
 	onMount(() => {
 		void connection.start().finally(() => (ready = true));
 		return () => {
@@ -53,6 +62,7 @@
 	{:else}
 		<NlLobby
 			message={connection.closedMessage ?? ''}
+			balance={connection.balance}
 			onstart={(request) => connection.newTable(request)}
 		/>
 	{/if}

@@ -5,8 +5,14 @@
 
 	let {
 		message = '',
+		balance = null,
 		onstart
-	}: { message?: string; onstart: (request: NewTableRequest) => Promise<void> } = $props();
+	}: {
+		message?: string;
+		/** Play chips in the wallet, once known. */
+		balance?: number | null;
+		onstart: (request: NewTableRequest) => Promise<void>;
+	} = $props();
 
 	let config = $state<ConfigResponse | null>(null);
 	let seats = $state(6);
@@ -15,6 +21,13 @@
 	// Buy-ins run from 40 to 100 big blinds, the server's default range.
 	const BUY_INS = [40, 70, 100];
 	let buyInBlinds = $state(100);
+	const affordable = $derived(
+		BUY_INS.filter((blinds) => balance === null || blinds * bigBlind <= balance)
+	);
+	// Keep the choice within the wallet: the largest buy-in it covers.
+	$effect(() => {
+		if (affordable.length && !affordable.includes(buyInBlinds)) buyInBlinds = affordable.at(-1)!;
+	});
 	let starting = $state(false);
 	let error = $state('');
 
@@ -46,8 +59,17 @@
 <section class="lobby" aria-label="New table">
 	<h2>No-limit hold’em</h2>
 	<p class="intro">
-		Play money only: chips can never be bought, sold or cashed out. Every bot is labelled as a bot.
+		Play money only: chips can never be bought, sold or cashed out, and have no value. Every bot is
+		labelled as a bot.
 	</p>
+	{#if balance !== null}
+		<p class="wallet" role="status" aria-live="polite">
+			Your play chips: <strong>{balance.toLocaleString('en-US')}</strong>
+			<span class="hint">
+				New players start with 20,000; below 10,000, a visit tops you up once a day.
+			</span>
+		</p>
+	{/if}
 	{#if message}<p class="closed" role="status">{message}</p>{/if}
 	<form onsubmit={start}>
 		<fieldset>
@@ -84,11 +106,19 @@
 			Buy-in
 			<select bind:value={buyInBlinds}>
 				{#each BUY_INS as blinds (blinds)}
-					<option value={blinds}>{blinds * bigBlind} ({blinds} big blinds)</option>
+					<option value={blinds} disabled={!affordable.includes(blinds)}>
+						{blinds * bigBlind} ({blinds} big blinds)
+					</option>
 				{/each}
 			</select>
 		</label>
-		<button type="submit" class="start" disabled={starting || !config}>
+		{#if !affordable.length}
+			<p class="short" role="status">
+				Not enough play chips for these blinds. Pick lower blinds, or come back tomorrow for a
+				top-up.
+			</p>
+		{/if}
+		<button type="submit" class="start" disabled={starting || !config || !affordable.length}>
 			{starting ? 'Starting…' : 'Sit down'}
 		</button>
 	</form>
@@ -105,8 +135,17 @@
 	h2 {
 		margin: 0;
 	}
+	.wallet {
+		margin: 0;
+	}
+	.wallet .hint {
+		display: block;
+		color: var(--muted);
+		font-size: 0.9em;
+	}
 	.intro,
-	.closed {
+	.closed,
+	.short {
 		color: var(--muted);
 		margin: 0;
 	}

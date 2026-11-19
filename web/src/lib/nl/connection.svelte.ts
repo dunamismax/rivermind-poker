@@ -18,7 +18,7 @@ import type {
 	TableEvent,
 	TableView
 } from '../protocol-v2.ts';
-import { createTable, startSession } from './api.ts';
+import { createTable, fetchWallet, startSession } from './api.ts';
 
 /** Where a Phase 3 page kept its player and bearer token, until P4.1. */
 export const LEGACY_PLAYER_KEY = 'rivermind.nl.player';
@@ -89,6 +89,8 @@ function legacyToken(value: unknown): value is { token: string } {
 
 export class NlConnection {
 	player = $state<Player | null>(null);
+	/** Play chips in the wallet, not counting chips at the table (P4.2). */
+	balance = $state<number | null>(null);
 	tableId = $state<string | null>(null);
 	view = $state<TableView | null>(null);
 	/** Recent public events at the table, oldest first. */
@@ -156,13 +158,24 @@ export class NlConnection {
 			created = await createTable(request, this.#fetch);
 		}
 		this.#follow(created.table_id);
+		void this.refreshBalance();
 	}
 
 	async #session(): Promise<void> {
 		const legacy = this.#load(LEGACY_PLAYER_KEY, legacyToken);
 		const session = await startSession(legacy?.token ?? null, this.#fetch);
 		this.player = { player_id: session.player_id, name: session.name };
+		this.balance = session.balance;
 		if (legacy) this.#remove(LEGACY_PLAYER_KEY);
+	}
+
+	/** Read the wallet again, as after leaving a table. */
+	async refreshBalance(): Promise<void> {
+		try {
+			this.balance = (await fetchWallet(this.#fetch)).balance;
+		} catch {
+			// Shown again on the next successful read.
+		}
 	}
 
 	/** Leave the table: give up the seat, forget the table and close the socket. */

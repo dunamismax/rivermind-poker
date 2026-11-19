@@ -169,7 +169,7 @@ def table_events(events: Sequence[Event]) -> list[p.TableEvent]:
             fields.update(name=data["name"], amount=data["stack"])
         elif kind == "left":
             fields["amount"] = data["stack"]
-        elif kind in ("rebuy_pending", "rebought"):
+        elif kind in ("rebuy_pending", "rebought", "rebuy_dropped"):
             fields["amount"] = data["amount"]
         elif kind == "sat_out":
             fields["reason"] = data["reason"]

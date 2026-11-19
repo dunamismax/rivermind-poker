@@ -8,7 +8,8 @@ import type {
 	NewTableRequest,
 	NewTableResponse,
 	SessionRequest,
-	SessionResponse
+	SessionResponse,
+	WalletResponse
 } from '../protocol-v2.ts';
 
 export class ApiError extends Error {
@@ -88,4 +89,13 @@ export async function createTable(
 		throw new ApiError('Unexpected /api/tables response', 201);
 	}
 	return value as unknown as NewTableResponse;
+}
+
+/** The session's play-chip balance and its newest ledger entries. */
+export async function fetchWallet(fetcher: typeof fetch = fetch): Promise<WalletResponse> {
+	const value = await body(await fetcher('/api/wallet', { credentials: 'same-origin' }));
+	if (!isRecord(value) || typeof value.balance !== 'number' || !Array.isArray(value.entries)) {
+		throw new ApiError('Unexpected /api/wallet response', 200);
+	}
+	return value as unknown as WalletResponse;
 }

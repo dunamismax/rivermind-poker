@@ -180,11 +180,19 @@ class Turn:
 
 @dataclass(frozen=True, slots=True)
 class Departure:
-    """A player who left, with the chips they took with them."""
+    """Chips that went back from the table to a player's wallet (P4.2).
+
+    ``left`` is set when the player left, taking ``chips``: their stack and
+    any rebuy still waiting. Otherwise the player stays and ``chips`` is the
+    part of a waiting rebuy that no longer fit the buy-in range when the hand
+    ended.
+    """
 
     player_id: str
     seat: int
     chips: int
+    left: bool = True
+    bot: bool = False
 
 
 class Table:
@@ -378,9 +386,10 @@ class Table:
         player = self.seats[seat]
         assert player is not None
         self.seats[seat] = None
-        departure = Departure(player.player_id, seat, player.stack)
+        chips = player.stack + player.pending_rebuy  # a rebuy that never reached the table goes back too
+        departure = Departure(player.player_id, seat, chips, bot=player.is_bot)
         self.departures.append(departure)
-        self._emit("left", seat=seat, stack=player.stack)
+        self._emit("left", seat=seat, stack=chips)
         return departure
 
     # Hands
@@ -591,15 +600,21 @@ class Table:
                 self._remove(seat)
                 continue
             if player.pending_rebuy:
-                amount, player.pending_rebuy = player.pending_rebuy, 0
+                requested = amount = player.pending_rebuy
+                player.pending_rebuy = 0
                 try:
                     self._check_buy_in(amount, player.stack)
                 except TableError:
                     # Still within the maximum: add what fits, if that reaches the minimum.
                     amount = min(amount, self.config.max_buy_in - player.stack)
                     if amount <= 0 or player.stack + amount < self.config.min_buy_in:
-                        self._emit("rebuy_dropped", seat=seat)
                         amount = 0
+                if amount < requested:
+                    self.departures.append(
+                        Departure(player.player_id, seat, requested - amount, left=False, bot=player.is_bot)
+                    )
+                    if not amount:
+                        self._emit("rebuy_dropped", seat=seat, amount=requested)
                 if amount:
                     player.stack += amount
                     self._emit("rebought", seat=seat, amount=amount, stack=player.stack)

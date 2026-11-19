@@ -106,6 +106,9 @@ describe('describeEvent', () => {
 			'S1 is away and sits out'
 		);
 		expect(describeEvent(event({ kind: 'board', street: 'turn' }), names)).toBe('Turn dealt');
+		expect(describeEvent(event({ kind: 'rebuy_dropped', seat: 1, amount: 900 }), names)).toBe(
+			'S1’s rebuy of 900 no longer fits and goes back to the wallet'
+		);
 		expect(describeEvent(event({ kind: 'turn', seat: 1 }), names)).toBeNull();
 	});
 });

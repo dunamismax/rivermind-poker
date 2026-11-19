@@ -50,7 +50,7 @@ class MemoryStorage {
 	}
 }
 
-const SESSION = { player_id: 'p_1', name: 'Quiet Heron 42', created: false };
+const SESSION = { player_id: 'p_1', name: 'Quiet Heron 42', created: false, balance: 20000 };
 
 function view(seq: number, legal = true): TableView {
 	return {
@@ -101,6 +101,9 @@ function setup(saved = true, tableStatus = 201) {
 	const fetcher = (async (url: string, init?: RequestInit) => {
 		requests.push({ url, init });
 		if (url === '/api/session') return new Response(JSON.stringify(SESSION), { status: 200 });
+		if (url === '/api/wallet') {
+			return new Response(JSON.stringify({ balance: 12000, notice: 'Play money', entries: [] }));
+		}
 		if (tableStatus === 401) {
 			tableStatus = 201; // the retry after a new session succeeds
 			return new Response(JSON.stringify({ detail: 'Your session has ended.' }), { status: 401 });
@@ -131,6 +134,7 @@ describe('NlConnection', () => {
 		expect(requests[0].init?.credentials).toBe('same-origin');
 		expect(JSON.parse(String(requests[0].init?.body))).toEqual({});
 		expect(connection.player).toEqual({ player_id: 'p_1', name: 'Quiet Heron 42' });
+		expect(connection.balance).toBe(20000);
 		const socket = sockets[0];
 		socket.open();
 		// The cookie authenticates the socket: no token is ever sent.
@@ -255,7 +259,9 @@ describe('NlConnection', () => {
 		const { connection, sockets, requests, storage } = setup(false);
 		expect(await connection.start()).toBe(false);
 		await connection.newTable({ seats: 6, bots: 'heuristic' });
-		expect(requests.map((r) => r.url)).toEqual(['/api/session', '/api/tables']);
+		expect(requests.map((r) => r.url)).toEqual(['/api/session', '/api/tables', '/api/wallet']);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(connection.balance).toBe(12000); // the buy-in left the wallet
 		expect(new Headers(requests[1].init?.headers).get('Authorization')).toBeNull();
 		expect(requests[1].init?.credentials).toBe('same-origin');
 		expect(JSON.parse(String(requests[1].init?.body))).toEqual({ seats: 6, bots: 'heuristic' });
@@ -270,7 +276,7 @@ describe('NlConnection', () => {
 		const { connection, requests } = setup(false, 401);
 		await connection.start();
 		await connection.newTable({ seats: 2 });
-		expect(requests.map((r) => r.url)).toEqual([
+		expect(requests.map((r) => r.url).filter((url) => url !== '/api/wallet')).toEqual([
 			'/api/session',
 			'/api/tables',
 			'/api/session',

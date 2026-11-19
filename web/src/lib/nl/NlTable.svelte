@@ -149,9 +149,16 @@
 			{#each lines as line (line.seq)}<li>{line.text}</li>{/each}
 		</ol>
 	</section>
+	<p class="play-money">Play chips only: they can never be bought, sold or cashed out.</p>
 </section>
 
 <style>
+	.play-money {
+		margin: 0;
+		color: var(--muted);
+		font-size: 0.85em;
+		text-align: center;
+	}
 	.nl-table {
 		display: grid;
 		gap: 14px;

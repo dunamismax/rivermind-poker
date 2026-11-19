@@ -16,6 +16,11 @@ visit and sets a signed session cookie (``auth``), which authenticates every
 later request and socket. Requests and sockets from pages on other origins
 are refused, so another site cannot act with a visitor's cookie.
 
+Each player has a play-chip wallet (P4.2, ``wallet``). Buy-ins and rebuys are
+paid from it before they reach the table and refunded if the table refuses
+them; chips come back when the player leaves or a waiting rebuy no longer
+fits, and when a table closes with them still seated.
+
 With a ``TableStore`` (P3.5) every table is saved to PostgreSQL after each
 change and before any socket hears of it, and the open tables are restored
 when the app starts. Nobody is connected to a restored table yet, so its
@@ -47,6 +52,7 @@ from . import protocol as p
 from rivermind.engine.history import FormatError
 
 from .players import DatabasePlayers, MemoryPlayers, PlayerRecord, PlayerStore
+from .wallet import PLAY_MONEY_NOTICE, Credit, DatabaseWallet, InsufficientChips, MemoryWallet, Wallet, credits_for
 from .runner import BOT_LABELS, RunnerOptions, TableManager, TableRunner, default_bots
 from .snapshot import table_from_dict
 from .store import TableSaver, TableStore
@@ -118,12 +124,16 @@ class Server:
         idle_seconds: float,
         store: TableStore | None = None,
         players: PlayerStore | None = None,
+        wallet: Wallet | None = None,
     ) -> None:
         self.secret = secret
         self.store = store
         if players is None:
             players = DatabasePlayers(store.engine) if store is not None else MemoryPlayers()
         self.players = players
+        if wallet is None:
+            wallet = DatabaseWallet(store.engine) if store is not None else MemoryWallet()
+        self.wallet = wallet
         self._known: dict[str, PlayerRecord] = {}
         self.bots = dict(bots)
         self.options = options
@@ -147,8 +157,31 @@ class Server:
 
     def _setup(self, runner: TableRunner) -> None:
         if self.store is not None:
+            # Pays departing chips in the same transaction as the save.
             runner.before_publish.append(TableSaver(self.store))
+        else:
+            runner.before_publish.append(self._cash_out)
         runner.listeners.append(self._watch_table)
+
+    async def _cash_out(self, runner: TableRunner, events: Sequence[Event]) -> None:
+        """Without a database: pay departing chips back to the wallets."""
+        for credit in credits_for(runner.table_id, runner.table.drain_departures()):
+            await asyncio.to_thread(self.wallet.credit, credit.player_id, credit.amount, credit.kind, credit.table_id)
+
+    # Wallets
+
+    async def pay_in(self, player_id: str, amount: int, kind: str, table_id: str | None) -> None:
+        """Take a buy-in or rebuy from the wallet before it reaches the table."""
+        if type(amount) is not int or amount <= 0:
+            raise RequestError(p.ErrorCode.BAD_BUY_IN, "a buy-in is a positive whole number of chips")
+        try:
+            await asyncio.to_thread(self.wallet.debit, player_id, amount, kind, table_id)
+        except InsufficientChips as error:
+            raise RequestError(p.ErrorCode.INSUFFICIENT_CHIPS, str(error)) from None
+
+    async def refund(self, player_id: str, amount: int, table_id: str | None) -> None:
+        """Give back chips the table refused."""
+        await asyncio.to_thread(self.wallet.credit, player_id, amount, "refund", table_id)
 
     async def _restore(self, store: TableStore) -> None:
         """Run every open table saved in the database again."""
@@ -210,7 +243,14 @@ class Server:
         if request.big_blind not in stakes:
             raise HTTPException(400, f"big_blind must be one of {sorted(stakes)}")
         config = TableConfig(request.seats, stakes[request.big_blind], request.big_blind)
-        buy_in = config.max_buy_in if request.buy_in is None else request.buy_in
+        if request.buy_in is None:
+            # As much of the maximum as the wallet holds.
+            balance = await asyncio.to_thread(self.wallet.balance, player.player_id)
+            buy_in = min(config.max_buy_in, balance)
+            if buy_in < config.min_buy_in:
+                raise HTTPException(400, f"You have {balance:,} chips; this table needs at least {config.min_buy_in:,}.")
+        else:
+            buy_in = request.buy_in
         if not config.min_buy_in <= buy_in <= config.max_buy_in:
             raise HTTPException(400, f"buy_in must be {config.min_buy_in} to {config.max_buy_in}")
         self._evict()
@@ -218,10 +258,20 @@ class Server:
             raise HTTPException(503, "Every table is in use; try again later.")
         label = BOT_LABELS.get(request.bots, request.bots)
         runner = self.tables.create(config, name=f"{request.seats}-seat table with {label}s")
-        # Bots first: with require_person, nothing is dealt until the person sits.
-        for seat in range(1, request.seats):
-            await runner.seat_bot(seat, request.bots)
-        await runner.sit(0, player.player_id, player.handle, buy_in)
+        try:
+            await self.pay_in(player.player_id, buy_in, "buy_in", runner.table_id)
+        except RequestError as error:
+            self._schedule_close(runner.table_id, "The table was not needed.")
+            raise HTTPException(400, str(error)) from None
+        try:
+            # Bots first: with require_person, nothing is dealt until the person sits.
+            for seat in range(1, request.seats):
+                await runner.seat_bot(seat, request.bots)
+            await runner.sit(0, player.player_id, player.handle, buy_in)
+        except BaseException:
+            await self.refund(player.player_id, buy_in, runner.table_id)
+            self._schedule_close(runner.table_id, "The table could not be set up.")
+            raise
         return runner.table_id, 0
 
     async def _watch_table(self, runner: TableRunner, events: Sequence[Event]) -> None:
@@ -237,12 +287,18 @@ class Server:
 
     async def _close_table(self, table_id: str, message: str) -> None:
         try:
+            runner = self.tables.get(table_id)
             await self.tables.close(table_id)
+            # Anyone still seated (an idle table is evicted) gets their chips back.
+            credits = [] if runner is None else self._seated_chips(runner)
             if self.store is not None:
                 try:
-                    await asyncio.to_thread(self.store.close, table_id)
+                    await asyncio.to_thread(self.store.close, table_id, credits)
                 except Exception:
                     log.exception("Could not mark table %s closed in the database", table_id)
+            else:
+                for credit in credits:
+                    await asyncio.to_thread(self.wallet.credit, credit.player_id, credit.amount, "cash_out", table_id)
             for connection in list(self.connections):
                 if connection.tables.pop(table_id, None) is not None:
                     connection.send(p.TableClosedMessage(type="table_closed", table_id=table_id, message=message))
@@ -250,6 +306,16 @@ class Server:
                 del self.watchers[key]
         finally:
             self._closing.discard(table_id)
+
+    @staticmethod
+    def _seated_chips(runner: TableRunner) -> list[Credit]:
+        table = runner.table
+        credits = credits_for(runner.table_id, table.drain_departures())
+        for seat, player in table.players():
+            chips = table.stack_of(seat) + player.pending_rebuy
+            if not player.is_bot and chips > 0:
+                credits.append(Credit(player.player_id, chips, "cash_out", runner.table_id))
+        return credits
 
     # Sockets
 
@@ -317,13 +383,23 @@ class Server:
             await self.unfollow(connection, table_id)
             connection.send(p.LeftTableMessage(type="left_table", table_id=table_id))
         elif isinstance(message, p.SitMessage):
-            await runner.sit(message.seat, player_id, connection.name, message.buy_in)
+            await self.pay_in(player_id, message.buy_in, "buy_in", table_id)
+            try:
+                await runner.sit(message.seat, player_id, connection.name, message.buy_in)
+            except BaseException:
+                await self.refund(player_id, message.buy_in, table_id)
+                raise
         elif isinstance(message, p.SitOutMessage):
             await runner.sit_out(player_id)
         elif isinstance(message, p.SitInMessage):
             await runner.sit_in(player_id)
         elif isinstance(message, p.RebuyMessage):
-            await runner.rebuy(player_id, message.amount)
+            await self.pay_in(player_id, message.amount, "rebuy", table_id)
+            try:
+                await runner.rebuy(player_id, message.amount)
+            except BaseException:
+                await self.refund(player_id, message.amount, table_id)
+                raise
         elif isinstance(message, p.ActMessage):
             kind = ActionKind(message.action.value)
             if (kind in (ActionKind.BET, ActionKind.RAISE)) != (message.amount is not None):
@@ -392,6 +468,7 @@ def create_app(
     client_dir: str | None = None,
     store: TableStore | None = None,
     players: PlayerStore | None = None,
+    wallet: Wallet | None = None,
     allowed_origins: Iterable[str] = (),
 ) -> FastAPI:
     """Build the no-limit table server.
@@ -411,7 +488,7 @@ def create_app(
     if options is None:
         options = RunnerOptions(require_person=True)
     server = Server(
-        secret, bots if bots is not None else default_bots(), options, max_tables, idle_seconds, store, players
+        secret, bots if bots is not None else default_bots(), options, max_tables, idle_seconds, store, players, wallet
     )
     origins = frozenset(origin.rstrip("/") for origin in allowed_origins)
 
@@ -494,7 +571,24 @@ def create_app(
                 samesite="lax",
             )
         await asyncio.to_thread(server.players.seen, record.player_id)
-        return p.SessionResponse(player_id=record.player_id, name=record.handle, created=created)
+        balance = await asyncio.to_thread(server.wallet.visit, record.player_id, now)
+        return p.SessionResponse(player_id=record.player_id, name=record.handle, created=created, balance=balance)
+
+    @app.get("/api/wallet", response_model=p.WalletResponse, responses={401: {"model": p.HttpError}})
+    async def wallet(request: Request) -> p.WalletResponse:
+        player = await player_of(request)
+        balance = await asyncio.to_thread(server.wallet.balance, player.player_id)
+        entries = await asyncio.to_thread(server.wallet.entries, player.player_id, 50)
+        return p.WalletResponse(
+            balance=balance,
+            notice=PLAY_MONEY_NOTICE,
+            entries=[
+                p.LedgerItem(
+                    kind=p.LedgerKind(e.kind), amount=e.amount, balance_after=e.balance_after, table_id=e.table_id, at=e.at
+                )
+                for e in entries
+            ],
+        )
 
     @app.post(
         "/api/tables",

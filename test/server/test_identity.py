@@ -162,7 +162,7 @@ def test_a_phase_3_token_moves_its_player_onto_a_cookie_once() -> None:
         response = client.post("/api/session", json={"legacy_token": token})
         body = response.json()
         # The same player, with the handle their seats already showed.
-        assert body == {"player_id": player_id, "name": auth.guest_name(player_id), "created": False}
+        assert body == {"player_id": player_id, "name": auth.guest_name(player_id), "created": False, "balance": 20_000}
         cookie = session_cookie(response)["value"]
         client.cookies.clear()
         assert hello(client, cookie_header(cookie))["player_id"] == player_id

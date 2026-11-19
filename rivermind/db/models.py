@@ -4,7 +4,10 @@ Chips are whole numbers stored as ``bigint``. Table state and hand histories
 are versioned JSON documents from ``rivermind.engine.history`` (D-4), stored
 as ``jsonb`` with their format number beside them. Anonymous players (P4.1,
 migration ``0002``) have a random display handle; their session cookie is
-signed by the server, so no session rows are stored.
+signed by the server, so no session rows are stored. Each player's play-chip
+balance (P4.2, migration ``0003``) changes only together with a row in
+``ledger_entries``, so the entries always add up to the balance (D-1: the
+chips have no cash value).
 """
 
 from __future__ import annotations
@@ -54,12 +57,41 @@ class Player(Base):
     __table_args__ = (
         UniqueConstraint("handle", name="uq_players_handle"),
         CheckConstraint("char_length(handle) BETWEEN 1 AND 32", name="handle"),
+        CheckConstraint("balance >= 0", name="balance"),
     )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     handle: Mapped[str] = mapped_column(Text, nullable=False)
+    balance: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    granted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    """When the starting grant or the last daily top-up was paid."""
     created_at: Mapped[datetime] = _now()
     last_seen_at: Mapped[datetime] = _now()
+
+
+LEDGER_KINDS = ("grant", "top_up", "buy_in", "rebuy", "cash_out", "refund")
+
+
+class LedgerEntry(Base):
+    """One change to a player's play-chip balance (P4.2)."""
+
+    __tablename__ = "ledger_entries"
+    __table_args__ = (
+        CheckConstraint("kind IN ('grant', 'top_up', 'buy_in', 'rebuy', 'cash_out', 'refund')", name="kind"),
+        CheckConstraint("amount <> 0", name="amount"),
+        CheckConstraint("balance_after >= 0", name="balance_after"),
+        CheckConstraint(
+            "(kind IN ('grant', 'top_up', 'cash_out', 'refund')) = (amount > 0)", name="direction"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    player_id: Mapped[str] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    balance_after: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    table_id: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = _now()
 
 
 class PokerTable(Base):

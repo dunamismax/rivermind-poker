@@ -85,6 +85,8 @@ export function describeEvent(event: TableEvent, nameOf: (seat: number) => strin
 			return `${who} is back`;
 		case 'rebought':
 			return `${who} adds ${event.amount}`;
+		case 'rebuy_dropped':
+			return `${who}’s rebuy of ${event.amount} no longer fits and goes back to the wallet`;
 		case 'disconnected':
 			return `${who} disconnected`;
 		case 'connected':

@@ -21,7 +21,7 @@ from rivermind.engine.fuzz import play_random_hand
 from rivermind.engine.history import FORMAT, hand_record, replay_record
 
 ROOT = Path(__file__).resolve().parents[2]
-TABLES = {"players", "poker_tables", "seats", "hands", "hand_histories"}
+TABLES = {"players", "ledger_entries", "poker_tables", "seats", "hands", "hand_histories"}
 
 
 def head(url: str) -> str:
@@ -73,7 +73,7 @@ def test_alembic_command_line(empty_database: str) -> None:
             [sys.executable, "-m", "alembic", *args], cwd=ROOT, env=env, capture_output=True, text=True, check=False
         )
         assert done.returncode == 0, done.stderr
-    assert "0002" in subprocess.run(
+    assert "0003" in subprocess.run(
         [sys.executable, "-m", "alembic", "current"], cwd=ROOT, env=env, capture_output=True, text=True, check=True
     ).stdout
 

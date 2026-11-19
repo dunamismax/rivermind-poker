@@ -337,13 +337,15 @@ def test_events_are_numbered_and_never_reveal_unshown_cards() -> None:
 def test_chips_are_conserved_through_random_seating_and_play(seat_count: int) -> None:
     """Players come and go, sit out, rebuy and act at random; no chip appears or vanishes.
 
-    The chips at the table always equal what the events say was bought in
-    (seated and rebought) minus what was taken away (left).
+    Seen from the wallets (P4.2): every accepted buy-in and rebuy is paid
+    when it is asked for, and every departure pays chips back. What was
+    paid minus what went back always equals the chips at the table plus
+    the rebuys still waiting for a hand to end.
     """
     rng = random.Random(seat_count)
     config = TableConfig(seat_count, 5, 10, ante=rng.choice((0, 1)))
     table = Table(config)
-    added = removed = 0
+    paid = removed = 0
     next_id = 0
     hands = 0
     for _ in range(4_000):
@@ -354,6 +356,7 @@ def test_chips_are_conserved_through_random_seating_and_play(seat_count: int) ->
                 next_id += 1
                 amount = rng.randint(config.min_buy_in, config.max_buy_in)
                 table.sit(rng.randrange(seat_count), f"n{next_id}", "N", amount)
+                paid += amount
             elif roll < 0.11 and seated:
                 table.leave(rng.choice(seated))
             elif roll < 0.14 and seated:
@@ -361,7 +364,9 @@ def test_chips_are_conserved_through_random_seating_and_play(seat_count: int) ->
             elif roll < 0.2 and seated:
                 table.sit_in(rng.choice(seated))
             elif roll < 0.24 and seated:
-                table.rebuy(rng.choice(seated), rng.randint(1, config.max_buy_in))
+                amount = rng.randint(1, config.max_buy_in)
+                table.rebuy(rng.choice(seated), amount)
+                paid += amount
             elif table.hand_in_progress:
                 assert table.hand is not None
                 legal = legal_actions(table.hand)
@@ -372,14 +377,12 @@ def test_chips_are_conserved_through_random_seating_and_play(seat_count: int) ->
         except TableError:
             pass
         for event in table.drain_events():
-            if event.kind == "seated":
-                added += event.data["stack"]
-            elif event.kind == "rebought":
-                added += event.data["amount"]
-            elif event.kind == "left":
+            if event.kind == "left":
                 removed += event.data["stack"]
-        assert removed == sum(d.chips for d in table.departures)
-        assert chips(table) == added - removed
+        assert removed == sum(d.chips for d in table.departures if d.left)
+        waiting = sum(p.pending_rebuy for _, p in table.players())
+        assert chips(table) + waiting == paid - sum(d.chips for d in table.departures)
         for _, player in table.players():
             assert player.stack >= 0  # stacks may pass the maximum buy-in by winning
     assert hands > 50
+    assert any(not d.left for d in table.departures)  # some waiting rebuys went back

@@ -51,5 +51,5 @@ def test_a_session_outlives_a_restart(engine: Engine) -> None:
         browser = Browser(client)
     with TestClient(make_app(store, 2)) as client:
         again = client.post("/api/session", headers=browser.headers()).json()
-        assert again == {"player_id": browser.player_id, "name": browser.name, "created": False}
+        assert again == {"player_id": browser.player_id, "name": browser.name, "created": False, "balance": 20_000}
         assert client.post("/api/tables", json={"seats": 2}, headers=browser.headers()).status_code == 201

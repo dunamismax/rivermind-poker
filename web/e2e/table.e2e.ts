@@ -55,6 +55,9 @@ test('bets with the presets and the slider', async ({ page, cspViolations }) => 
 test('sits out, comes back, rebuys and leaves', async ({ page, cspViolations }) => {
 	await sitDown(page, 3, { buyIn: /40 big blinds/ });
 	await expect(page.getByRole('group', { name: /^Your seat/ })).toContainText(/39\d\d|4000/);
+	// The action panel opens above these buttons on the first turn and moves
+	// them; click once it is open, while nothing moves until we act.
+	await expect(page.getByRole('group', { name: 'Your action' })).toBeVisible({ timeout: 15_000 });
 	await page.getByRole('button', { name: 'Sit out next hand' }).click();
 	await expect(page.getByRole('button', { name: 'I’m back' })).toBeVisible();
 	// The hand plays out; then no hand is dealt while the only person sits out.
@@ -123,4 +126,32 @@ test('keeps the player in an HttpOnly session cookie', async ({ page, context, b
 	await expect(stranger.locator('header .me')).toHaveText(/^[A-Z][a-z]+ [A-Z][a-z]+ \d{1,2}$/);
 	expect(await stranger.locator('header .me').textContent()).not.toBe(name);
 	await other.close();
+});
+
+test('pays buy-ins from the play-chip wallet and cashes out on leaving', async ({
+	page,
+	cspViolations
+}) => {
+	await page.goto('/');
+	const wallet = page.getByRole('status').filter({ hasText: 'Your play chips' });
+	await expect(wallet).toContainText('20,000');
+	await expect(page.getByText(/^Play money only: chips can never be bought/)).toBeVisible();
+	// Blinds of 500/1000 need at least 40,000.
+	const blinds = page.getByRole('combobox', { name: 'Blinds' });
+	await blinds.selectOption('1000');
+	await expect(page.getByText(/^Not enough play chips for these blinds/)).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Sit down' })).toBeDisabled();
+	await blinds.selectOption('100');
+	await sitDown(page, 2, { buyIn: /40 big blinds/ });
+	await expect(page.getByText(/^Play chips only: they can never be bought/)).toBeVisible();
+	await playUntilHand(page, 2);
+	await page.getByRole('button', { name: 'Leave table' }).click();
+	await expect(page.getByRole('button', { name: 'Sit down' })).toBeVisible();
+	// 16,000 stayed in the wallet; whatever the 4,000 became came back.
+	const ledger = await page.evaluate(async () => (await fetch('/api/wallet')).json());
+	const kinds = ledger.entries.map((e: { kind: string }) => e.kind).reverse();
+	const cashOut = ledger.balance - 16_000;
+	expect(kinds).toEqual(cashOut > 0 ? ['grant', 'buy_in', 'cash_out'] : ['grant', 'buy_in']);
+	await expect(wallet).toContainText(ledger.balance.toLocaleString('en-US'));
+	expect(cspViolations).toEqual([]);
 });

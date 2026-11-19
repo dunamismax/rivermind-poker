@@ -448,7 +448,9 @@ def test_sit_out_rebuy_and_leave_over_the_socket() -> None:
             socket.send(type="join_table", table_id=table_id)
             socket.my_turn(table_id)
             socket.send(type="rebuy", table_id=table_id, amount=100_000)
-            assert socket.until(lambda m: m["type"] == "error")["code"] == "bad_buy_in"
+            assert socket.until(lambda m: m["type"] == "error")["code"] == "insufficient_chips"  # 15,000 left
+            socket.send(type="rebuy", table_id=table_id, amount=12_000)
+            assert socket.until(lambda m: m["type"] == "error")["code"] == "bad_buy_in"  # and refunded
             socket.send(type="rebuy", table_id=table_id, amount=500)
             rebuy = socket.until(lambda m: m["type"] == "table" and m["view"]["you"]["pending_rebuy"] == 500)
             assert any(e["kind"] == "rebuy_pending" and e["amount"] == 500 for e in rebuy["events"])
@@ -465,3 +467,7 @@ def test_sit_out_rebuy_and_leave_over_the_socket() -> None:
             socket.until(lambda m: m["type"] == "left_table")
         # No person is left, so the table closes once the hand is over.
         wait_for(lambda: client.app.state.server.tables.get(table_id) is None)  # type: ignore[attr-defined]
+        wallet = client.get("/api/wallet", headers=player.headers()).json()
+        kinds = [e["kind"] for e in reversed(wallet["entries"])]
+        assert kinds[:4] == ["grant", "buy_in", "rebuy", "refund"] and kinds[-1] == "cash_out"
+        assert sum(e["amount"] for e in wallet["entries"]) == wallet["balance"]

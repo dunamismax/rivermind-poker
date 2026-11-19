@@ -98,6 +98,7 @@ class ErrorCode(StrEnum):
     NOT_SEATED = "not_seated"
     BAD_BUY_IN = "bad_buy_in"
     NOT_SUBSCRIBED = "not_subscribed"
+    INSUFFICIENT_CHIPS = "insufficient_chips"
 
 
 class EventKind(StrEnum):
@@ -118,6 +119,7 @@ class EventKind(StrEnum):
     REBOUGHT = "rebought"
     """`seat`, `amount`."""
     REBUY_DROPPED = "rebuy_dropped"
+    """`seat`, `amount`: the waiting rebuy no longer fit and went back to the wallet."""
     CONNECTED = "connected"
     DISCONNECTED = "disconnected"
     HAND_STARTED = "hand_started"
@@ -324,6 +326,34 @@ class SessionResponse(_Model):
     player_id: str
     name: str
     created: bool = Field(description="Whether this request made a new player.")
+    balance: int = Field(description="Play chips in the wallet, after any grant or top-up this visit paid.")
+
+
+class LedgerKind(StrEnum):
+    GRANT = "grant"
+    TOP_UP = "top_up"
+    BUY_IN = "buy_in"
+    REBUY = "rebuy"
+    CASH_OUT = "cash_out"
+    REFUND = "refund"
+
+
+class LedgerItem(_Model):
+    """One change to the wallet."""
+
+    kind: LedgerKind
+    amount: int = Field(description="Positive for chips paid in, negative for chips paid out.")
+    balance_after: int
+    table_id: str | None
+    at: float = Field(description="Seconds since the epoch.")
+
+
+class WalletResponse(_Model):
+    """`GET /api/wallet` with the session cookie: the balance and the newest entries first."""
+
+    balance: int
+    notice: str = Field(description="The play-money statement (D-1), to show with the chips.")
+    entries: list[LedgerItem]
 
 
 class NewTableRequest(_Model):
@@ -480,6 +510,7 @@ MODELS: list[type[BaseModel]] = [
     ConfigResponse,
     SessionRequest,
     SessionResponse,
+    WalletResponse,
     NewTableRequest,
     NewTableResponse,
     HttpError,

@@ -12,6 +12,10 @@ The store is synchronous (SQLAlchemy 2 over psycopg 3). The saver calls it in
 a worker thread, so a slow database never blocks other tables' event loop.
 If a save fails the table keeps playing from memory, the failure is logged
 and the next save catches up, finished hands included.
+
+Chips that leave a table for a wallet (P4.2) are paid in the same
+transaction as the save that took them off the table, so a crash can never
+pay them twice or lose them.
 """
 
 from __future__ import annotations
@@ -32,6 +36,7 @@ from rivermind.engine.history import hand_record
 from .snapshot import FORMAT as SNAPSHOT_FORMAT
 from .snapshot import table_to_dict
 from .table import Event, Table
+from .wallet import Credit, UnknownPlayer, apply_entry, credits_for
 
 if TYPE_CHECKING:
     from .runner import TableRunner
@@ -82,14 +87,17 @@ class TableStore:
         seats: Sequence[SeatRow],
         current: tuple[int, int] | None,
         finished: Sequence[FinishedHand] = (),
+        credits: Sequence[Credit] = (),
     ) -> None:
-        """Save a table's snapshot, its seats and its hands in one transaction.
+        """Save a table's snapshot, its seats, its hands and its wallet credits in one transaction.
 
         ``current`` is the hand number and button of the hand in the
-        snapshot, if any; ``finished`` are hands that ended since the last save.
+        snapshot, if any; ``finished`` are hands that ended since the last
+        save, and ``credits`` the chips people took away since then.
         """
         config = state["config"]
         with self.engine.begin() as conn:
+            _pay(conn, credits)
             table_row = insert(PokerTable).values(
                 id=table_id,
                 name=name,
@@ -162,9 +170,13 @@ class TableStore:
                     .on_conflict_do_nothing(constraint="uq_hands_table_id_hand_no")
                 )
 
-    def close(self, table_id: str) -> None:
-        """Mark a table closed: it is not restored again, and its state is dropped."""
+    def close(self, table_id: str, credits: Sequence[Credit] = ()) -> None:
+        """Mark a table closed: it is not restored again, and its state is dropped.
+
+        ``credits`` pay back the chips of anyone still seated, in the same transaction.
+        """
         with self.engine.begin() as conn:
+            _pay(conn, credits)
             conn.execute(
                 update(PokerTable)
                 .where(PokerTable.id == table_id)
@@ -198,6 +210,16 @@ class TableStore:
             ).scalar_one_or_none()
 
 
+def _pay(conn: Any, credits: Sequence[Credit]) -> None:
+    for credit in credits:
+        try:
+            with conn.begin_nested():
+                apply_entry(conn, credit.player_id, credit.amount, credit.kind, credit.table_id)
+        except UnknownPlayer:
+            # Seated before wallets existed (P4.2) and never back since: nobody to pay.
+            log.warning("No wallet for %s; %d chips from table %s dropped", credit.player_id, credit.amount, credit.table_id)
+
+
 class TableSaver:
     """A ``before_publish`` hook that saves its table before each change is published."""
 
@@ -205,25 +227,29 @@ class TableSaver:
         self.store = store
         self.pending: list[FinishedHand] = []
         """Finished hands not yet stored, kept until a save succeeds."""
+        self.credits: list[Credit] = []
+        """Chips owed to wallets, kept until a save succeeds."""
         self.failures = 0
 
     async def __call__(self, runner: TableRunner, events: Sequence[Event]) -> None:
         table = runner.table
         for hand_no, final in table.drain_finished():
             self.pending.append(FinishedHand(hand_no, final.button, hand_record(final)))
-        table.drain_departures()  # chips go back to a wallet from P4.2
+        self.credits.extend(credits_for(runner.table_id, table.drain_departures()))
         state = table_to_dict(table)
         current = (table.hand_no, table.hand.button) if table.hand is not None else None
         finished = list(self.pending)
+        credits = list(self.credits)
         try:
             await asyncio.to_thread(
-                self.store.save, runner.table_id, runner.name, state, seat_rows(table), current, finished
+                self.store.save, runner.table_id, runner.name, state, seat_rows(table), current, finished, credits
             )
         except Exception:
             self.failures += 1
             log.exception("Could not save table %s; it plays on from memory", runner.table_id)
             return
         del self.pending[: len(finished)]
+        del self.credits[: len(credits)]
 
 
 __all__ = ["FinishedHand", "SavedTable", "SeatRow", "TableSaver", "TableStore", "seat_rows"]
