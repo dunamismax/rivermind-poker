@@ -47,3 +47,27 @@ def serve(host: str, port: int, strategy_path: Optional[str],
     # Client messages are tiny; cap them well below Uvicorn's 16 MB default.
     uvicorn.run(app, host=host, port=port, log_level="info",
                 ws_max_size=64 * 1024, server_header=False)
+
+
+@click.command()
+@click.option("--output", default=None,
+              help="Write the JSON Schema to this file instead of standard output.")
+@click.option("--typescript", "typescript_path", default=None,
+              help="Also write TypeScript types generated from the schema to this "
+                   "file (the web client's src/lib/protocol.ts).")
+def protocol_schema(output: Optional[str], typescript_path: Optional[str]):
+    """Export the table protocol as JSON Schema, optionally as TypeScript too."""
+    import json
+
+    from poker_ai.web.protocol import json_schema
+    from poker_ai.web.typescript import to_typescript
+
+    schema = json_schema()
+    text = json.dumps(schema, indent=2) + "\n"
+    if output:
+        Path(output).write_text(text)
+    elif not typescript_path:
+        click.echo(text, nl=False)
+    if typescript_path:
+        Path(typescript_path).write_text(to_typescript(schema))
+        click.echo(f"Wrote {typescript_path}", err=True)

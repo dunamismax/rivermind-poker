@@ -22,7 +22,8 @@
 		"format": "prettier --write .",
 		"test": "vitest --run",
 		"test:watch": "vitest",
-		"e2e": "playwright test"
+		"e2e": "playwright test",
+		"protocol": "cd .. && uv run --locked rivermind-poker protocol-schema --typescript web/src/lib/protocol.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

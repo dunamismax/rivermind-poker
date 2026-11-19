@@ -8,7 +8,7 @@ This file is the single source of truth for project status, from today’s worki
 | --- | --- |
 | **Current phase** | Phase 1 · SvelteKit client |
 | **Next step** | **P1.2** Typed protocol shared by server and client |
-| **In progress** | _None_ |
+| **In progress** | **P1.2** Pydantic protocol models, schema export and generated TypeScript (claimed 2026-11-19) |
 | **Blockers** | _None_ |
 | **Live site** | https://rivermindpoker.com runs the Phase 0 prototype: a three-seat, fixed-limit, 20-card game against random bots or the RM-06 checkpoint. It uses FastAPI, WebSockets and a vanilla JavaScript client. Tables survive restarts. |
 | **`main`** | Phase 0 and the P1.1 scaffold in `web/` are on `main`, which pushes to GitHub and Codeberg. GitHub Actions runs the Python suite on every push. |

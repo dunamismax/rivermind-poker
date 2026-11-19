@@ -13,6 +13,9 @@ server -> client
     {"type": "view", "view": {...}}                    the seat's view
     {"type": "error", "code": ..., "message": ..., "view": {...} | null}
 
+Every body and message is a model in `poker_ai.web.protocol`: incoming
+messages are validated with them and outgoing ones are built from them.
+
 The token travels inside the socket, never in a URL, so it stays out of
 access logs. After every change each connected seat receives its own view.
 Reconnecting is joining again with the same token. Tables live in memory;
@@ -33,25 +36,26 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from poker_ai.games.short_deck.state import InfoSetLookupTable
 from poker_ai.policies import CheckpointPolicy, RandomPolicy, Strategy
 from poker_ai.table import SeatConfig, Table, TableError
+from poker_ai.web.protocol import (
+    ActMessage, ClientMessage, ConfigResponse, ErrorMessage, HttpError, JoinMessage,
+    NewTableRequest, NewTableResponse, NextHandMessage, SeatView, ViewMessage,
+)
 from poker_ai.web.store import TableStore
 
 log = logging.getLogger("poker_ai.web")
 
 STATIC_DIR = Path(__file__).parent / "static"
 OPPONENTS = {"random": "Random", "checkpoint": "RiverMind"}
-
-
-class NewTable(BaseModel):
-    opponents: str = "random"
 
 
 @dataclass
@@ -204,25 +208,40 @@ def create_app(
     async def index():
         return FileResponse(STATIC_DIR / "index.html")
 
-    @app.get("/api/config")
+    @app.exception_handler(RequestValidationError)
+    async def bad_body(request: Request, exc: RequestValidationError):
+        # Keep every HTTP error in the protocol's HttpError shape.
+        first = exc.errors()[0] if exc.errors() else {}
+        where = ".".join(str(p) for p in first.get("loc", ()) if p != "body")
+        detail = f"Invalid request body: {where or 'body'}: {first.get('msg', 'invalid')}"
+        return JSONResponse(HttpError(detail=detail).model_dump(), status_code=400)
+
+    @app.get("/api/config", response_model=ConfigResponse)
     async def config():
-        return {"opponents": registry.opponents}
+        return ConfigResponse(opponents=registry.opponents)
 
-    @app.post("/api/tables", status_code=201)
-    async def new_table(body: NewTable):
+    @app.post("/api/tables", status_code=201, response_model=NewTableResponse,
+              responses={400: {"model": HttpError}, 503: {"model": HttpError}})
+    async def new_table(body: NewTableRequest):
         table_id, token = registry.create(body.opponents)
-        return {"table_id": table_id, "token": token}
+        return NewTableResponse(table_id=table_id, token=token)
 
-    async def send(ws: WebSocket, message: Dict[str, Any]):
-        await ws.send_text(json.dumps(message, separators=(",", ":")))
+    def seat_view(entry: _Entry, token: str) -> SeatView:
+        return SeatView.model_validate(entry.table.view(token))
 
-    async def error(ws, code, message, view=None):
-        await send(ws, {"type": "error", "code": code, "message": message, "view": view})
+    async def send(ws: WebSocket, message: ViewMessage | ErrorMessage):
+        await ws.send_text(message.model_dump_json())
+
+    async def view(ws: WebSocket, seat: SeatView):
+        await send(ws, ViewMessage(type="view", view=seat))
+
+    async def error(ws, code, message, seat: Optional[SeatView] = None):
+        await send(ws, ErrorMessage(type="error", code=code, message=message, view=seat))
 
     async def broadcast(entry: _Entry):
         for ws, token in list(entry.sockets.items()):
             try:
-                await send(ws, {"type": "view", "view": entry.table.view(token)})
+                await view(ws, seat_view(entry, token))
             except Exception:  # a socket closed mid-broadcast
                 entry.sockets.pop(ws, None)
 
@@ -232,57 +251,57 @@ def create_app(
         entry: Optional[_Entry] = None
         try:
             try:
-                join = json.loads(await asyncio.wait_for(ws.receive_text(), 30))
+                raw = await asyncio.wait_for(ws.receive_text(), 30)
+                json.loads(raw)
             except (asyncio.TimeoutError, ValueError):
                 await error(ws, "bad_request", "Send a join message first.")
                 await ws.close(code=1008)
                 return
-            entry = registry.get(join.get("table_id")) if isinstance(join, dict) else None
-            if entry is None or join.get("type") != "join":
+            try:
+                join = JoinMessage.model_validate_json(raw)
+            except ValidationError:
+                join = None
+            entry = registry.get(join.table_id) if join else None
+            if entry is None:
                 await error(ws, "unknown_table", "That table no longer exists.")
                 await ws.close(code=1008)
                 return
-            token = join.get("token")
+            token = join.token
             try:
-                view = entry.table.view(token)
+                seat = seat_view(entry, token)
             except TableError as e:
                 await error(ws, e.code, str(e))
                 await ws.close(code=1008)
                 return
             entry.sockets[ws] = token
-            await send(ws, {"type": "view", "view": view})
+            await view(ws, seat)
 
             def change(method, *args):
                 # Save before anyone sees the new state, so a restart can
                 # never take back something a player was shown.
                 method(*args)
-                registry.save(join["table_id"])
+                registry.save(join.table_id)
             while True:
+                text = await ws.receive_text()
                 try:
-                    message = json.loads(await ws.receive_text())
-                    kind = message["type"]
-                except (ValueError, KeyError, TypeError):
-                    await error(ws, "bad_request", "Messages are JSON objects with a type.",
-                                entry.table.view(token))
+                    message = ClientMessage.model_validate_json(text).root
+                except ValidationError:
+                    await error(ws, "bad_request", _describe_invalid(text),
+                                seat_view(entry, token))
                     continue
-                registry.get(join["table_id"])  # mark active
+                registry.get(join.table_id)  # mark active
                 try:
-                    if kind == "act":
+                    if isinstance(message, ActMessage):
                         await run_in_threadpool(
-                            change, entry.table.act, token, message.get("action"),
-                            message.get("seq"))
-                    elif kind == "next_hand":
+                            change, entry.table.act, token, message.action, message.seq)
+                    elif isinstance(message, NextHandMessage):
                         await run_in_threadpool(
-                            change, entry.table.next_hand, token, message.get("seq"))
-                    elif kind == "refresh":
-                        await send(ws, {"type": "view", "view": entry.table.view(token)})
-                        continue
-                    else:
-                        await error(ws, "bad_request", f"Unknown message type {kind!r}.",
-                                    entry.table.view(token))
+                            change, entry.table.next_hand, token, message.seq)
+                    else:  # refresh
+                        await view(ws, seat_view(entry, token))
                         continue
                 except TableError as e:
-                    await error(ws, e.code, str(e), entry.table.view(token))
+                    await error(ws, e.code, str(e), seat_view(entry, token))
                     continue
                 await broadcast(entry)
         except WebSocketDisconnect:
@@ -292,3 +311,19 @@ def create_app(
                 entry.sockets.pop(ws, None)
 
     return app
+
+
+_MESSAGE_TYPES = {"act", "next_hand", "refresh"}
+
+
+def _describe_invalid(text: str) -> str:
+    """A short reason for a client message that failed validation."""
+    try:
+        message = json.loads(text)
+    except ValueError:
+        return "Messages are JSON objects with a type."
+    if not isinstance(message, dict) or "type" not in message:
+        return "Messages are JSON objects with a type."
+    if message["type"] not in _MESSAGE_TYPES:
+        return f"Unknown message type {message['type']!r}."
+    return f"Invalid {message['type']} message."

@@ -1,9 +1,11 @@
 // HTTP calls to the table server. Requests are same-origin: Caddy proxies
 // /api in production and Vite does in development.
 
-export interface ServerConfig {
-	opponents: string[];
-}
+import type { ConfigResponse, OpponentKind } from './protocol.ts';
+
+export type ServerConfig = ConfigResponse;
+
+const OPPONENT_KINDS: readonly string[] = ['random', 'checkpoint'] satisfies OpponentKind[];
 
 export class ApiError extends Error {
 	constructor(
@@ -18,7 +20,10 @@ export class ApiError extends Error {
 function isServerConfig(value: unknown): value is ServerConfig {
 	if (typeof value !== 'object' || value === null) return false;
 	const opponents = (value as { opponents?: unknown }).opponents;
-	return Array.isArray(opponents) && opponents.every((o) => typeof o === 'string');
+	return (
+		Array.isArray(opponents) &&
+		opponents.every((o) => typeof o === 'string' && OPPONENT_KINDS.includes(o))
+	);
 }
 
 export async function fetchConfig(fetcher: typeof fetch = fetch): Promise<ServerConfig> {
