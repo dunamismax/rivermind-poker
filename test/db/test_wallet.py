@@ -25,12 +25,21 @@ from rivermind.server.wallet import (
 from test.server.test_wallet import DAY, check_outcome, make_server, random_play
 
 
-def ledger_of(engine: Engine) -> Callable[[str], list[int]]:
-    def amounts(player_id: str) -> list[int]:
-        with engine.connect() as conn:
-            return [int(a) for a in conn.execute(select(LedgerEntry.amount).where(LedgerEntry.player_id == player_id)).scalars()]
+def ledger_of(engine: Engine) -> Callable[[str], tuple[int, int]]:
+    """A player's ledger total and balance, read in one statement so they share a snapshot."""
 
-    return amounts
+    def read(player_id: str) -> tuple[int, int]:
+        with engine.connect() as conn:
+            total, balance = conn.execute(
+                text(
+                    "SELECT (SELECT coalesce(sum(amount), 0) FROM ledger_entries WHERE player_id = :p), balance"
+                    " FROM players WHERE id = :p"
+                ),
+                {"p": player_id},
+            ).one()
+        return int(total), int(balance)
+
+    return read
 
 
 def check_every_ledger(engine: Engine) -> None:

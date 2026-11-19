@@ -219,11 +219,11 @@ def check_privacy(message: Message, spy: Spy) -> None:
             assert hand["result"] is not None and info["seat"] in shown
 
 
-def wait_for(condition: Callable[[], bool], seconds: float = 5.0) -> None:
+def wait_for(condition: Callable[[], bool], seconds: float = 5.0, describe: Callable[[], str] = lambda: "") -> None:
     """Wait for something the server does after a socket's last message."""
     deadline = time.monotonic() + seconds
     while not condition():
-        assert time.monotonic() < deadline, "the server never got there"
+        assert time.monotonic() < deadline, f"the server never got there {describe()}".rstrip()
         time.sleep(0.01)
 
 

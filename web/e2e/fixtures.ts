@@ -69,7 +69,10 @@ export async function playUntil(
 	const deadline = Date.now() + timeoutMs;
 	while (!(await done()) && Date.now() < deadline) {
 		if (await call.isVisible()) {
-			const amount = Number(/(\d+)$/.exec((await call.textContent()) ?? '')?.[1] ?? 0);
+			// Bounded, like the click: the turn (and the button) can end between the two calls.
+			const label = await call.textContent({ timeout: 1000 }).catch(() => null);
+			if (label === null) continue;
+			const amount = Number(/(\d+)$/.exec(label)?.[1] ?? 0);
 			const big = amount > 1000 && (await fold.isVisible());
 			// A short timeout: the turn may end as we click, and the button with it.
 			await (big ? fold : call).click({ timeout: 1000 }).catch(() => {});

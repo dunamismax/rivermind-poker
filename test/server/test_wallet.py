@@ -123,7 +123,7 @@ async def random_play(
     server: Server,
     seed: int,
     steps: int,
-    ledger_of: Callable[[str], list[int]],
+    ledger_and_balance: Callable[[str], tuple[int, int]],
     on_step: Callable[[], None] = lambda: None,
 ) -> dict[str, Any]:
     """Play at random, checking the ledgers after every step. Returns what happened."""
@@ -151,10 +151,10 @@ async def random_play(
     counts: dict[str, int] = {}
 
     def wallet_check() -> None:
+        # Tables pay cash-outs from worker threads, so read both sides in one snapshot.
         for player_id in people:
-            amounts = ledger_of(player_id)
-            balance = server.wallet.balance(player_id)
-            assert sum(amounts) == balance >= 0, player_id
+            total, balance = ledger_and_balance(player_id)
+            assert total == balance >= 0, player_id
 
     for step in range(steps):
         player_id = rng.choice(list(people))
@@ -183,7 +183,9 @@ async def random_play(
                 kind = "sit"
                 table_id = rng.choice(tables)
                 await server.join(connection, table_id)
-                runner = server.tables.tables[table_id]
+                runner = server.tables.get(table_id)
+                if runner is None:  # it closed while we joined
+                    raise RequestError(p.ErrorCode.UNKNOWN_TABLE, "the table closed")
                 free = [i for i, s in enumerate(runner.table.seats) if s is None] or [0]
                 config = runner.table.config
                 amount = rng.choice((config.min_buy_in, config.max_buy_in, config.max_buy_in * 3))
@@ -215,13 +217,18 @@ async def random_play(
         wallet_check()
         on_step()
 
-    # Everyone leaves; tables close once their hands end.
+    # Everyone leaves every seat, followed or not (a player follows at most
+    # eight tables, but creating a table seats them without following it).
+    for runner in list(server.tables.tables.values()):
+        for _, seated in list(runner.table.players()):
+            if seated.player_id in people:
+                try:
+                    await runner.leave(seated.player_id)
+                except TableError:
+                    pass
     for connection in people.values():
         for table_id in list(connection.tables):
-            try:
-                await server.handle(connection, p.LeaveTableMessage(type="leave_table", table_id=table_id))
-            except (TableError, RequestError):
-                pass
+            await server.unfollow(connection, table_id)
     for _ in range(2_000):
         await act_for_people(server, people, rng)
         await settle(server, 2)
@@ -263,9 +270,14 @@ def check_outcome(outcome: dict[str, Any]) -> None:
     assert outcome["refunds"] > 0 and outcome["top_ups"] > 0
 
 
-def memory_ledger(wallet: Wallet) -> Callable[[str], list[int]]:
+def memory_ledger(wallet: Wallet) -> Callable[[str], tuple[int, int]]:
     assert isinstance(wallet, MemoryWallet)
-    return lambda player_id: [e.amount for e in wallet.entries(player_id, limit=10**9)]
+
+    def read(player_id: str) -> tuple[int, int]:
+        with wallet._lock:
+            return sum(e.amount for e in wallet.entries(player_id, limit=10**9)), wallet.balance(player_id)
+
+    return read
 
 
 @pytest.mark.parametrize("seed", range(3))
