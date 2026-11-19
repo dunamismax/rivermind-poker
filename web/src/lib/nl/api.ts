@@ -4,6 +4,8 @@
 
 import type {
 	ConfigResponse,
+	HandDetail,
+	HandListResponse,
 	HttpError,
 	NewTableRequest,
 	NewTableResponse,
@@ -278,4 +280,34 @@ export async function removeRelation(
 		})
 	);
 	return relationList(value, '/api/relations');
+}
+
+// Hand histories (P4.6): the hands this player was dealt into.
+
+/** This player's finished hands, newest first; `before` (a hand id) asks for the next page. */
+export async function fetchHands(
+	before: string | null = null,
+	fetcher: typeof fetch = fetch
+): Promise<HandListResponse> {
+	const query = new URLSearchParams({ limit: '20' });
+	if (before) query.set('before', before);
+	const value = await body(await fetcher(`/api/hands?${query}`, { credentials: 'same-origin' }));
+	if (!isRecord(value) || !Array.isArray(value.hands) || typeof value.more !== 'boolean') {
+		throw new ApiError('Unexpected /api/hands response', 200);
+	}
+	return value as unknown as HandListResponse;
+}
+
+/** One hand this player played, with every card they may see. */
+export async function fetchHand(
+	handId: string,
+	fetcher: typeof fetch = fetch
+): Promise<HandDetail> {
+	const value = await body(
+		await fetcher(`/api/hands/${encodeURIComponent(handId)}`, { credentials: 'same-origin' })
+	);
+	if (!isRecord(value) || !isRecord(value.hand) || typeof value.text !== 'string') {
+		throw new ApiError('Unexpected hand response', 200);
+	}
+	return value as unknown as HandDetail;
 }

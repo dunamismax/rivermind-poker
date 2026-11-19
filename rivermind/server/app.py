@@ -64,6 +64,7 @@ from . import auth
 from . import protocol as p
 from rivermind.engine.history import FormatError
 
+from .hands import DatabaseHands, HandArchive, MemoryHands
 from .players import DatabasePlayers, MemoryPlayers, PlayerRecord, PlayerStore
 from .safety import (
     REACTIONS,
@@ -86,7 +87,7 @@ from .snapshot import table_from_dict
 from .store import TableSaver, TableStore
 from .table import ErrorCode as TableErrorCode
 from .table import Event, TableConfig, TableError
-from .views import table_events, table_summary, table_view, your_hold
+from .views import hand_detail, hand_summary, table_events, table_summary, table_view, your_hold
 
 log = logging.getLogger("rivermind.server")
 
@@ -180,6 +181,8 @@ class Server:
             safety = DatabaseSafety(store.engine) if store is not None else MemorySafety(self._handle_of)
         self.safety = safety
         self.limiters = Limiters(limits if limits is not None else UNLIMITED)
+        self.memory_hands = MemoryHands() if store is None else None
+        self.hands: HandArchive = DatabaseHands(store.engine) if store is not None else self.memory_hands  # type: ignore[assignment]
         self.addresses: dict[str, str] = {}
         """Player id -> a keyed hash of the address they last came from (P4.5)."""
         self._relations: dict[str, dict[str, Relation]] = {}
@@ -212,12 +215,19 @@ class Server:
             runner.before_publish.append(TableSaver(self.store))
         else:
             runner.before_publish.append(self._cash_out)
+            runner.before_publish.append(self._remember_hands)
         runner.listeners.append(self._watch_table)
 
     async def _cash_out(self, runner: TableRunner, events: Sequence[Event]) -> None:
         """Without a database: pay departing chips back to the wallets."""
         for credit in credits_for(runner.table_id, runner.table.drain_departures()):
             await asyncio.to_thread(self.wallet.credit, credit.player_id, credit.amount, credit.kind, credit.table_id)
+
+    async def _remember_hands(self, runner: TableRunner, events: Sequence[Event]) -> None:
+        """Without a database: keep finished hands for the players' hand histories (P4.6)."""
+        assert self.memory_hands is not None
+        for finished in runner.table.finished:
+            self.memory_hands.add(runner.table_id, runner.name, finished)
 
     # Wallets
 
@@ -990,6 +1000,29 @@ def create_app(
     async def quick_seat(body: p.QuickSeatRequest, request: Request) -> p.SeatResponse:
         player = await player_of(request)
         return await server.quick_seat(player, body)
+
+    @app.get("/api/hands", response_model=p.HandListResponse, responses={401: {"model": p.HttpError}})
+    async def hands(request: Request, limit: int = 20, before: str | None = None) -> p.HandListResponse:
+        """The finished hands the player was dealt into, newest first (P4.6)."""
+        player = await player_of(request)
+        limit = max(1, min(limit, 50))
+        played = await asyncio.to_thread(server.hands.played, player.player_id, limit + 1, before)
+        summaries = []
+        for hand in played[:limit]:
+            seat = hand.seat_of(player.player_id)
+            if seat is not None:
+                summaries.append(await asyncio.to_thread(hand_summary, hand, seat))
+        return p.HandListResponse(hands=summaries, more=len(played) > limit)
+
+    @app.get("/api/hands/{hand_id}", response_model=p.HandDetail, responses={401: {"model": p.HttpError}, 404: {"model": p.HttpError}})
+    async def hand(hand_id: str, request: Request) -> p.HandDetail:
+        """A hand the player was dealt into, with every card they may see."""
+        player = await player_of(request)
+        played = await asyncio.to_thread(server.hands.get, hand_id)
+        seat = None if played is None else played.seat_of(player.player_id)
+        if played is None or seat is None:
+            raise HTTPException(404, "No hand of yours has that number.")
+        return await asyncio.to_thread(hand_detail, played, seat)
 
     safety_errors = {code: {"model": p.HttpError} for code in (400, 401, 404, 429)}
 

@@ -3,7 +3,8 @@
 ``TableStore`` keeps each open table's snapshot (``snapshot.table_to_dict``)
 in ``poker_tables.state``, mirrors its occupied seats into ``seats``, records
 every hand dealt in ``hands`` and stores each finished hand's replayable
-history in ``hand_histories``. ``TableSaver`` is the runner hook that saves a
+history in ``hand_histories``, with who played each seat in ``hand_players``
+(P4.6). ``TableSaver`` is the runner hook that saves a
 table after every change and before anyone hears of it, so a player never
 sees a state the server could lose. At startup ``load_open`` returns the
 tables to restore. A closed table keeps its row and hands but drops its state.
@@ -29,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import Engine, case, delete, func, null, select, update
 from sqlalchemy.dialects.postgresql import insert
 
-from rivermind.db import Hand, HandHistory, PokerTable, Seat
+from rivermind.db import Hand, HandHistory, HandPlayer, PokerTable, Seat
 from rivermind.engine.history import FORMAT as HISTORY_FORMAT
 from rivermind.engine.history import hand_record
 
@@ -37,6 +38,7 @@ from .snapshot import FORMAT as SNAPSHOT_FORMAT
 from .snapshot import READABLE as READABLE_FORMATS
 from .snapshot import table_to_dict
 from .table import Event, Table
+from .hands import HandSeatRecord, seat_records
 from .wallet import Credit, UnknownPlayer, apply_entry, credits_for
 
 if TYPE_CHECKING:
@@ -51,6 +53,8 @@ class FinishedHand:
     button: int
     record: dict[str, Any]
     """A ``history.hand_record`` document."""
+    seats: tuple[HandSeatRecord, ...] = ()
+    """Who played each seat dealt in (P4.6)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,6 +167,24 @@ class TableStore:
                     .values(hand_id=hand_id, format=HISTORY_FORMAT, record=hand.record)
                     .on_conflict_do_nothing(index_elements=[HandHistory.hand_id])
                 )
+                if hand.seats:
+                    conn.execute(
+                        insert(HandPlayer)
+                        .values(
+                            [
+                                {
+                                    "hand_id": hand_id,
+                                    "seat_no": seat.seat,
+                                    "player_id": seat.player_id,
+                                    "display_name": seat.name,
+                                    "bot_kind": seat.bot,
+                                    "net": seat.net,
+                                }
+                                for seat in hand.seats
+                            ]
+                        )
+                        .on_conflict_do_nothing(index_elements=[HandPlayer.hand_id, HandPlayer.seat_no])
+                    )
             if current is not None:
                 hand_no, button = current
                 conn.execute(
@@ -234,8 +256,9 @@ class TableSaver:
 
     async def __call__(self, runner: TableRunner, events: Sequence[Event]) -> None:
         table = runner.table
-        for hand_no, final in table.drain_finished():
-            self.pending.append(FinishedHand(hand_no, final.button, hand_record(final)))
+        for finished in table.drain_finished():
+            final = finished.state
+            self.pending.append(FinishedHand(finished.hand_no, final.button, hand_record(final), seat_records(finished)))
         self.credits.extend(credits_for(runner.table_id, table.drain_departures()))
         state = table_to_dict(table)
         state["lobby"] = runner.lobby_state()

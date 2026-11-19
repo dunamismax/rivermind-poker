@@ -9,12 +9,16 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from rivermind.engine import card
+import re
+
+from rivermind.engine import HandState, card
 from rivermind.engine.cards import rank, suit
+from rivermind.engine.history import format_text, replay_record
 from rivermind.engine.state import legal_actions
 
 from . import protocol as p
 from .auth import public_ref
+from .hands import PlayedHand
 from .runner import TableRunner
 from .table import Event, Reservation, Table
 
@@ -240,3 +244,77 @@ def table_events(events: Sequence[Event]) -> list[p.TableEvent]:
             fields.update(street=p.Street(data["street"]), cards=[to_card(card(c)) for c in data["cards"]])
         out.append(p.TableEvent.model_validate(fields))
     return out
+
+
+# Hand histories (P4.6)
+
+
+def _summary(played: PlayedHand, state: HandState, seat: int) -> p.HandSummary:
+    result = state.result
+    assert result is not None
+    hole = state.hole_cards[seat]
+    return p.HandSummary(
+        hand_id=played.hand_id,
+        table_id=played.table_id,
+        table_name=played.table_name,
+        hand_no=played.hand_no,
+        at=played.at,
+        seat=seat,
+        seat_count=state.num_seats,
+        small_blind=state.config.small_blind,
+        big_blind=state.config.big_blind,
+        cards=_cards(hole or ()),
+        board=_cards(state.board),
+        pot=sum(pot.amount for pot in result.pots),
+        net=state.stacks[seat] - (state.starting_stacks[seat] or 0),
+        showdown=result.showdown,
+    )
+
+
+def hand_summary(played: PlayedHand, seat: int) -> p.HandSummary:
+    """A hand the player in ``seat`` played, as their hand history lists it."""
+    return _summary(played, replay_record(played.record), seat)
+
+
+def hand_detail(played: PlayedHand, seat: int) -> p.HandDetail:
+    """A hand as the player in ``seat`` may see it: their cards and the hands shown, nothing mucked."""
+    state = replay_record(played.record)
+    result = state.result
+    assert result is not None
+    shown = set(result.shown)
+    names = {record.seat: record.name for record in played.seats}
+    seats = []
+    for record in played.seats:
+        hole = state.hole_cards[record.seat]
+        visible = record.seat == seat or record.seat in shown
+        seats.append(
+            p.HandSeat(
+                seat=record.seat,
+                name=record.name,
+                kind=p.SeatKind.BOT if record.bot else p.SeatKind.HUMAN,
+                bot=record.bot,
+                you=record.seat == seat,
+                cards=_cards(hole) if visible and hole is not None else None,
+                shown=record.seat in shown,
+                net=record.net,
+            )
+        )
+    text = re.sub(r"\bS([0-8])\b", lambda m: names.get(int(m.group(1)), m.group(0)), format_text(state, viewer=seat))
+    return p.HandDetail(
+        hand=_summary(played, state, seat),
+        button=state.button,
+        seats=seats,
+        posts=[p.Post(seat=x.seat, kind=p.PostKind(x.kind.value), amount=x.amount, all_in=x.all_in) for x in state.posts],
+        actions=[
+            p.ActionRecord(
+                seat=a.seat, street=p.Street(a.street.label), action=p.ActionKind(a.kind.value), to=a.to, added=a.added, all_in=a.all_in
+            )
+            for a in state.actions
+        ],
+        pots=[
+            p.PotResult(amount=pot.amount, eligible=list(pot.eligible), winners=list(pot.winners), shares=list(pot.shares))
+            for pot in result.pots
+        ],
+        uncalled=None if result.uncalled is None else p.Uncalled(seat=result.uncalled[0], amount=result.uncalled[1]),
+        text=text,
+    )

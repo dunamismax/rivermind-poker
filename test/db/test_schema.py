@@ -73,7 +73,7 @@ def test_alembic_command_line(empty_database: str) -> None:
             [sys.executable, "-m", "alembic", *args], cwd=ROOT, env=env, capture_output=True, text=True, check=False
         )
         assert done.returncode == 0, done.stderr
-    assert "0004" in subprocess.run(
+    assert "0005" in subprocess.run(
         [sys.executable, "-m", "alembic", "current"], cwd=ROOT, env=env, capture_output=True, text=True, check=True
     ).stdout
 
@@ -141,6 +141,10 @@ def test_tables_seats_hands_and_histories_round_trip(engine: Engine) -> None:
         "INSERT INTO player_relations (player_id, target_id, kind) VALUES ('p_1', 'p_1', 'mute')",
         "INSERT INTO player_relations (player_id, target_id, kind) VALUES ('p_1', 'p_3', 'ignore')",
         "INSERT INTO safety_signals (kind, player_ids) VALUES ('same_device', '[]')",
+        "INSERT INTO hand_players (hand_id, seat_no, player_id, display_name, net) SELECT id, 9, 'p_1', 'x', 0 FROM hands",
+        "INSERT INTO hand_players (hand_id, seat_no, player_id, display_name, bot_kind, net) SELECT id, 1, 'p_1', 'x', 'random', 0 FROM hands",
+        "INSERT INTO hand_players (hand_id, seat_no, display_name, net) SELECT id, 1, 'x', 0 FROM hands",
+        "INSERT INTO hand_players (hand_id, seat_no, player_id, display_name, net) VALUES (424242, 1, 'p_1', 'x', 0)",
     ],
 )
 def test_constraints_reject_bad_rows(engine: Engine, sql: str) -> None:

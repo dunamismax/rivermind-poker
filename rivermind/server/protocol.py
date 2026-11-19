@@ -32,6 +32,11 @@ reports the person in a seat for review, and `/api/relations` mutes or
 blocks them: their reactions are hidden, and quick seat keeps blocked
 players apart. People are named by a public `ref`, never their player id.
 Requests over the app's rate limits get HTTP 429 or a `rate_limited` error.
+
+Hand histories (P4.6). `GET /api/hands` lists the finished hands the player
+was dealt into, newest first, and `GET /api/hands/{hand_id}` gives one in
+full: the player's own cards, the board, every action and the hands shown at
+showdown, never a hand that was mucked or folded.
 """
 
 from __future__ import annotations
@@ -531,6 +536,58 @@ class RelationsResponse(_Model):
     players: list[RelationItem]
 
 
+class HandSummary(_Model):
+    """A finished hand the viewer played, as the hand history lists it."""
+
+    hand_id: str
+    table_id: str
+    table_name: str
+    hand_no: int
+    at: float = Field(description="When the hand ended, in seconds since the epoch.")
+    seat: int = Field(description="The viewer's seat.")
+    seat_count: int
+    small_blind: int
+    big_blind: int
+    cards: list[Card] = Field(description="The viewer's hole cards.")
+    board: list[Card]
+    pot: int = Field(description="Chips in the pots at the end.")
+    net: int = Field(description="Chips the viewer won (positive) or lost.")
+    showdown: bool
+
+
+class HandListResponse(_Model):
+    """`GET /api/hands`, with optional `limit` (1 to 50) and `before` (a hand id, for the next page)."""
+
+    hands: list[HandSummary]
+    more: bool = Field(description="Whether older hands follow; ask again with `before` set to the last hand id.")
+
+
+class HandSeat(_Model):
+    """A seat dealt into the hand. Cards are set only for the viewer and for hands shown at showdown."""
+
+    seat: int
+    name: str
+    kind: SeatKind
+    bot: str | None
+    you: bool
+    cards: list[Card] | None
+    shown: bool
+    net: int
+
+
+class HandDetail(_Model):
+    """`GET /api/hands/{hand_id}`: a hand the viewer played, with every card they may see."""
+
+    hand: HandSummary
+    button: int
+    seats: list[HandSeat]
+    posts: list[Post]
+    actions: list[ActionRecord]
+    pots: list[PotResult]
+    uncalled: Uncalled | None
+    text: str = Field(description="The readable hand history, as the viewer may see it.")
+
+
 class HttpError(_Model):
     """Any HTTP error response."""
 
@@ -704,6 +761,8 @@ MODELS: list[type[BaseModel]] = [
     ReportResponse,
     RelationRequest,
     RelationsResponse,
+    HandListResponse,
+    HandDetail,
     HttpError,
     HelloMessage,
     ClientMessage,

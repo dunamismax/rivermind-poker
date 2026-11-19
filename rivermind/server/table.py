@@ -165,6 +165,24 @@ class Player:
 
 
 @dataclass(frozen=True, slots=True)
+class HandSeat:
+    """Who played a seat in a finished hand (P4.6)."""
+
+    player_id: str
+    name: str
+    bot: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class Finished:
+    """A hand that ended, with who was dealt into each seat (``None`` for seats not dealt in)."""
+
+    hand_no: int
+    state: HandState
+    seats: tuple[HandSeat | None, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class Event:
     """A public change at the table. ``seq`` increases by one per event."""
 
@@ -247,8 +265,8 @@ class Table:
         self.seq = 0
         self.events: list[Event] = []
         """Events not yet taken with ``drain_events``."""
-        self.finished: list[tuple[int, HandState]] = []
-        """Finished hands (hand number, final state) not yet taken with ``drain_finished``."""
+        self.finished: list[Finished] = []
+        """Finished hands not yet taken with ``drain_finished``."""
         self.departures: list[Departure] = []
         """Players who left, not yet taken with ``drain_departures``."""
         self.reservations: dict[int, Reservation] = {}
@@ -752,7 +770,11 @@ class Table:
             winnings=list(result.winnings),
             stacks=list(final.final_stacks),
         )
-        self.finished.append((self.hand_no, final))
+        seats: list[HandSeat | None] = []
+        for seat in range(final.num_seats):
+            player = self.seats[seat] if final.dealt_in[seat] else None
+            seats.append(None if player is None else HandSeat(player.player_id, player.name, player.bot))
+        self.finished.append(Finished(self.hand_no, final, tuple(seats)))
         orbit = sum(final.dealt_in)
         for seat, player in self.players():
             if not final.dealt_in[seat] or player.is_bot:
@@ -811,7 +833,7 @@ class Table:
         events, self.events = self.events, []
         return events
 
-    def drain_finished(self) -> list[tuple[int, HandState]]:
+    def drain_finished(self) -> list[Finished]:
         finished, self.finished = self.finished, []
         return finished
 
@@ -824,6 +846,8 @@ __all__ = [
     "Departure",
     "ErrorCode",
     "Event",
+    "Finished",
+    "HandSeat",
     "Player",
     "RESERVE_SECONDS",
     "Reservation",

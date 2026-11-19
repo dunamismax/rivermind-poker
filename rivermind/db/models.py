@@ -9,7 +9,9 @@ balance (P4.2, migration ``0003``) changes only together with a row in
 ``ledger_entries``, so the entries always add up to the balance (D-1: the
 chips have no cash value). Reports, mutes and blocks between players and
 collusion signals (P4.5, migration ``0004``) are kept for review; signals hold
-keyed hashes of network addresses, never the addresses.
+keyed hashes of network addresses, never the addresses. Each finished hand
+lists who played each seat (P4.6, migration ``0005``), so players can find the
+hands they played.
 """
 
 from __future__ import annotations
@@ -223,6 +225,28 @@ class Hand(Base):
 
     table: Mapped[PokerTable] = relationship(back_populates="hands")
     history: Mapped[HandHistory | None] = relationship(back_populates="hand", cascade="all, delete-orphan")
+
+
+class HandPlayer(Base):
+    """Who played a seat in a finished hand, and what they won or lost (P4.6).
+
+    ``player_id`` is a person's id, or null for a bot. It is not a foreign
+    key: people seated before P4.1 may have no ``players`` row.
+    """
+
+    __tablename__ = "hand_players"
+    __table_args__ = (
+        CheckConstraint("seat_no BETWEEN 0 AND 8", name="seat_no"),
+        CheckConstraint("(player_id IS NULL) = (bot_kind IS NOT NULL)", name="bot_kind"),
+    )
+
+    hand_id: Mapped[int] = mapped_column(ForeignKey("hands.id", ondelete="CASCADE"), primary_key=True)
+    seat_no: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    player_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    bot_kind: Mapped[str | None] = mapped_column(String(64))
+    net: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    """Chips won (positive) or lost in the hand."""
 
 
 class HandHistory(Base):

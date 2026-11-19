@@ -64,6 +64,19 @@ export interface ErrorMessage {
 /** What a `TableEvent` reports. The fields it sets are listed per kind. */
 export type EventKind = 'seated' | 'left' | 'leaving' | 'sat_out' | 'sitting_out_next' | 'sat_in' | 'rebuy_pending' | 'rebought' | 'rebuy_dropped' | 'connected' | 'disconnected' | 'hand_started' | 'turn' | 'timed_out' | 'action' | 'board' | 'hand_ended' | 'reserved' | 'reservation_ended' | 'waitlist';
 
+/** `GET /api/hands/{hand_id}`: a hand the viewer played, with every card they may see. */
+export interface HandDetail {
+	hand: HandSummary;
+	button: number;
+	seats: HandSeat[];
+	posts: Post[];
+	actions: ActionRecord[];
+	pots: PotResult[];
+	uncalled: Uncalled | null;
+	/** The readable hand history, as the viewer may see it. */
+	text: string;
+}
+
 /** The current hand, or the last one until the next starts. */
 export interface HandInfo {
 	hand_no: number;
@@ -82,6 +95,13 @@ export interface HandInfo {
 	result: HandResult | null;
 }
 
+/** `GET /api/hands`, with optional `limit` (1 to 50) and `before` (a hand id, for the next page). */
+export interface HandListResponse {
+	hands: HandSummary[];
+	/** Whether older hands follow; ask again with `before` set to the last hand id. */
+	more: boolean;
+}
+
 export interface HandResult {
 	pots: PotResult[];
 	/** An uncalled bet returned before the pots were formed. */
@@ -96,6 +116,41 @@ export interface HandResult {
 	winnings: number[];
 	/** Chips won or lost in the hand per seat (0 for seats not dealt in). */
 	net: number[];
+}
+
+/** A seat dealt into the hand. Cards are set only for the viewer and for hands shown at showdown. */
+export interface HandSeat {
+	seat: number;
+	name: string;
+	kind: SeatKind;
+	bot: string | null;
+	you: boolean;
+	cards: Card[] | null;
+	shown: boolean;
+	net: number;
+}
+
+/** A finished hand the viewer played, as the hand history lists it. */
+export interface HandSummary {
+	hand_id: string;
+	table_id: string;
+	table_name: string;
+	hand_no: number;
+	/** When the hand ended, in seconds since the epoch. */
+	at: number;
+	/** The viewer's seat. */
+	seat: number;
+	seat_count: number;
+	small_blind: number;
+	big_blind: number;
+	/** The viewer's hole cards. */
+	cards: Card[];
+	board: Card[];
+	/** Chips in the pots at the end. */
+	pot: number;
+	/** Chips the viewer won (positive) or lost. */
+	net: number;
+	showdown: boolean;
 }
 
 /** Must be the first message on a socket. */

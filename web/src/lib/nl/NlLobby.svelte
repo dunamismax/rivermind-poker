@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import PlayingCard from '../components/PlayingCard.svelte';
 	import type { ConfigResponse, TableSummary } from '../protocol-v2.ts';
@@ -133,6 +134,10 @@
 				</span>
 			</p>
 		{/if}
+		<nav class="links" aria-label="More">
+			<a class="px-btn small" href={resolve('/hands')}>Your hands</a>
+			<a class="px-btn small" href={resolve('/fairness')}>Rules and fair dealing</a>
+		</nav>
 		{#if message}<p class="closed px-panel" role="status">{message}</p>{/if}
 		{#if invited}
 			<section class="invite px-gold" aria-labelledby="invite-title">
@@ -329,6 +334,11 @@
 	.wallet .hint {
 		color: var(--haze);
 		font-size: var(--fs-s);
+	}
+	.links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
 	}
 
 	.side {
