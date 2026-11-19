@@ -14,7 +14,11 @@ as_sawyer() { sudo -u sawyer --preserve-env=UV_PYTHON_INSTALL_DIR "$@"; }
 
 [[ $EUID -eq 0 ]] || { echo "run as root" >&2; exit 1; }
 
-as_sawyer git -C "$REPO" pull --ff-only origin main
+if [[ "${1:-}" != --pulled ]]; then
+    as_sawyer git -C "$REPO" pull --ff-only origin main
+    # Bash keeps reading the file it started with; run the pulled version.
+    exec bash "$REPO/deploy/update.sh" --pulled
+fi
 "$UV" python install 3.12  # shared, world-readable interpreter for the service user
 chmod -R a+rX "$UV_PYTHON_INSTALL_DIR"
 (cd "$REPO" && as_sawyer "$UV" sync --locked --python 3.12)
@@ -33,11 +37,13 @@ LOGS=/etc/tmpfiles.d/caddy-access-logs.conf
 grep -q rivermindpoker-access.log "$LOGS" || printf '%-50s %s\n' \
     "f /var/log/caddy/rivermindpoker-access.log" "0600 caddy caddy -" >> "$LOGS"
 systemd-tmpfiles --create "$LOGS"
+chown caddy:caddy /var/log/caddy/rivermindpoker-access.log
 systemctl daemon-reload
 systemctl enable rivermind-poker.service
 systemctl restart rivermind-poker.service
-/usr/local/lib/caddy/caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-systemctl reload caddy  # runs the host preflight first
+# The reload runs the host preflight, which validates the whole config as the
+# caddy user. (Validating as root would create log files caddy cannot write.)
+systemctl reload caddy
 
 for _ in $(seq 60); do
     curl -fsS http://127.0.0.1:4316/api/config && echo && break
