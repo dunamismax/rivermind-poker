@@ -7,9 +7,9 @@ This file is the single source of truth for project status, from today’s worki
 | | |
 | --- | --- |
 | **Current phase** | Phase 3 · Table server v2 |
-| **Next step** | **P3.2** Table manager |
-| **In progress** | _None_ |
-| **Blockers** | _None._ Phases 1 and 2 and P3.1 are complete. |
+| **Next step** | **P3.3** Action clock and disconnects |
+| **In progress** | **P3.3** Action clock, time bank and sitting out disconnected players (claimed 2026-11-19). |
+| **Blockers** | _None._ Phases 1 and 2, P3.1 and P3.2 are complete. |
 | **Live site** | https://rivermindpoker.com runs the Phase 0 game (three seats, fixed limit, 20 cards, against random bots or the RM-06 checkpoint) in the SvelteKit client. Caddy serves the client from `/srv/rivermindpoker.com/current` and proxies `/api/*` and `/ws` to the FastAPI app. Tables survive restarts. Deployed at `a172a17`. The site database `rivermind_poker` exists on ubuntu-vm and is migrated to `0001`, but the deployed app does not use it yet. The next deploy installs the database-aware `update.sh` steps and the unit’s `EnvironmentFile`. |
 | **`main`** | Phases 0 to 2, the P3.1 database foundation and the P6.5 card artwork are on `main` and pushed to both remotes. The no-limit engine is in `rivermind/engine` and the simple bots in `rivermind/bots`, but the live site still runs the Phase 0 game until P3.7. `main` pushes to GitHub and Codeberg, and GitHub Actions runs the Python and web suites on every push. |
 | **Last updated** | 2026-11-19 |
@@ -252,10 +252,11 @@ Each question has a default. Agents build on the default until the owner decides
   - CI: with the owner’s approval `main` was pushed at `d70623e`. Run [44474555251](https://github.com/dunamismax/rivermind-poker/actions/runs/44474555251) passed: the `test` job ran 357 tests against the `postgres:17` service with none skipped, and the `web` job also passed.
   - Server: ubuntu-vm runs PostgreSQL 18.6, so CI and the docs moved to 18; the local tests also passed on Homebrew PostgreSQL 18.6 (port 5433). [`deploy/setup-database.sh`](deploy/setup-database.sh) created the roles, the two databases, the `app` schema with default privileges, three pg_hba rules before the host’s reject rules and the root-only env files. A second run changed no file. From a scratch copy of this tree on the server, the full suite passed 357 with the database tests on `rivermind_poker_test`, and `alembic upgrade head` with `migration.env` put revision `0001` in `app`, every object owned by `rivermind_poker_owner`. As `rivermind_poker_web` (search_path `app`), rows could be inserted but `CREATE TABLE` was refused, and the `rivermind-poker` service user connected over TCP. `update.sh` and the unit now use these files; they take effect at the next deploy, which was not run.
 
-- [ ] **P3.2 · Table manager** · Depends on: P2.5, P2.7
-  - [ ] Each table is configured with its seat count (2 to 9), blinds and optional ante, and minimum and maximum buy-in (default 40 to 100 big blinds). Hands start automatically with at least two seated players.
-  - [ ] Players can take a seat, leave, sit out and return, and rebuy in play chips. Button and blind posting follow `docs/rules.md`.
-  - [ ] Each table runs as an asyncio task. Engine calls stay off the event loop where they could block it.
+- [x] **P3.2 · Table manager** · Depends on: P2.5, P2.7
+  - [x] Each table is configured with its seat count (2 to 9), blinds and optional ante, and minimum and maximum buy-in (default 40 to 100 big blinds). Hands start automatically with at least two seated players.
+  - [x] Players can take a seat, leave, sit out and return, and rebuy in play chips. Button and blind posting follow `docs/rules.md`.
+  - [x] Each table runs as an asyncio task. Engine calls stay off the event loop where they could block it.
+  - Evidence: `ed07e2a`. [rivermind/server](rivermind/server/) has the synchronous `Table` (seats, buy-ins kept within the range, sitting out and leaving between hands, a leaving player folding or checking at each turn, rebuys added when the hand ends, numbered public events with no unshown cards) and `TableRunner`/`TableManager` (one asyncio task per table, bots deciding through `asyncio.to_thread`, stale decisions dropped, failing bots timed out, busted bots rebuying). [test_table.py](test/server/test_table.py) plays every rules section 5 example and rules 2.2 and 2.3 through the table, and a 4,000-step random fuzz of seating, rebuys and play at 2, 3, 6 and 9 seats conserves chips; [test_runner.py](test/server/test_runner.py) covers automatic hands at 2, 6 and 9 seats, a person playing with bots, a bot blocked in its thread while another table plays 20 hands, and injected sleeps. `uv run python -m rivermind.server.simulate --seats 2,6,9 --hands 500 --seed 0` played 4,903, 678 and 501 hands on three concurrent tables in 2.2 s with chips conserved; a 5 ms heartbeat saw event-loop lag of 0.18 ms median, 0.88 ms p99 and 2.8 ms at most. pytest 391 passed with the database tests.
 
 - [ ] **P3.3 · Action clock and disconnects** · Depends on: P3.2
   - [ ] Each action has a configurable clock (default 20 seconds) plus a time bank. On timeout the seat checks if it can, otherwise folds. A player disconnected for a full orbit is sat out.
