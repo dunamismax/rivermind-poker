@@ -11,7 +11,9 @@ import numpy as np
 
 from .build import FORMAT, KIND, STREETS, file_hashes
 from .equity import INVALID
-from .iso import PERMS, pair_index, set_rank
+from .iso import PERMS, pair_index, ranks_of, set_rank
+
+_PERM_ARRAY = np.array(PERMS, dtype=np.int64)
 
 STREET_OF_BOARD = {0: "preflop", 3: "flop", 4: "turn", 5: "river"}
 
@@ -73,6 +75,31 @@ class CardTables:
         if value == int(INVALID):
             raise TableError("the hand collides with the board")
         return value
+
+
+    def buckets_many(self, holes: np.ndarray, boards: np.ndarray | None = None) -> np.ndarray:
+        """Buckets for rows of hole cards ``(n, 2)`` on rows of boards ``(n, 0, 3, 4 or 5)``.
+
+        Each row must hold distinct cards; a hand colliding with its board
+        gives ``INVALID``. This is ``bucket`` for many hands at once.
+        """
+        holes = np.asarray(holes, dtype=np.int64)
+        size = 0 if boards is None else int(np.asarray(boards).shape[1])
+        street = STREET_OF_BOARD.get(size)
+        if street is None or holes.ndim != 2 or holes.shape[1] != 2:
+            raise TableError("hole cards (n, 2) and boards of 0, 3, 4 or 5 cards are needed")
+        if street == "preflop":
+            lo, hi = np.minimum(holes[:, 0], holes[:, 1]), np.maximum(holes[:, 0], holes[:, 1])
+            return np.asarray(self.preflop)[hi * (hi - 1) // 2 + lo].astype(np.int64)
+        assert boards is not None
+        ranks = ranks_of(np.sort(np.asarray(boards, dtype=np.int64), axis=1))
+        cls = np.asarray(self.board_class[street][ranks]).astype(np.int64)
+        perm = _PERM_ARRAY[np.asarray(self.board_perm[street][ranks]).astype(np.int64)]
+        if int(cls.max(initial=0)) >= len(self.buckets[street]):
+            raise TableError(f"this table set was built with a limit and lacks some {street} board classes")
+        mapped = (holes & ~3) | np.take_along_axis(perm, holes & 3, axis=1)
+        lo, hi = np.minimum(mapped[:, 0], mapped[:, 1]), np.maximum(mapped[:, 0], mapped[:, 1])
+        return np.asarray(self.buckets[street][cls, hi * (hi - 1) // 2 + lo]).astype(np.int64)
 
 
 def verify_files(path: Path, manifest: dict[str, Any] | None = None) -> list[str]:

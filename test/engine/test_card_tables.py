@@ -191,6 +191,20 @@ def test_a_limited_set_builds_reproducibly_verifies_and_looks_up(tmp_path: Path)
         assert 0 <= found < count
         for g in range(len(PERMS)):  # the same hand under any suit names
             assert tables.bucket([permute_card(c, g) for c in hole], [permute_card(c, g) for c in board]) == found
+    # Many hands at once, under random suit names, as the trainer deals them.
+    for board in (flop, turn, river):
+        holes, boards = [], []
+        for _ in range(200):
+            g = rng.randrange(len(PERMS))
+            mapped = [permute_card(c, g) for c in board]
+            rng.shuffle(mapped)
+            holes.append([c for c in deal(rng, 52) if c not in mapped][:2])
+            boards.append(mapped)
+        many = tables.buckets_many(np.array(holes), np.array(boards))
+        assert many.tolist() == [tables.bucket(h, b) for h, b in zip(holes, boards)]
+    assert tables.buckets_many(np.array([cards("AsAh"), cards("2c7d")])).tolist() == [168, 5]
+    with pytest.raises(TableError, match="lacks"):
+        tables.buckets_many(np.array([cards("AsKd")]), np.array([cards("Qh7c2s")]))
     printed = runner.invoke(cli, ["tables", "bucket", str(out), "AsAh"])
     assert printed.exit_code == 0 and printed.output.strip() == "168"
     with pytest.raises(TableError, match="lacks"):
