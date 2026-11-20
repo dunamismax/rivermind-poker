@@ -14,3 +14,6 @@ bun.lockb
 # Generated from the Python protocol models
 /src/lib/protocol.ts
 /src/lib/protocol-v2.ts
+
+# Generated from the Python engine's rule hands (test/engine/export_fixtures.py)
+/src/lib/server/engine/rules.json

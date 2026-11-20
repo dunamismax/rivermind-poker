@@ -74,6 +74,9 @@ jobs:
       - run: pnpm check
       - run: pnpm lint
       - run: pnpm test
+      # The TypeScript engine against the Python reference: 5,000 fuzzed hands
+      # (625 at each of 2 to 9 seats) byte for byte, and evaluator samples.
+      - run: pnpm engine:parity
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium firefox webkit
       - run: pnpm e2e

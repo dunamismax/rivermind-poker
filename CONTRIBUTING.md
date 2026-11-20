@@ -24,6 +24,18 @@ uv run python -m rivermind.engine.bench                    # random self-play sp
 
 The engine tests check every rule’s example and more than 30 fixed hands with their payouts, and run Hypothesis property tests and a short fuzz. To add a rule test, write the hand in `test/engine/fixtures.py`: the stacks, button, cards and an action script such as `"S5:r300 S0:c S1:f"`, with final stacks worked out by hand from the rules.
 
+### The TypeScript engine
+
+`web/src/lib/server/engine` is a port of `rivermind/engine` to TypeScript (P4B.4, D-14) for the Node server: `startHand`, `legalActions`, `apply`, `seatView`, pots, seating and the `history` documents, with the same immutable states and caller-supplied randomness (`Random`; live tables use `cryptoRandom`, D-8). The browser-safe cards and evaluator are in `web/src/lib/engine`. The Python engine stays the reference: a rule change lands in both engines in the same commit. Documents from either are byte-identical, because `dumps` writes what Python's `json.dumps(..., separators=(",", ":"), sort_keys=True)` writes.
+
+`rivermind.engine.differential` writes the reference outputs. `pnpm engine:parity` (from `web/`, also run in CI) replays 5,000 of its fuzzed hands, 625 at each of 2 to 9 seats, and checks the hand record, the final state and a digest of every intermediate state, legal-action set and text history byte for byte; it also compares evaluator digests on seeded samples. The Vitest suite runs every rule hand from `test/engine/fixtures.py`, through `web/src/lib/server/engine/rules.json`. After changing the fixtures, rewrite that file (pytest fails while it is stale):
+
+```sh
+uv run --locked python -m test.engine.export_fixtures
+cd web && pnpm engine:parity -- --hands 100000 --evaluator-hands 10000000 --all-five   # the long run
+cd web && pnpm engine:bench                                                            # matches rivermind.engine.bench
+```
+
 ## PostgreSQL
 
 From Phase 3, tables and hand histories live in PostgreSQL (D-4). [`rivermind/db`](rivermind/db/) has the SQLAlchemy 2 models and Alembic migrations, connecting through psycopg 3. The app reads `DATABASE_URL`, and a plain `postgresql://` URL is fine. The initial schema has `poker_tables`, `seats`, `hands` and `hand_histories`. Table state and hand records are versioned JSON from `rivermind.engine.history`, stored as `jsonb`. The database checks seat counts, blinds, buy-ins, seat numbers and stacks. [Models](rivermind/db/models.py) · [Migrations](rivermind/db/migrations/versions/)
