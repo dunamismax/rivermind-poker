@@ -84,7 +84,7 @@ Practice tables (P6.0b) never touch the wallet: `runner.practice` names the gues
 
 When the browser pane is hidden, the page runs in the background and CSS animations stay on their first frame, so an element with an entrance animation (a reaction bubble, a win label) looks invisible. Finish them with `document.getAnimations()` before judging a screenshot.
 
-Starlette's test client cancels the server's socket handler the moment a test's socket closes, and a real server can cancel a request's task too. Every request that changes a table goes through `TableRunner._change`, which applies, saves and publishes it in a task shielded from the caller; add new runner requests the same way, never as a bare `async with self.lock` around a change.
+Starlette's test client cancels the server's socket handler the moment a test's socket closes, and a real server can cancel a request's task too. Every request that changes a table goes through `TableRunner._change`, which applies, saves and publishes it in a task shielded from the caller; add new runner requests the same way, never as a bare `async with self.lock` around a change. A request can reach a runner after its table closed and paid out its seats, so a runner request that brings chips to the table (sit, rebuy) refuses once the runner is closed, and its caller refunds the payment; keep that rule in the TypeScript table server.
 
 Other sessions may work in this checkout at the same time and leave staged or half-finished changes. Commit only your own files (`git commit -- <paths>`, or a temporary index when a file mixes your hunks with theirs), and if their edits break the build, verify in a scratch copy of `main` plus your changes.
 

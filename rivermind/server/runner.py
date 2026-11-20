@@ -175,7 +175,11 @@ class TableRunner:
     # Requests from players. Each raises TableError and leaves the table unchanged on refusal.
 
     async def sit(self, seat: int, player_id: str, name: str, buy_in: int) -> None:
-        await self._change(lambda: self.table.sit(seat, player_id, name, buy_in))
+        def apply() -> None:
+            self._refuse_if_closed()
+            self.table.sit(seat, player_id, name, buy_in)
+
+        await self._change(apply)
 
     async def seat_bot(self, seat: int, kind: str, buy_in: int | None = None) -> str:
         """Seat a bot of ``kind``, labelled as a bot (D-7). Returns its player id."""
@@ -224,7 +228,11 @@ class TableRunner:
         await self._change(lambda: self.table.set_connected(player_id, connected))
 
     async def rebuy(self, player_id: str, amount: int) -> None:
-        await self._change(lambda: self.table.rebuy(player_id, amount))
+        def apply() -> None:
+            self._refuse_if_closed()
+            self.table.rebuy(player_id, amount)
+
+        await self._change(apply)
 
     async def refill(self, player_id: str) -> None:
         """At a practice table: a fresh practice stack for a player who ran out of chips."""
@@ -249,6 +257,14 @@ class TableRunner:
             self.table.act(player_id, action, seq)
 
         await self._change(apply)
+
+    def _refuse_if_closed(self) -> None:
+        """Refuse chips paid for after the table closed. Its seated chips went
+        back to the wallets when it closed, and nothing saves or pays out a
+        closed table, so chips that reached it would be lost; refused, the
+        caller refunds them. Call under the lock."""
+        if self._closed:
+            raise TableError(ErrorCode.UNKNOWN_TABLE, "the table has closed")
 
     async def _change(self, apply: Callable[[], T]) -> T:
         return await self._change_then(apply, lambda result: result)

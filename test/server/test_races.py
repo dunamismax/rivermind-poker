@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import threading
 from typing import Any
 
 import pytest
@@ -296,6 +297,63 @@ def test_nobody_can_act_for_another_player() -> None:
         with pytest.raises(TableError):
             await runner.act(runner.table.seats[bot_seat].player_id, legal_actions(runner.table.hand).options()[0], seq)  # type: ignore[union-attr,arg-type]
         check_invariants(server, [alice, bob, carol])
+        await server.stop()
+
+    run(main())
+
+
+@pytest.mark.parametrize("request_kind", ["sit", "take_seat", "rebuy"])
+def test_chips_paid_while_the_table_closes_come_back(request_kind: str) -> None:
+    """A buy-in or rebuy whose payment is still in its worker thread when the
+    table closes must be refused and refunded, not land on the closed table."""
+
+    async def main() -> None:
+        server = make_server(5)
+        await server.start()
+        alice, _ = await person(server)
+        bob, bob_tabs = await person(server)
+        table_id, _, _ = await server.create_table(alice, p.NewTableRequest(seats=6, bots=None, buy_in=5_000))
+        runner = server.tables.tables[table_id]
+        await server.join(bob_tabs[0], table_id)
+        if request_kind == "rebuy":
+            await runner.sit_out(alice.player_id)  # no hand, so the rebuy is added at once
+            await server.handle(bob_tabs[0], p.SitMessage(type="sit", table_id=table_id, seat=3, buy_in=4_000))
+        # Hold Bob's next payment in its worker thread until the table has closed.
+        paying, release = threading.Event(), threading.Event()
+        debit = server.wallet.debit
+
+        def slow_debit(player_id: str, *args: Any, **kwargs: Any) -> int:
+            if player_id == bob.player_id:
+                paying.set()
+                release.wait(10)
+            return debit(player_id, *args, **kwargs)
+
+        server.wallet.debit = slow_debit  # type: ignore[method-assign]
+        if request_kind == "sit":
+            request = server.handle(bob_tabs[0], p.SitMessage(type="sit", table_id=table_id, seat=3, buy_in=4_000))
+        elif request_kind == "take_seat":
+            # Holding a seat takes no payment; give the hold up while the buy-in is being paid.
+            request = server.take_seat(bob, runner, 3, 4_000, False)
+        else:
+            request = server.handle(bob_tabs[0], p.RebuyMessage(type="rebuy", table_id=table_id, amount=1_000))
+        pending = asyncio.ensure_future(request)
+        assert await asyncio.to_thread(paying.wait, 10)
+        if request_kind == "take_seat":
+            await runner.cancel_reservation(bob.player_id)
+        if request_kind == "rebuy":
+            server._schedule_close(table_id, "The table closed after being idle.")  # as eviction does
+        else:
+            await runner.leave(alice.player_id)  # the last person leaves, so the table closes
+        await settle(server)
+        assert table_id not in server.tables.tables
+        release.set()
+        with pytest.raises(REFUSED):
+            await pending
+        await settle(server)
+        assert runner.table.seat_of(bob.player_id) is None or request_kind == "rebuy"
+        assert server.wallet.balance(alice.player_id) == STARTING_GRANT
+        assert server.wallet.balance(bob.player_id) == STARTING_GRANT  # the closed table kept nothing
+        check_invariants(server, [alice, bob])
         await server.stop()
 
     run(main())

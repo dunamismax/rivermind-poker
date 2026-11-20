@@ -84,6 +84,8 @@ class ErrorCode(StrEnum):
     ILLEGAL_ACTION = "illegal_action"
     HAND_OVER = "hand_over"
     HAND_IN_PROGRESS = "hand_in_progress"
+    UNKNOWN_TABLE = "unknown_table"
+    """The table has closed (a request that reached its runner too late)."""
 
 
 class TableError(Exception):

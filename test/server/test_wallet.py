@@ -146,14 +146,13 @@ async def random_play(
     now = 1_000_000.0
     people: dict[str, Connection] = {}
     records: dict[str, PlayerRecord] = {}
-    paid_in = 0  # grants and top-ups
     for _ in range(4):
         record = await asyncio.to_thread(server.players.create)
         records[record.player_id] = record
         connection = Connection(ws=None, player_id=record.player_id, name=record.handle)  # type: ignore[arg-type]
         people[record.player_id] = connection
         server.connections.add(connection)
-        paid_in += await asyncio.to_thread(server.wallet.visit, record.player_id, now)
+        await asyncio.to_thread(server.wallet.visit, record.player_id, now)
     counts: dict[str, int] = {}
 
     def wallet_check() -> None:
@@ -173,8 +172,7 @@ async def random_play(
             if roll < 0.08:
                 kind = "visit"
                 now += rng.choice((0, DAY / 2, DAY, 3 * DAY))
-                before = server.wallet.balance(player_id)
-                paid_in += await asyncio.to_thread(server.wallet.visit, player_id, now) - before
+                await asyncio.to_thread(server.wallet.visit, player_id, now)
             elif roll < 0.14:
                 kind = "new_table"
                 request = p.NewTableRequest(
@@ -274,7 +272,11 @@ async def random_play(
     await settle(server, 5)
     wallet_check()
     balances = {pid: server.wallet.balance(pid) for pid in people}
-    kinds = [e.kind for pid in people for e in server.wallet.entries(pid, limit=10**9)]
+    entries = [e for pid in people for e in server.wallet.entries(pid, limit=10**9)]
+    kinds = [e.kind for e in entries]
+    # What grants and top-ups paid in, from the ledger: the balance before and
+    # after a visit would also count a cash-out that a table paid meanwhile.
+    paid_in = sum(e.amount for e in entries if e.kind in ("grant", "top_up"))
     await server.stop()
     return {
         "counts": counts,
