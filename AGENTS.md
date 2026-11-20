@@ -46,6 +46,8 @@ uv run --locked python -m rivermind.engine.fuzz --hands 100000 --seats 2-9
 uv run --locked python -m rivermind.engine.bench
 ```
 
+The trained bots' card tables (P5.2, `rivermind/bots/cards`) are built with `uv run --locked rivermind-poker tables build` into `artifacts/tables/hu-m1`, which takes about 4 minutes and 3 GB, and checked with `rivermind-poker tables verify <dir>`. A build is byte-for-byte reproducible for its seed whatever the worker count. Keep it that way: scikit-learn's k-means gave slightly different centres between runs, so the build uses its own. After changing the pipeline, compare two builds' manifests. Tests build a small set with the hidden `--limit` option.
+
 The SvelteKit client in `web/` has its own suite (Node from `web/.node-version`, pnpm through corepack). Run it from `web/` before committing web changes; CI runs the same steps in its `web` job.
 
 ```sh
