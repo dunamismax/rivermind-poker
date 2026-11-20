@@ -166,6 +166,8 @@ class Trainer:
         self.regrets = np.memmap(self.regrets_path, dtype=np.int32, mode="w+", shape=(self.game.size,))
         self.strategy = np.zeros(self.game.size, dtype=np.float64)
         self._pool: Any = None
+        self.identity = {"engine": engine_identity(), "software": software()}
+        """The code this process runs, recorded once so a later commit cannot be credited with it."""
 
     # Lifecycle
 
@@ -333,8 +335,7 @@ class Trainer:
             "settings": asdict(self.settings),
             "game": self.game.describe(),
             "cards": self.dealer.describe(),
-            "engine": engine_identity(),
-            "software": software(),
+            **self.identity,
             "stats": {
                 "seconds": round(self.seconds, 3),
                 "iterations_per_second": round(self.iteration / self.seconds, 1) if self.seconds else None,
@@ -433,7 +434,7 @@ def software() -> dict[str, Any]:
         ).stdout.strip()
         dirty = bool(
             subprocess.run(
-                ["git", "status", "--porcelain", "--untracked-files=no"],
+                ["git", "status", "--porcelain", "--untracked-files=no", "--", ":/rivermind", ":/poker_ai", ":/pyproject.toml", ":/uv.lock"],
                 capture_output=True,
                 text=True,
                 check=True,
