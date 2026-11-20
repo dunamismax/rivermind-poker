@@ -10,6 +10,14 @@
 4. Tick verified criteria, add an `Evidence:` line, then update **Now**. For partial work, add a `Remaining:` line instead of ticking the step. Build on the settled decisions (`D-n`). Use the open questions’ defaults (`Q-n`) rather than waiting, and stop only at **Owner gate** steps.
 5. Prepend a dated entry to the handoff log (keep eight; archive older ones in [docs/build-history.md](docs/build-history.md)). Review the final working tree and diff, including new files.
 
+## Stack
+
+The project is moving to SvelteKit 3 · Svelte 5 · TypeScript · Tailwind CSS 4 · PostgreSQL 18 + Drizzle ORM · Node (`adapter-node`) · Caddy (D-14 in BUILD.md). Phase 4B does the move. Until its cutover (P4B.7), the live backend is still the Python `serve-nl` on FastAPI with SQLAlchemy and Alembic, and the commands below describe that.
+
+- Write new site, API, table, engine-serving and database code in TypeScript in `web/`, with server-only code under `web/src/lib/server/`. Change `rivermind/server` and `rivermind/db` only to fix the live site; both are removed at P4B.8.
+- Python stays for offline work: `rivermind/engine` is the reference engine, and `rivermind/bots` builds card tables, trains, evaluates and exports serving bundles. A rule change lands in both engines in the same commit, and the differential fuzz must pass.
+- Keep protocol v2, session cookies, table snapshots and hand histories wire-compatible across the move, so open tables, stored hands and guests survive the cutover.
+
 ## Local development and play
 
 From the repository root, use Python 3.12 and uv. These are the local equivalents of the [test workflow](.github/workflows/test.yml).

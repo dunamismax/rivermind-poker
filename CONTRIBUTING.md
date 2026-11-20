@@ -1,5 +1,7 @@
 # Developing RiverMind Poker
 
+The site is moving to SvelteKit on Node (`adapter-node`) with Tailwind CSS 4 and Drizzle ORM on PostgreSQL 18, behind Caddy. Python stays for training and evaluation (D-14, Phase 4B in [BUILD.md](BUILD.md)). Until the P4B.7 cutover, the commands below, including the Python table server and Alembic, are the ones in use. Each Phase 4B step updates this guide as it lands.
+
 Run commands from the repository root unless a step changes directory. Use Python 3.12 and uv to reproduce the locked development environment.
 
 ```sh
