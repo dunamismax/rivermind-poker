@@ -88,6 +88,35 @@ test('sits out, comes back and rebuys', async ({ page }) => {
 	await leave(page);
 });
 
+test('a guest practises against RiverMind Easy in one click and resumes after a reload', async ({
+	page
+}) => {
+	// P6.0b: no buy-in, a labelled bot, the same table after a reload, and the wallet untouched.
+	await page.goto('/');
+	const wallet = () =>
+		page.evaluate(
+			async () => ((await (await fetch('/api/wallet')).json()) as { balance: number }).balance
+		);
+	await expect(page.getByRole('button', { name: 'Practice vs bots' })).toBeVisible();
+	const before = await wallet();
+	await page.getByRole('button', { name: 'Practice vs bots' }).click();
+	await expect(seated(page)).toBeVisible();
+	await expect(page.getByText('Practice', { exact: true })).toBeVisible();
+	await expect(page.locator('.seat[data-seat="1"]')).toContainText('RiverMind Easy');
+	await expect.poll(() => handNumber(page), { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
+	await noOverflow(page);
+	const tableId = await tableIdOf(page);
+	await page.reload();
+	await expect(seated(page)).toBeVisible();
+	expect(await tableIdOf(page)).toBe(tableId);
+	const resumed = await handNumber(page);
+	await playUntilHand(page, resumed + 1, LIVE_HAND_MS);
+	expect(await wallet()).toBe(before);
+	await page.getByRole('button', { name: 'Leave table' }).click();
+	await expect(page.getByRole('button', { name: 'Practice vs bots' })).toBeVisible();
+	expect(await wallet()).toBe(before);
+});
+
 test('two people play together from the lobby', async ({ page, browser }) => {
 	await sitDown(page, 3, { bots: /RiverMind Easy/ });
 	const tableId = await tableIdOf(page);
