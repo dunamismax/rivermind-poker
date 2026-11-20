@@ -61,6 +61,8 @@ class _Real:
 
     def __init__(self, view: SeatView) -> None:
         n = view.num_seats
+        self.seats = view.seat_order
+        """The two players dealt in; a bigger table's empty seats have nothing behind."""
         self.start = [(view.stacks[s] or 0) + view.contributions[s] for s in range(n)]
         self.contributions = [0] * n
         self.street_bets = [0] * n
@@ -91,6 +93,7 @@ class _Real:
 
     def copy(self) -> _Real:
         other = object.__new__(_Real)
+        other.seats = self.seats
         other.start = list(self.start)
         other.contributions = list(self.contributions)
         other.street_bets = list(self.street_bets)
@@ -101,7 +104,7 @@ class _Real:
     def spr(self) -> float:
         """Effective stack behind over the pot."""
         pot = self.pot
-        return min(self.behind(s) for s in range(len(self.start))) / pot if pot else math.inf
+        return min(self.behind(s) for s in self.seats) / pot if pot else math.inf
 
 
 class BlueprintPolicy:
@@ -115,6 +118,8 @@ class BlueprintPolicy:
         self.tables = tables
         self.game = blueprint.game
         self.stats: Counter[str] = Counter()
+        self.last_probabilities: list[float] | None = None
+        """The probabilities of the last decision, or ``None`` when it checked or called without data."""
         self._hands: OrderedDict[tuple[object, ...], _Hand] = OrderedDict()
         self._starts = [[t.street_starts(s) for s in range(4)] for t in self.game.trees]
         self._strategy = np.asarray(blueprint.strategy)
@@ -123,6 +128,13 @@ class BlueprintPolicy:
     def load(cls, checkpoint: str | Path, tables: str | Path | None = None, **kwargs: object) -> BlueprintPolicy:
         bp = Blueprint(checkpoint)
         return cls(bp, CardTables(tables or bp.manifest["cards"]["path"]), **kwargs)  # type: ignore[arg-type]
+
+    @classmethod
+    def from_bundle(cls, bundle: str | Path, **kwargs: object) -> BlueprintPolicy:
+        """Play a serving bundle's ``uint8`` strategy, as the Node server does (P4B.6)."""
+        from .bundle import ServingBundle
+
+        return ServingBundle(bundle).policy(**kwargs)  # type: ignore[no-any-return]
 
     def new_hand(self) -> None:
         """Forget the hands mapped so far. A table that knows when a hand starts can call this; the policy also tells hands apart by their actions."""
@@ -247,7 +259,8 @@ class BlueprintPolicy:
             node = reached
         if node is None or tree.street[node] != view.street:
             node = self._reenter(tree, d, view.street, real)
-        if tree.player[node] != view.seat:
+        # The tree's seat 0 is the button, wherever the button really sits.
+        if tree.player[node] != (0 if view.seat == view.button else 1):
             return None
         return node
 
@@ -281,6 +294,7 @@ class BlueprintPolicy:
         if len(view.seat_order) != 2:
             raise ValueError("the blueprint plays heads-up only")
         self.stats["decisions"] += 1
+        self.last_probabilities = None
         hand = self._hand(view)
         node = self._position(view, hand, rng)
         passive = Action.check() if legal.can_check else Action.call()
@@ -297,6 +311,7 @@ class BlueprintPolicy:
             hand.tokens[len(view.actions)] = "k" if legal.can_check else "c"
             hand.seen = view.actions
             return passive
+        self.last_probabilities = [float(p) for p in probs]
         x = rng.random()
         acc = 0.0
         choice = len(probs) - 1

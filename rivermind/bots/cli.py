@@ -261,6 +261,34 @@ def info_command(path: str, verify: bool) -> None:
     click.echo(json.dumps(shown, indent=2))
 
 
+@blueprint.command("export")
+@click.argument("checkpoint")
+@click.option("--out", required=True, help="Bundle directory to create, such as artifacts/bundles/hu-m1-s0-128m.")
+@click.option("--tables", "tables_path", default=None, help="Card table set (default: the one the checkpoint names).")
+def export_command(checkpoint: str, out: str, tables_path: str | None) -> None:
+    """Export CHECKPOINT (or a run's latest) as a serving bundle for the Node server (P4B.6)."""
+    from rivermind.bots.blueprint import CheckpointError, latest_checkpoint
+    from rivermind.bots.blueprint.bundle import BundleError, export_bundle
+    from rivermind.bots.cards import TableError
+
+    target = Path(checkpoint)
+    if not (target / "manifest.json").exists():
+        target = latest_checkpoint(target) or target
+    try:
+        manifest = export_bundle(target, out, tables=tables_path)
+    except (BundleError, CheckpointError, TableError, FileExistsError) as e:
+        raise click.ClickException(str(e)) from e
+    shown = {
+        "out": out,
+        "checkpoint": manifest["checkpoint"]["path"],
+        "iteration": manifest["checkpoint"]["iteration"],
+        "table_set": manifest["cards"]["table_set"],
+        "bytes": sum(f["bytes"] for f in manifest["files"].values()),
+        "files": manifest["files"],
+    }
+    click.echo(json.dumps(shown, indent=2))
+
+
 @blueprint.command("strategy")
 @click.argument("checkpoint")
 @click.argument("hole")

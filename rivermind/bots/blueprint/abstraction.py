@@ -87,7 +87,8 @@ def abstract_actions(
 
     ``pot`` counts every chip put in so far, the current street's bets
     included, and ``street_bets`` is indexed by seat. Heads-up only: the
-    opponent is the other seat.
+    opponent is the other seat with chips in, so a bigger table's empty
+    seats (betting nothing) do not count.
     """
     seat = legal.seat
     found: list[AbstractAction] = []
@@ -102,7 +103,7 @@ def abstract_actions(
         return tuple(found)
     letter = "b" if kind is ActionKind.BET else "r"
     owed = current_bet - street_bets[seat]
-    other = street_bets[1 - seat]
+    other = max(b for s, b in enumerate(street_bets) if s != seat)
     seen: set[int] = set()
     for i, size in enumerate(sizes(street, level)):
         to = max(round_chips(size_to(street, size, pot, current_bet, owed)), legal.min_to)

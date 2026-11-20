@@ -36,6 +36,10 @@ cd web && pnpm engine:parity -- --hands 100000 --evaluator-hands 10000000 --all-
 cd web && pnpm engine:bench                                                            # matches rivermind.engine.bench
 ```
 
+### The TypeScript bots
+
+`web/src/lib/server/bots` ports `rivermind/bots` (P4B.6): the simple bots, the hu-m1 abstraction and `BlueprintPolicy`, reading a serving bundle exported by `rivermind-poker blueprint export`. Bots draw from `PythonRandom`, CPython's Mersenne Twister in TypeScript. As with the engine, Python is the reference and a change to a bot lands in both languages in the same commit. `pnpm bots:parity` (also in CI) plays the same deals with the same seeds in both and compares hand records, the blueprint's probabilities and statistics, and card buckets; [docs/bots.md](docs/bots.md#serving-p4b6) has the long run against a real bundle and `pnpm bots:bench`.
+
 ## PostgreSQL
 
 From Phase 3, tables and hand histories live in PostgreSQL (D-4). [`rivermind/db`](rivermind/db/) has the SQLAlchemy 2 models and Alembic migrations, connecting through psycopg 3. The app reads `DATABASE_URL`, and a plain `postgresql://` URL is fine. The initial schema has `poker_tables`, `seats`, `hands` and `hand_histories`. Table state and hand records are versioned JSON from `rivermind.engine.history`, stored as `jsonb`. The database checks seat counts, blinds, buy-ins, seat numbers and stacks. [Models](rivermind/db/models.py) · [Migrations](rivermind/db/migrations/versions/)

@@ -79,6 +79,10 @@ jobs:
       # The TypeScript engine against the Python reference: 5,000 fuzzed hands
       # (625 at each of 2 to 9 seats) byte for byte, and evaluator samples.
       - run: pnpm engine:parity
+      # The TypeScript bots against the Python ones: 2,000 hands of the simple
+      # bots on fuzz deals, 2,000 blueprint decisions and bucket lookups on a
+      # synthetic serving bundle (the real trees, random strategies and tables).
+      - run: pnpm bots:parity
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium firefox webkit
       - run: pnpm e2e

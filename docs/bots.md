@@ -106,7 +106,7 @@ A checkpoint’s manifest records the SHA-256 of the compiled trees (each node�
 
 ## What training and serving assume
 
-Training is built (P5.3, [below](#training-p53)); serving belongs to P5.7a. These choices are fixed enough here to make the estimates meaningful.
+Training is built (P5.3, [below](#training-p53)), and so is the serving code ([below](#serving-p4b6), P4B.6); serving a champion on the site is P5.7a. These choices are fixed enough here to make the estimates meaningful.
 
 - **Trainer:** external-sampling Monte Carlo CFR on the compiled tree: one deal per iteration, every action of the updated player (seat *iteration* mod 2) explored, the opponent’s and chance’s sampled, and the opponent’s current strategy added to its average-strategy sums. It uses linear discounting early and negative-regret pruning later, with a floor on regrets, as in Pluribus. Regrets are `int32` and average-strategy sums `float64`; the sums live only in the main process, where `float32` would lose small additions to large totals.
 - **Deals in batches:** cards and their eight bucket lookups (two seats, four streets) are drawn for a thousand iterations at once with NumPy, so a lookup costs about 0.15 µs, not a Python call per card.
@@ -202,6 +202,33 @@ uv run --locked rivermind-poker blueprint evaluate RUN_OR_CHECKPOINT --name NAME
 ```
 
 The default plan plays 20,000 deals (40,000 hands) per matchup at 50/100: RiverMind Easy (`heuristic`), the calling station, random and the min-bet probe at 100 big blinds, and RiverMind Easy and the calling station, the two opponents of the P5.5 gate, at 40 and 150. `--against OPPONENT@STACK_BB` replaces the plan, and `blueprint:<checkpoint>` names an incumbent. The **min-bet probe** (`MinBetPolicy`) opens every street with the smallest legal bet or raise and otherwise checks or calls. Each report records the game, seed, deals, the candidate checkpoint’s file, tree and card hashes and the commit that trained it, each opponent’s source hash, the engine and software, every result with the candidate’s decision counts and the command that reproduces it. [docs/evaluations](evaluations/) holds the reports. `rivermind-poker blueprint gate REPORT.json` applies the P5.5 promotion gate to one: the lower bound of the 95% interval must be above zero against RiverMind Easy and the calling station at 100 big blinds, and, with `--incumbent blueprint:<checkpoint>`, against the champion it would replace, which the report must have played.
+
+## Serving (P4B.6)
+
+The Node server plays the bots in TypeScript ([`web/src/lib/server/bots`](../web/src/lib/server/bots/)): the random, calling-station and RiverMind Easy bots, the min-bet probe, and `BlueprintPolicy`, a line-for-line port of the [mapping](#mapping-real-actions-onto-the-tree). The Python bots stay the reference. Bots draw from `PythonRandom`, a port of CPython’s `random.Random` (MT19937 with its seeding, `random`, `getrandbits`, `randint` and `choice`), so a bot seeded the same way makes the same draws in both languages; a live table seeds it from the operating system’s randomness, as `serve-nl` seeds its bots’ `random.Random` from `secrets.SystemRandom().getrandbits(64)` (D-8).
+
+A trained blueprint reaches Node as a **serving bundle**, written by `rivermind-poker blueprint export CHECKPOINT --out DIR` ([`bundle.py`](../rivermind/bots/blueprint/bundle.py)):
+
+- `strategy.u8`: the average strategy in the checkpoint’s slot layout, each info set rounded to multiples of 1/255 (half-even), so a bot divides each action’s byte by the node’s total; an info set training never reached stays all zero.
+- `trees.json`: both depth classes’ compiled trees, with the measures and stack-to-pot ratios the mapping uses. Node recomputes each tree’s SHA-256 from it and compares it with the manifest’s.
+- The card-table arrays a lookup needs, as flat little-endian files: `preflop.u16`, and for each post-flop street `<street>_board_class.i32`, `<street>_board_perm.u8` and `<street>.u16`.
+- `manifest.json`: the checkpoint (path, iteration, its manifest’s and strategy’s SHA-256s, settings, engine), the game layout, the table set (path, seed, its files’ SHA-256s and `table_set`, one SHA-256 over them as sorted compact JSON), each array’s dtype and shape, and every file’s SHA-256 and size.
+
+`loadBundle` reads every file into memory once, hashing it as it reads, and refuses a bundle with a missing, extra or changed file, a tree or layout that disagrees with the manifest, or, given `tableSet`, another card table set. Python reads a bundle back with `ServingBundle` and plays it with `BlueprintPolicy.from_bundle`, which is what the parity check compares against.
+
+Serving fixed one mapping bug the evaluation could not show: the tree’s seat 0 is the button, but the policy compared the tree’s player with the real seat number, so a bot in seat 1 holding the button found no node and checked or called every decision. P5.4’s matches always put the button in seat 0, so its reports are unaffected; a live table alternates the button. The policy now maps the button to the tree’s seat 0, and measures stacks and the opponent’s bet over the two players dealt in, so a bigger table with empty seats plays the same.
+
+`pnpm bots:parity` (from `web/`, also in CI) runs [`rivermind.bots.differential`](../rivermind/bots/differential.py) and checks, with the same deals and seeds, that the simple bots play 2,000 fuzz deals at 2 to 9 seats to byte-identical hand records, that the blueprint gives the same probabilities, statistics and hands over 2,000 decisions against each simple bot and itself, and that card buckets agree for every hole-card pair on 200 seeded boards a street. Without `--bundle` it checks a synthetic bundle: the real trees, random strategies with untrained info sets and nodes, and random card tables. `pnpm bots:bench -- --bundle DIR` times the blueprint’s decisions.
+
+```sh
+uv run --locked rivermind-poker blueprint export artifacts/blueprints/hu-m1-s0/checkpoints/000128000000 --out artifacts/bundles/hu-m1-s0-128m
+cd web && pnpm bots:parity -- --hands 2500 --bundle ../artifacts/bundles/hu-m1-s0-128m --tables ../artifacts/tables/hu-m1 --decisions 100000 --boards 1000
+cd web && pnpm bots:bench -- --bundle ../artifacts/bundles/hu-m1-s0-128m
+```
+
+On 2026-11-20, the 128-million-iteration checkpoint of `hu-m1-s0` exported in 12 s to a 450 MB bundle (`strategy.u8` `ec57ac6f…`, table set `4ff8b0ef…`). The long parity run above matched 20,000 simple-bot hands, all 100,002 blueprint decisions (identical probabilities, not merely within 1e-9; 99.9% trained, 630 re-entries, 48 lost) and the buckets on 1,000 boards a street against the original `.npy` tables, in 70 s. On this Mac (Node 26.13, load average about 40 from the training run) the bundle loads in 1 to 2 s and a blueprint decision takes 0.006 ms at the median, 0.04 ms at p95 and 0.46 ms at p99 over 20,003 decisions, with 443 MB of array buffers. P5.7a measures it on ubuntu-vm.
+
+The P5.4 reports evaluate the `float64` checkpoint; the bundle serves its rounding, which moves each probability by about half a level (1/510) before renormalizing. P5.5 should confirm the served rounding keeps the gate, for example by evaluating the bundle through `BlueprintPolicy.from_bundle`.
 
 ## 6-max and 9-max
 

@@ -29,6 +29,8 @@
 		"art": "node scripts/generate-pixel-art.js",
 		"engine:parity": "node scripts/engine-parity.ts",
 		"engine:bench": "node scripts/engine-bench.ts",
+		"bots:parity": "node scripts/bots-parity.ts",
+		"bots:bench": "node scripts/bots-bench.ts",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "node scripts/db-migrate.ts"
 	},
