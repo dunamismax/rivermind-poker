@@ -34,6 +34,13 @@ anyone who muted or blocked them, players report, mute and block each other
 by seat, quick seat keeps blocked players apart, and two people sitting at
 one table from the same network address are stored as a signal for review.
 
+Practice (P6.0b): ``POST /api/practice`` seats a guest heads-up against
+RiverMind Easy with a practice stack, whatever their wallet holds. Each guest
+has at most one practice table, which only they can follow and which is not
+listed. Its chips never come from or go back to the wallet, a guest who runs
+out gets a fresh practice stack, its hands are marked as practice, and an
+abandoned one is closed after ``PRACTICE_IDLE_SECONDS``.
+
 With a ``TableStore`` (P3.5) every table is saved to PostgreSQL after each
 change and before any socket hears of it, and the open tables are restored
 when the app starts. Nobody is connected to a restored table yet, so its
@@ -97,6 +104,14 @@ QUEUE_LIMIT = 512
 LIST_LIMIT = 100
 DEFAULT_BIG_BLIND = 100
 GONE = "That table no longer exists."
+PRACTICE_BOT = "heuristic"
+"""RiverMind Easy, the labelled bot a guest practises against (P6.0b)."""
+PRACTICE_BLINDS = (50, 100)
+PRACTICE_STACK = 10_000
+"""100 big blinds by default, given again whenever the guest runs out."""
+PRACTICE_IDLE_SECONDS = 3600.0
+"""A practice table nobody follows closes after this long without a change."""
+PRACTICE_REFUSED = "Practice chips are not from your wallet: start practice from the lobby."
 
 # Mirrors deploy/rivermindpoker.com.caddy, so the built client is tested
 # locally under the policy it gets in production.
@@ -168,7 +183,11 @@ class Server:
         wallet: Wallet | None = None,
         safety: SafetyStore | None = None,
         limits: Limits | None = None,
+        practice_stack: int = PRACTICE_STACK,
     ) -> None:
+        if type(practice_stack) is not int or practice_stack < PRACTICE_BLINDS[1]:
+            raise ValueError(f"a practice stack is a whole number of chips, at least {PRACTICE_BLINDS[1]}")
+        self.practice_stack = practice_stack
         self.secret = secret
         self.store = store
         if players is None:
@@ -198,6 +217,10 @@ class Server:
         """(table id, player id) -> open sockets following that table."""
         self.connections: set[Connection] = set()
         self._closing: set[str] = set()
+        self.practice: dict[str, str] = {}
+        """Guest id -> their practice table's id (P6.0b)."""
+        self._practice_locks: dict[str, tuple[asyncio.Lock, int]] = {}
+        """Guest id -> the lock serializing their practice starts, and how many requests hold or await it."""
 
     @property
     def tables(self) -> TableManager:
@@ -219,15 +242,18 @@ class Server:
         runner.listeners.append(self._watch_table)
 
     async def _cash_out(self, runner: TableRunner, events: Sequence[Event]) -> None:
-        """Without a database: pay departing chips back to the wallets."""
-        for credit in credits_for(runner.table_id, runner.table.drain_departures()):
+        """Without a database: pay departing chips back to the wallets (practice chips stay at the table)."""
+        departures = runner.table.drain_departures()
+        if runner.practice is not None:
+            return
+        for credit in credits_for(runner.table_id, departures):
             await asyncio.to_thread(self.wallet.credit, credit.player_id, credit.amount, credit.kind, credit.table_id)
 
     async def _remember_hands(self, runner: TableRunner, events: Sequence[Event]) -> None:
         """Without a database: keep finished hands for the players' hand histories (P4.6)."""
         assert self.memory_hands is not None
         for finished in runner.table.finished:
-            self.memory_hands.add(runner.table_id, runner.name, finished)
+            self.memory_hands.add(runner.table_id, runner.name, finished, practice=runner.practice is not None)
 
     # Wallets
 
@@ -256,6 +282,8 @@ class Server:
                 await asyncio.to_thread(store.close, saved.table_id)
                 continue
             restored += 1
+            if runner.practice is not None:
+                self.practice[runner.practice] = saved.table_id
             if not runner.has_people():
                 self._schedule_close(saved.table_id, "Everyone has left the table.")
                 continue
@@ -393,7 +421,8 @@ class Server:
         now = self.options.clock.now()
         for table_id, runner in list(self.tables.tables.items()):
             watched = any(key[0] == table_id for key in self.watchers)
-            if not watched and now - runner.last_active > self.idle_seconds:
+            idle = PRACTICE_IDLE_SECONDS if runner.practice is not None else self.idle_seconds
+            if not watched and now - runner.last_active > idle:
                 self._schedule_close(table_id, "The table closed after being idle.")
 
     async def buy_in_for(self, player_id: str, config: TableConfig, requested: int | None) -> int:
@@ -444,6 +473,66 @@ class Server:
             raise
         return runner.table_id, 0, invite
 
+    # Practice (P6.0b)
+
+    def practice_runner(self, player_id: str) -> TableRunner | None:
+        """The guest's practice table, while they still sit at it."""
+        table_id = self.practice.get(player_id)
+        runner = None if table_id is None else self.tables.get(table_id)
+        seat = None if runner is None or table_id in self._closing else runner.table.seat_of(player_id)
+        player = None if runner is None or seat is None else runner.table.seats[seat]
+        if player is None or player.leaving:
+            return None
+        return runner
+
+    async def start_practice(self, player: PlayerRecord) -> p.PracticeResponse:
+        """Seat the guest heads-up against RiverMind Easy with practice chips, or return the table they have."""
+        player_id = player.player_id
+        lock, users = self._practice_locks.get(player_id, (asyncio.Lock(), 0))
+        self._practice_locks[player_id] = (lock, users + 1)
+        try:
+            async with lock:
+                return await self._start_practice(player)
+        finally:
+            lock, users = self._practice_locks[player_id]
+            if users == 1:
+                del self._practice_locks[player_id]
+            else:
+                self._practice_locks[player_id] = (lock, users - 1)
+
+    async def _start_practice(self, player: PlayerRecord) -> p.PracticeResponse:
+        player_id = player.player_id
+        runner = self.practice_runner(player_id)
+        if runner is not None:
+            seat = runner.table.seat_of(player_id)
+            assert seat is not None
+            bots = [other.bot for _, other in runner.table.players() if other.bot is not None]
+            return p.PracticeResponse(
+                table_id=runner.table_id,
+                seat=seat,
+                created=False,
+                bot=bots[0] if bots else PRACTICE_BOT,
+                stack=runner.table.config.max_buy_in,
+            )
+        bot = PRACTICE_BOT if PRACTICE_BOT in self.bots else next(iter(self.bots))
+        self._evict()
+        if len(self.tables.tables) >= self.max_tables:
+            raise HTTPException(503, "Every table is in use; try again later.")
+        small, big = PRACTICE_BLINDS
+        stack = self.practice_stack
+        config = TableConfig(2, small, big, min_buy_in=stack, max_buy_in=stack)
+        name = f"Practice vs {BOT_LABELS.get(bot, bot)}"
+        lobby = {"fill": None, "private": True, "invite": None, "practice": player_id}
+        runner = self.tables.create(config, name=name, lobby=lobby)
+        try:
+            await runner.seat_bot(1, bot)
+            await runner.sit(0, player_id, player.handle, stack)
+        except BaseException:
+            self._schedule_close(runner.table_id, "The table could not be set up.")
+            raise
+        self.practice[player_id] = runner.table_id
+        return p.PracticeResponse(table_id=runner.table_id, seat=0, created=True, bot=bot, stack=stack)
+
     # The lobby (P4.3)
 
     def open_tables(self) -> list[TableRunner]:
@@ -458,12 +547,19 @@ class Server:
             raise HTTPException(404, GONE)
         return runner
 
+    def seating_runner(self, table_id: str, player_id: str, invite: str | None = None) -> TableRunner:
+        """A table the player may take a seat or wait at: not a practice table, which seats only its guest."""
+        runner = self.lobby_runner(table_id, player_id, invite)
+        if runner.practice is not None:
+            raise HTTPException(400, PRACTICE_REFUSED)
+        return runner
+
     def list_tables(
         self, player_id: str, seats: int | None, big_blind: int | None, open_only: bool, blocks: frozenset[str] = frozenset()
     ) -> list[p.TableSummary]:
         summaries = []
         for runner in self.open_tables():
-            if runner.private and not runner.is_member(player_id):
+            if runner.practice is not None or runner.private and not runner.is_member(player_id):
                 continue
             config = runner.table.config
             if seats is not None and config.seat_count != seats:
@@ -515,7 +611,7 @@ class Server:
         for runner in self.open_tables():
             table = runner.table
             config = table.config
-            if runner.private and not runner.is_member(player_id):
+            if runner.practice is not None or runner.private and not runner.is_member(player_id):
                 continue
             if request.seats is not None and config.seat_count != request.seats:
                 continue
@@ -591,6 +687,8 @@ class Server:
                     connection.send(p.TableClosedMessage(type="table_closed", table_id=table_id, message=message))
             for key in [key for key in self.watchers if key[0] == table_id]:
                 del self.watchers[key]
+            if runner is not None and runner.practice is not None and self.practice.get(runner.practice) == table_id:
+                del self.practice[runner.practice]
             self._signalled = {key for key in self._signalled if key[0] != table_id}
         finally:
             self._closing.discard(table_id)
@@ -598,7 +696,10 @@ class Server:
     @staticmethod
     def _seated_chips(runner: TableRunner) -> list[Credit]:
         table = runner.table
-        credits = credits_for(runner.table_id, table.drain_departures())
+        departures = table.drain_departures()
+        if runner.practice is not None:
+            return []  # practice chips never came from a wallet
+        credits = credits_for(runner.table_id, departures)
         for seat, player in table.players():
             chips = table.stack_of(seat) + player.pending_rebuy
             if not player.is_bot and chips > 0:
@@ -677,6 +778,8 @@ class Server:
             await self.unfollow(connection, table_id)
             connection.send(p.LeftTableMessage(type="left_table", table_id=table_id))
         elif isinstance(message, p.SitMessage):
+            if runner.practice is not None:
+                raise RequestError(p.ErrorCode.BAD_REQUEST, PRACTICE_REFUSED)
             await self.pay_in(player_id, message.buy_in, "buy_in", table_id)
             try:
                 await runner.sit(message.seat, player_id, connection.name, message.buy_in)
@@ -690,6 +793,10 @@ class Server:
         elif isinstance(message, p.SitInMessage):
             await runner.sit_in(player_id)
         elif isinstance(message, p.RebuyMessage):
+            if runner.practice is not None:
+                # A fresh practice stack, whatever amount was asked for; the wallet is not touched.
+                await runner.refill(player_id)
+                return
             await self.pay_in(player_id, message.amount, "rebuy", table_id)
             try:
                 await runner.rebuy(player_id, message.amount)
@@ -778,6 +885,7 @@ def create_app(
     safety: SafetyStore | None = None,
     limits: Limits | None = None,
     allowed_origins: Iterable[str] = (),
+    practice_stack: int = PRACTICE_STACK,
 ) -> FastAPI:
     """Build the no-limit table server.
 
@@ -789,7 +897,8 @@ def create_app(
     without one both live only in memory. Pages on ``allowed_origins``
     (such as ``https://example.com``) may use the API besides the server's
     own origin. ``limits`` are the app's rate limits (P4.5), ``Limits()`` by
-    default; ``safety.UNLIMITED`` turns them off for tests.
+    default; ``safety.UNLIMITED`` turns them off for tests. ``practice_stack``
+    is what a practice table gives (P6.0b).
     """
     if secret is None:
         log.warning("No secret given: sessions will not survive a restart")
@@ -807,6 +916,7 @@ def create_app(
         wallet,
         safety,
         limits if limits is not None else Limits(),
+        practice_stack,
     )
     limiters = server.limiters
     origins = frozenset(origin.rstrip("/") for origin in allowed_origins)
@@ -888,6 +998,7 @@ def create_app(
             seat_counts=list(range(2, 10)),
             stakes=[p.Stakes(small_blind=small, big_blind=big) for small, big in STAKES],
             reactions=[p.ReactionOption(kind=kind, text=text) for kind, text in REACTIONS.items()],
+            practice_stack=server.practice_stack,
         )
 
     @app.post("/api/session", response_model=p.SessionResponse, responses={403: {"model": p.HttpError}})
@@ -967,7 +1078,7 @@ def create_app(
     @app.post("/api/tables/{table_id}/seat", response_model=p.SeatResponse, responses=seating_errors)
     async def take_seat(table_id: str, body: p.SeatRequest, request: Request) -> p.SeatResponse:
         player = await player_of(request)
-        runner = server.lobby_runner(table_id, player.player_id, body.invite)
+        runner = server.seating_runner(table_id, player.player_id, body.invite)
         return await server.take_seat(player, runner, body.seat, body.buy_in, body.hold_only)
 
     @app.delete("/api/tables/{table_id}/seat", status_code=204, responses=seating_errors)
@@ -981,7 +1092,7 @@ def create_app(
     @app.post("/api/tables/{table_id}/waitlist", response_model=p.WaitlistResponse, responses=seating_errors)
     async def join_waitlist(table_id: str, body: p.WaitlistRequest, request: Request) -> p.WaitlistResponse:
         player = await player_of(request)
-        runner = server.lobby_runner(table_id, player.player_id, body.invite)
+        runner = server.seating_runner(table_id, player.player_id, body.invite)
         position = await server.join_waitlist(player, runner)
         return p.WaitlistResponse(table_id=table_id, position=position)
 
@@ -1000,6 +1111,12 @@ def create_app(
     async def quick_seat(body: p.QuickSeatRequest, request: Request) -> p.SeatResponse:
         player = await player_of(request)
         return await server.quick_seat(player, body)
+
+    @app.post("/api/practice", response_model=p.PracticeResponse, responses={code: {"model": p.HttpError} for code in (401, 503)})
+    async def practice(request: Request) -> p.PracticeResponse:
+        """Start the guest's practice table, heads-up against RiverMind Easy, or return the one they have (P6.0b)."""
+        player = await player_of(request)
+        return await server.start_practice(player)
 
     @app.get("/api/hands", response_model=p.HandListResponse, responses={401: {"model": p.HttpError}})
     async def hands(request: Request, limit: int = 20, before: str | None = None) -> p.HandListResponse:

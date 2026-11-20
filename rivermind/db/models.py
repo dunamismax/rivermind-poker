@@ -11,7 +11,8 @@ chips have no cash value). Reports, mutes and blocks between players and
 collusion signals (P4.5, migration ``0004``) are kept for review; signals hold
 keyed hashes of network addresses, never the addresses. Each finished hand
 lists who played each seat (P4.6, migration ``0005``), so players can find the
-hands they played.
+hands they played. A guest's practice table is marked (P6.0b, migration
+``0006``), so its hands stay out of competitive stats.
 """
 
 from __future__ import annotations
@@ -176,6 +177,8 @@ class PokerTable(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="open")
     state: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     state_format: Mapped[int | None] = mapped_column(Integer)
+    practice: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    """A guest's practice table (P6.0b): no wallet chips, and its hands stay out of competitive stats."""
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = _now()
 

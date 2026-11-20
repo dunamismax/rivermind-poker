@@ -9,6 +9,7 @@ import type {
 	HttpError,
 	NewTableRequest,
 	NewTableResponse,
+	PracticeResponse,
 	QuickSeatRequest,
 	RelationKind,
 	RelationsResponse,
@@ -101,6 +102,20 @@ export async function createTable(
 		throw new ApiError('Unexpected /api/tables response', 201);
 	}
 	return value as unknown as NewTableResponse;
+}
+
+/**
+ * The player's practice table (P6.0b): heads-up against a labelled bot with
+ * practice chips, whatever the wallet holds. Asking again returns the same table.
+ */
+export async function startPractice(fetcher: typeof fetch = fetch): Promise<PracticeResponse> {
+	const value = await body(
+		await fetcher('/api/practice', { method: 'POST', credentials: 'same-origin' })
+	);
+	if (!isRecord(value) || typeof value.table_id !== 'string' || typeof value.seat !== 'number') {
+		throw new ApiError('Unexpected /api/practice response', 200);
+	}
+	return value as unknown as PracticeResponse;
 }
 
 /** The session's play-chip balance and its newest ledger entries. */

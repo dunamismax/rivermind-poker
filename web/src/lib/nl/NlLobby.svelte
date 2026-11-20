@@ -42,6 +42,23 @@
 	let starting = $state(false);
 	let error = $state('');
 
+	let practising = $state(false);
+	let practiceError = $state('');
+
+	// Practice (P6.0b): one click to a heads-up hand against RiverMind Easy,
+	// with practice chips, whatever the wallet holds.
+	async function practice() {
+		practising = true;
+		practiceError = '';
+		try {
+			await connection.practice();
+		} catch (e) {
+			practiceError = `Could not start practice: ${e instanceof Error ? e.message : String(e)}`;
+		} finally {
+			practising = false;
+		}
+	}
+
 	let invited = $state<TableSummary | null>(null);
 	let inviteError = $state('');
 	let joining = $state(false);
@@ -122,6 +139,24 @@
 			Play money only: chips can never be bought, sold or cashed out, and have no value. Every bot
 			is labelled as a bot.
 		</p>
+		<section class="practice px-panel" aria-labelledby="practice-title">
+			<h3 id="practice-title" class="visually-hidden">Practice</h3>
+			<button
+				type="button"
+				class="px-btn amber practice-start"
+				disabled={practising}
+				onclick={practice}
+			>
+				{practising ? 'Dealing…' : 'Practice vs bots'}
+			</button>
+			<p class="note">
+				Heads-up against the RiverMind Easy bot with {(
+					config?.practice_stack ?? 10000
+				).toLocaleString('en-US')} practice chips. Your wallet is not touched, and you get a fresh stack
+				whenever you run out.
+			</p>
+			{#if practiceError}<p class="error" role="alert">{practiceError}</p>{/if}
+		</section>
 		{#if balance !== null}
 			<p class="wallet px-inset" role="status" aria-live="polite">
 				<span class="label">Your play chips</span>
@@ -311,6 +346,20 @@
 	}
 	.closed {
 		padding: 6px 10px;
+	}
+	.practice {
+		display: grid;
+		gap: 8px;
+		padding: 12px 14px;
+	}
+	.practice-start {
+		min-height: 64px;
+		font-size: var(--fs-l);
+		width: 100%;
+	}
+	.practice .note {
+		color: var(--mist);
+		font-size: var(--fs-s);
 	}
 	.wallet {
 		display: grid;

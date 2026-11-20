@@ -73,7 +73,7 @@ def test_alembic_command_line(empty_database: str) -> None:
             [sys.executable, "-m", "alembic", *args], cwd=ROOT, env=env, capture_output=True, text=True, check=False
         )
         assert done.returncode == 0, done.stderr
-    assert "0005" in subprocess.run(
+    assert "0006" in subprocess.run(
         [sys.executable, "-m", "alembic", "current"], cwd=ROOT, env=env, capture_output=True, text=True, check=True
     ).stdout
 

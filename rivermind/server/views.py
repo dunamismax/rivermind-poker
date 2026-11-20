@@ -203,6 +203,7 @@ def table_view(runner: TableRunner, player_id: str) -> p.TableView:
         invite=runner.invite,
         holds=[seat_hold(seat, hold) for seat, hold in sorted(table.reservations.items())],
         waitlist=len(table.waitlist),
+        practice=runner.practice is not None,
     )
 
 
@@ -268,6 +269,7 @@ def _summary(played: PlayedHand, state: HandState, seat: int) -> p.HandSummary:
         pot=sum(pot.amount for pot in result.pots),
         net=state.stacks[seat] - (state.starting_stacks[seat] or 0),
         showdown=result.showdown,
+        practice=played.practice,
     )
 
 

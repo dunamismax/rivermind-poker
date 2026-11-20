@@ -119,6 +119,10 @@ function setup(saved = true, tableStatus = 201) {
 		}
 		if (url === '/api/reports')
 			return new Response(JSON.stringify({ recorded: true }), { status: 201 });
+		if (url === '/api/practice') {
+			const practice = { table_id: 'tp', seat: 0, created: true, bot: 'heuristic', stack: 10000 };
+			return new Response(JSON.stringify(practice));
+		}
 		if (url === '/api/quick-seat') {
 			const hold = { seat: 1, name: 'Quiet Heron 42', ready: false, until: null };
 			return new Response(JSON.stringify({ table_id: 't3', seat: 1, seated: false, hold }));
@@ -364,6 +368,34 @@ describe('NlConnection', () => {
 		await connection.newTable({ seats: 2 });
 		expect(requests.filter((r) => r.url === '/api/session')).toHaveLength(1);
 		expect(sockets.at(-2)?.closed).toBe(true); // the old socket was closed
+	});
+
+	it('practises in one request, keeps the practice table and refills only there', async () => {
+		const { connection, sockets, requests, storage } = setup(false);
+		await connection.start();
+		await connection.practice();
+		const call = requests.find((r) => r.url === '/api/practice');
+		expect(call?.init?.method).toBe('POST');
+		expect(connection.tableId).toBe('tp');
+		expect(JSON.parse(storage.getItem(TABLE_KEY) ?? 'null')).toBe('tp');
+		const socket = sockets[0];
+		socket.open();
+		// Asking again while there keeps the same socket.
+		await connection.practice();
+		expect(sockets).toHaveLength(1);
+		const regular = { ...view(4, false), table_id: 'tp' };
+		socket.receive({ type: 'table', table_id: 'tp', view: regular, events: [] });
+		expect(connection.refill()).toBe(false);
+		socket.receive({
+			type: 'table',
+			table_id: 'tp',
+			view: { ...regular, practice: true },
+			events: []
+		});
+		expect(connection.refill()).toBe(true);
+		expect(socket.sent.at(-1)).toEqual({ type: 'rebuy', table_id: 'tp', amount: 10000 });
+		// The wallet is never read for practice.
+		expect(requests.filter((r) => r.url === '/api/wallet')).toHaveLength(0);
 	});
 
 	it('starts a new session and retries when the old one has ended', async () => {

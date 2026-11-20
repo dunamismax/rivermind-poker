@@ -180,6 +180,11 @@
 				Invite
 			</button>
 		{/if}
+		{#if view.practice}
+			<span class="practice-tag" title="Practice chips: your wallet is not touched">
+				Practice
+			</span>
+		{/if}
 		<div class="meta">
 			{#if hand}Hand #{hand.hand_no} · {hand.street}{:else}Waiting for players{/if}
 		</div>
@@ -420,6 +425,18 @@
 				disabled={!connection.connected || connection.pending}
 				onact={(action, amount) => connection.act(action, amount)}
 			/>
+		{:else if busted && view.practice}
+			<div class="waiting refill px-inset" role="group" aria-label="Out of practice chips">
+				<p role="status">You are out of practice chips.</p>
+				<button
+					type="button"
+					class="px-btn amber"
+					disabled={!connection.connected}
+					onclick={() => connection.refill()}
+				>
+					Play again with {view.settings.max_buy_in.toLocaleString('en-US')} chips
+				</button>
+			</div>
 		{:else}
 			<p class="waiting px-inset" role="status">
 				{#if busted}
@@ -448,7 +465,7 @@
 					Sit out next hand
 				</button>
 			{/if}
-			{#if rebuyRoom > 0 && !me.leaving}
+			{#if rebuyRoom > 0 && !me.leaving && !view.practice}
 				<form
 					class="rebuy"
 					onsubmit={(e) => {
@@ -746,6 +763,18 @@
 		text-align: center;
 		color: var(--mist);
 		padding: 0 12px;
+	}
+	.refill {
+		gap: 8px;
+		padding: 8px 12px;
+	}
+	.practice-tag {
+		padding: 2px 8px;
+		color: var(--ink);
+		background: var(--gold);
+		box-shadow: 0 var(--px) 0 var(--amber-deep);
+		font-size: var(--fs-s);
+		white-space: nowrap;
 	}
 	.tools {
 		grid-area: tools;

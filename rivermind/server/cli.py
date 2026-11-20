@@ -41,6 +41,12 @@ def load_secret(secret_file: str | None) -> bytes | None:
 @click.option("--hand_pause", default=3.0, show_default=True, help="Seconds between hands.")
 @click.option("--bot_delay", default=0.6, show_default=True, help="Seconds a bot waits before acting.")
 @click.option(
+    "--practice_stack",
+    default=10_000,
+    show_default=True,
+    help="Chips a practice table gives at 50/100, and again whenever the guest runs out (P6.0b).",
+)
+@click.option(
     "--database_url",
     envvar="DATABASE_URL",
     default=None,
@@ -66,6 +72,7 @@ def serve_nl(
     max_tables: int,
     hand_pause: float,
     bot_delay: float,
+    practice_stack: int,
     database_url: str | None,
     allowed_origins: tuple[str, ...],
     client_dir: str | None,
@@ -94,6 +101,7 @@ def serve_nl(
         client_dir=client_dir,
         store=store,
         allowed_origins=allowed_origins,
+        practice_stack=practice_stack,
     )
     uvicorn.run(app, host=host, port=port, log_level="info", ws_max_size=64 * 1024, server_header=False)
 

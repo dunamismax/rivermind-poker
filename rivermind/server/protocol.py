@@ -332,6 +332,11 @@ class TableView(_Model):
     invite: str | None = Field(description="A private table's invite code, for its people to share.")
     holds: list[SeatHold]
     waitlist: int = Field(description="Players waiting for a seat.")
+    practice: bool = Field(
+        default=False,
+        description="A practice table (P6.0b): its chips are not from the wallet, and a player who runs out "
+        "gets a fresh practice stack with a `rebuy` message.",
+    )
 
 
 # HTTP
@@ -360,6 +365,9 @@ class ConfigResponse(_Model):
     seat_counts: list[int]
     stakes: list[Stakes]
     reactions: list[ReactionOption] = Field(description="The preset reactions, in the order to offer them.")
+    practice_stack: int = Field(
+        default=10_000, description="The chips `POST /api/practice` gives, and gives again whenever the guest runs out."
+    )
 
 
 class SessionRequest(_Model):
@@ -428,6 +436,20 @@ class NewTableResponse(_Model):
     table_id: str
     seat: int
     invite: str | None = Field(default=None, description="A private table's invite code.")
+
+
+class PracticeResponse(_Model):
+    """`POST /api/practice`: the guest's practice table, heads-up against a labelled bot (P6.0b).
+
+    The guest sits with a practice stack that never comes from or goes back to the wallet.
+    Asking again while seated there returns the same table.
+    """
+
+    table_id: str
+    seat: int
+    created: bool = Field(description="False when the guest's practice table was already running.")
+    bot: str = Field(description="The kind of bot in the other seat.")
+    stack: int = Field(description="The practice stack, given again whenever the guest runs out.")
 
 
 class TableSummary(_Model):
@@ -553,6 +575,7 @@ class HandSummary(_Model):
     pot: int = Field(description="Chips in the pots at the end.")
     net: int = Field(description="Chips the viewer won (positive) or lost.")
     showdown: bool
+    practice: bool = Field(default=False, description="Played with practice chips; left out of competitive stats.")
 
 
 class HandListResponse(_Model):
@@ -750,6 +773,7 @@ MODELS: list[type[BaseModel]] = [
     WalletResponse,
     NewTableRequest,
     NewTableResponse,
+    PracticeResponse,
     TableListResponse,
     TableSummary,
     SeatRequest,

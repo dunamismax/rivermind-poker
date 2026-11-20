@@ -48,6 +48,8 @@ export interface ConfigResponse {
 	stakes: Stakes[];
 	/** The preset reactions, in the order to offer them. */
 	reactions: ReactionOption[];
+	/** The chips `POST /api/practice` gives, and gives again whenever the guest runs out. */
+	practice_stack?: number;
 }
 
 /** Stable codes clients branch on. */
@@ -151,6 +153,8 @@ export interface HandSummary {
 	/** Chips the viewer won (positive) or lost. */
 	net: number;
 	showdown: boolean;
+	/** Played with practice chips; left out of competitive stats. */
+	practice?: boolean;
 }
 
 /** Must be the first message on a socket. */
@@ -243,6 +247,23 @@ export interface PotResult {
 	winners: number[];
 	/** Chips each winner took, in the order of winners. */
 	shares: number[];
+}
+
+/**
+ * `POST /api/practice`: the guest's practice table, heads-up against a labelled bot (P6.0b).
+ *
+ * The guest sits with a practice stack that never comes from or goes back to the wallet.
+ * Asking again while seated there returns the same table.
+ */
+export interface PracticeResponse {
+	table_id: string;
+	seat: number;
+	/** False when the guest's practice table was already running. */
+	created: boolean;
+	/** The kind of bot in the other seat. */
+	bot: string;
+	/** The practice stack, given again whenever the guest runs out. */
+	stack: number;
 }
 
 /** `POST /api/quick-seat`: a seat at the busiest matching public table, or a new table with bots. */
@@ -537,6 +558,8 @@ export interface TableView {
 	holds: SeatHold[];
 	/** Players waiting for a seat. */
 	waitlist: number;
+	/** A practice table (P6.0b): its chips are not from the wallet, and a player who runs out gets a fresh practice stack with a `rebuy` message. */
+	practice?: boolean;
 }
 
 /** The clock of the seat to act, in seconds since the epoch on the server. */

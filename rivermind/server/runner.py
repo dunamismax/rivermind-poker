@@ -26,6 +26,10 @@ private, its invite code, and the kind of bot that ``fill`` puts in empty
 seats. After every change the runner settles held seats (rule 2.4) and, while
 a person is at the table, fills each free seat nobody is waiting for with a
 bot. It wakes when a hold runs out as it does for a turn's deadline.
+
+A practice table (P6.0b) belongs to one guest, named by ``practice``. Its
+chips never come from or go back to a wallet: ``refill`` gives a guest who
+ran out a fresh practice stack.
 """
 
 from __future__ import annotations
@@ -88,6 +92,7 @@ class TableRunner:
         fill: str | None = None,
         private: bool = False,
         invite: str | None = None,
+        practice: str | None = None,
     ) -> None:
         self.table_id = table_id
         self.table = table
@@ -99,6 +104,8 @@ class TableRunner:
         self.private = private
         """Private tables are not listed; people join them with ``invite``."""
         self.invite = invite
+        self.practice = practice
+        """The guest a practice table belongs to (P6.0b), or ``None`` for a wallet-backed table."""
         self.bots = dict(bots)
         self.options = options or RunnerOptions()
         self.rng = self.options.rng_factory()
@@ -144,7 +151,10 @@ class TableRunner:
 
     def lobby_state(self) -> dict[str, object]:
         """The lobby settings, saved with the table's snapshot (P4.3)."""
-        return {"fill": self.fill, "private": self.private, "invite": self.invite}
+        state: dict[str, object] = {"fill": self.fill, "private": self.private, "invite": self.invite}
+        if self.practice is not None:
+            state["practice"] = self.practice
+        return state
 
     def is_member(self, player_id: str) -> bool:
         """Whether the player is seated, holds a seat or is waiting here."""
@@ -215,6 +225,21 @@ class TableRunner:
 
     async def rebuy(self, player_id: str, amount: int) -> None:
         await self._change(lambda: self.table.rebuy(player_id, amount))
+
+    async def refill(self, player_id: str) -> None:
+        """At a practice table: a fresh practice stack for a player who ran out of chips."""
+
+        def apply() -> None:
+            seat = self.table.seat_of(player_id)
+            if self.practice is None:
+                raise TableError(ErrorCode.BAD_REQUEST, "only practice tables refill for free")
+            if seat is None:
+                raise TableError(ErrorCode.NOT_SEATED, f"{player_id} is not seated here")
+            if self.table.in_hand(seat) or self.table.stack_of(seat) > 0:
+                raise TableError(ErrorCode.BAD_REQUEST, "practice chips refill once you run out")
+            self.table.rebuy(player_id, self.table.config.max_buy_in)
+
+        await self._change(apply)
 
     async def act(self, player_id: str, action: Action, seq: int | None = None) -> None:
         def apply() -> None:
@@ -429,7 +454,7 @@ class TableManager:
         if missing:
             raise ValueError(f"table {table_id} has bots this server does not run: {sorted(missing)}")
         lobby = lobby or {}
-        fill, invite = lobby.get("fill"), lobby.get("invite")
+        fill, invite, practice = lobby.get("fill"), lobby.get("invite"), lobby.get("practice")
         runner = TableRunner(
             table_id,
             table,
@@ -439,6 +464,7 @@ class TableManager:
             fill=fill if isinstance(fill, str) else None,
             private=lobby.get("private") is True,
             invite=invite if isinstance(invite, str) else None,
+            practice=practice if isinstance(practice, str) else None,
         )
         runner.adopt_bots()
         self.tables[table_id] = runner

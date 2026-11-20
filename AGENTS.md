@@ -62,6 +62,8 @@ Socket tests of the table server (`test/server/test_protocol_v2.py`) run with a 
 
 In the browser tests, the turn’s action panel opens above the table controls and pushes them down. Wait for the `Your action` group before clicking a button below it, or the click can land where the button was. The lobby lists every open table on the test server, each with its own “Sit down”, and has its own “Blinds” filter, so reach the new-table form through `newTableForm()` and a listed table through its `li[data-table]` row.
 
+Practice tables (P6.0b) never touch the wallet: `runner.practice` names the guest, and every place that pays chips out (`TableSaver`, `_cash_out`, `_seated_chips`) skips them. RiverMind Easy folds to almost every raise, so a guest who shoves or folds rarely busts. The browser tests' server runs `--practice_stack 300`, and a test that needs a bust checks or calls every turn: in a 40-seed simulation that busted every guest within 94 hands.
+
 `create_app` applies the app's rate limits (P4.5) by default. Tests that send requests faster than people could pass `limits=safety.UNLIMITED`; a `Server` built directly has no limits.
 
 When the browser pane is hidden, the page runs in the background and CSS animations stay on their first frame, so an element with an entrance animation (a reaction bubble, a win label) looks invisible. Finish them with `document.getAnimations()` before judging a screenshot.

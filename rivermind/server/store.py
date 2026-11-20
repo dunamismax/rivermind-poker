@@ -16,7 +16,9 @@ and the next save catches up, finished hands included.
 
 Chips that leave a table for a wallet (P4.2) are paid in the same
 transaction as the save that took them off the table, so a crash can never
-pay them twice or lose them.
+pay them twice or lose them. A practice table (P6.0b) pays nothing: its
+chips never came from a wallet. Its row is marked ``practice``, so its hands
+stay out of competitive stats.
 """
 
 from __future__ import annotations
@@ -101,6 +103,7 @@ class TableStore:
         save, and ``credits`` the chips people took away since then.
         """
         config = state["config"]
+        lobby = state.get("lobby") or {}
         with self.engine.begin() as conn:
             _pay(conn, credits)
             table_row = insert(PokerTable).values(
@@ -115,6 +118,7 @@ class TableStore:
                 status="open",
                 state=state,
                 state_format=SNAPSHOT_FORMAT,
+                practice=isinstance(lobby.get("practice"), str),
             )
             conn.execute(
                 table_row.on_conflict_do_update(
@@ -259,7 +263,9 @@ class TableSaver:
         for finished in table.drain_finished():
             final = finished.state
             self.pending.append(FinishedHand(finished.hand_no, final.button, hand_record(final), seat_records(finished)))
-        self.credits.extend(credits_for(runner.table_id, table.drain_departures()))
+        departures = table.drain_departures()
+        if runner.practice is None:
+            self.credits.extend(credits_for(runner.table_id, departures))
         state = table_to_dict(table)
         state["lobby"] = runner.lobby_state()
         current = (table.hand_no, table.hand.button) if table.hand is not None else None

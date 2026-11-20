@@ -31,13 +31,13 @@ rivermindpoker.com {
 		max_size 16KB
 	}
 
-	# New players (made by POST /api/session on a first visit) and tables are
-	# cheap but stored; slow down scripted creation.
+	# New players (made by POST /api/session on a first visit), tables and
+	# practice tables (P6.0b) are cheap but stored; slow down scripted creation.
 	rate_limit {
 		zone new_tables {
 			match {
 				method POST
-				path /api/tables /api/session
+				path /api/tables /api/session /api/practice
 			}
 			key {remote_host}
 			events 30

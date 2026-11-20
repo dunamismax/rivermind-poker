@@ -101,7 +101,8 @@
 				<button type="button" class="px-btn small" onclick={close}>Close</button>
 			</div>
 			<p class="meta">
-				{when(open.hand.at)} · Blinds {open.hand.small_blind}/{open.hand.big_blind} · Pot {open.hand.pot.toLocaleString(
+				{#if open.hand.practice}Practice chips ·
+				{/if}{when(open.hand.at)} · Blinds {open.hand.small_blind}/{open.hand.big_blind} · Pot {open.hand.pot.toLocaleString(
 					'en-US'
 				)}
 			</p>
@@ -158,7 +159,9 @@
 							onclick={() => show(hand.hand_id)}
 						>
 							<span class="title">{hand.table_name} · hand #{hand.hand_no}</span>
-							<span class="when">{when(hand.at)}</span>
+							<span class="when">
+								{#if hand.practice}<span class="tag gold first">Practice</span>{/if}{when(hand.at)}
+							</span>
 							<span class="cards card-peek" aria-hidden="true">
 								{#each hand.cards as card (`${card.rank}${card.suit}`)}<PlayingCard {card} />{/each}
 							</span>
@@ -294,6 +297,9 @@
 	.tag.gold {
 		color: var(--ink);
 		background: var(--gold);
+	}
+	.tag.first {
+		margin: 0 6px 0 0;
 	}
 	.hidden-cards {
 		font-size: var(--fs-s);

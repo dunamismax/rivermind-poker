@@ -14,6 +14,10 @@
 // bot is finishing its hand) is held, and the page sits in it as soon as the
 // table says it is ready.
 //
+// Practice (P6.0b): one request seats the player heads-up against RiverMind
+// Easy with practice chips, whatever the wallet holds, and asking again
+// returns the same table. A `rebuy` there refills a player who ran out.
+//
 // Safety (P4.5): seated people send preset reactions, which show beside their
 // seat for a few seconds, and anyone can mute, block or report the person in
 // a seat. The server leaves out reactions from muted and blocked players.
@@ -45,6 +49,7 @@ import {
 	removeRelation,
 	reportSeat,
 	setRelation,
+	startPractice,
 	startSession,
 	takeSeat
 } from './api.ts';
@@ -209,6 +214,20 @@ export class NlConnection {
 		this.#autoSit = null;
 		this.#follow(created.table_id);
 		void this.refreshBalance();
+	}
+
+	/** Practise heads-up against RiverMind Easy, at the player's practice table. */
+	async practice(): Promise<void> {
+		const started = await this.#withSession(() => startPractice(this.#fetch));
+		this.#autoSit = null;
+		if (this.tableId !== started.table_id || !this.#socket) this.#follow(started.table_id);
+	}
+
+	/** A fresh practice stack, for a player out of chips at a practice table. */
+	refill(): boolean {
+		const view = this.view;
+		if (!view?.practice) return false;
+		return this.rebuy(view.settings.max_buy_in);
 	}
 
 	/** A seat at the busiest matching table, or a new table with bots. */

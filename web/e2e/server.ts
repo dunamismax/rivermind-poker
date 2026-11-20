@@ -27,7 +27,10 @@ export class TableServer {
 			'--hand_pause',
 			'0.4',
 			'--bot_delay',
-			'0.05'
+			'0.05',
+			// A short practice stack, so a guest who calls every bet runs out within a minute or two.
+			'--practice_stack',
+			'300'
 		];
 	}
 

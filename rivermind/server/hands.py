@@ -6,6 +6,8 @@ to ``hand_players`` beside the hand's replayable history, and
 ``DatabaseHands`` reads them back. Without one, ``MemoryHands`` keeps the
 newest hands in memory. Either way a player is shown only hands they were
 dealt into, and ``views.hand_detail`` leaves out every card they may not see.
+Hands from a practice table (P6.0b) are marked ``practice``, to label them and
+to keep them out of competitive stats.
 """
 
 from __future__ import annotations
@@ -52,6 +54,8 @@ class PlayedHand:
     record: dict[str, Any]
     """The ``history.hand_record`` document."""
     seats: tuple[HandSeatRecord, ...]
+    practice: bool = False
+    """Played at a practice table (P6.0b), so not counted in competitive stats."""
 
     def seat_of(self, player_id: str) -> int | None:
         return next((s.seat for s in self.seats if s.player_id == player_id), None)
@@ -88,13 +92,20 @@ class MemoryHands:
         self._next = 1
         self._lock = threading.Lock()
 
-    def add(self, table_id: str, table_name: str, finished: Finished) -> PlayedHand:
+    def add(self, table_id: str, table_name: str, finished: Finished, practice: bool = False) -> PlayedHand:
         seats = seat_records(finished)
         with self._lock:
             hand_id = self._next
             self._next += 1
             hand = PlayedHand(
-                str(hand_id), table_id, table_name, finished.hand_no, time.time(), hand_record(finished.state), seats
+                str(hand_id),
+                table_id,
+                table_name,
+                finished.hand_no,
+                time.time(),
+                hand_record(finished.state),
+                seats,
+                practice,
             )
             self._hands[hand_id] = hand
             for seat in seats:
@@ -134,7 +145,9 @@ class DatabaseHands:
             return []
         with self.engine.connect() as conn:
             rows = conn.execute(
-                select(Hand.id, Hand.table_id, PokerTable.name, Hand.hand_no, Hand.ended_at, HandHistory.record)
+                select(
+                    Hand.id, Hand.table_id, PokerTable.name, Hand.hand_no, Hand.ended_at, HandHistory.record, PokerTable.practice
+                )
                 .join(HandHistory, HandHistory.hand_id == Hand.id)
                 .join(PokerTable, PokerTable.id == Hand.table_id)
                 .where(Hand.id.in_(hand_ids))
@@ -163,8 +176,9 @@ class DatabaseHands:
                 ended_at.timestamp() if ended_at is not None else 0.0,
                 record,
                 tuple(seats.get(hand_id, ())),
+                practice,
             )
-            for hand_id, table_id, name, hand_no, ended_at, record in rows
+            for hand_id, table_id, name, hand_no, ended_at, record, practice in rows
         }
         return [found[i] for i in hand_ids if i in found]
 
