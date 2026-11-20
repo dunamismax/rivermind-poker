@@ -20,6 +20,7 @@ the depth classes, which iterations prune and every sampled action.
 
 from __future__ import annotations
 
+import itertools
 import random
 from dataclasses import dataclass
 
@@ -82,8 +83,9 @@ def run_chunk(game: Game, regrets: np.ndarray, dealer: Dealer, chunk: Chunk) -> 
         )
         for t in game.trees
     ]
-    dr: dict[int, float] = {}
-    ds: dict[int, float] = {}
+    # Changes by info set: its first slot, then one entry per action.
+    dr: dict[int, list[float]] = {}
+    ds: dict[int, list[float]] = {}
     dr_get = dr.get
     ds_get = ds.get
     threshold = chunk.prune_threshold
@@ -111,10 +113,12 @@ def run_chunk(game: Game, regrets: np.ndarray, dealer: Dealer, chunk: Chunk) -> 
         kids = children[v]
         na = len(kids)
         r = regrets[slot : slot + na].tolist()
+        mine = dr_get(slot)
+        if mine is not None:
+            for i in range(na):
+                r[i] += mine[i]
         total = 0.0
-        for i in range(na):
-            x = r[i] + dr_get(slot + i, 0.0)
-            r[i] = x
+        for x in r:
             if x > 0:
                 total += x
         if total > 0:
@@ -137,15 +141,19 @@ def run_chunk(game: Game, regrets: np.ndarray, dealer: Dealer, chunk: Chunk) -> 
                     u = walk(c)
                 values.append(u)
                 node += sigma[i] * u
+            if mine is None:
+                mine = dr[slot] = [0.0] * na
             for i in range(na):
                 u = values[i]
                 if u is not None:
-                    k = slot + i
-                    dr[k] = dr_get(k, 0.0) + (u - node)
+                    mine[i] += u - node
             return node
-        for i in range(na):
-            k = slot + i
-            ds[k] = ds_get(k, 0.0) + sigma[i]
+        sums = ds_get(slot)
+        if sums is None:
+            ds[slot] = sigma
+        else:
+            for i in range(na):
+                sums[i] += sigma[i]
         x = rnd()
         a = na - 1
         acc = 0.0
@@ -172,9 +180,24 @@ def run_chunk(game: Game, regrets: np.ndarray, dealer: Dealer, chunk: Chunk) -> 
 
     return ChunkResult(
         index=chunk.index,
-        regret_slots=np.fromiter(dr.keys(), dtype=np.int64, count=len(dr)),
-        regret_deltas=np.rint(np.fromiter(dr.values(), dtype=np.float64, count=len(dr))).astype(np.int64),
-        strategy_slots=np.fromiter(ds.keys(), dtype=np.int64, count=len(ds)),
-        strategy_deltas=np.fromiter(ds.values(), dtype=np.float64, count=len(ds)),
+        regret_slots=_slots(dr),
+        regret_deltas=np.rint(_values(dr)).astype(np.int64),
+        strategy_slots=_slots(ds),
+        strategy_deltas=_values(ds),
         nodes=visited,
     )
+
+
+def _slots(changes: dict[int, list[float]]) -> np.ndarray:
+    """Every slot of the changed info sets, in the order they were first changed."""
+    if not changes:
+        return np.zeros(0, dtype=np.int64)
+    firsts = np.fromiter(changes.keys(), dtype=np.int64, count=len(changes))
+    sizes = np.fromiter((len(v) for v in changes.values()), dtype=np.int64, count=len(changes))
+    return np.repeat(firsts, sizes) + (np.arange(int(sizes.sum())) - np.repeat(np.cumsum(sizes) - sizes, sizes))
+
+
+def _values(changes: dict[int, list[float]]) -> np.ndarray:
+    if not changes:
+        return np.zeros(0, dtype=np.float64)
+    return np.fromiter(itertools.chain.from_iterable(changes.values()), dtype=np.float64)
