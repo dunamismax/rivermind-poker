@@ -94,14 +94,19 @@ export async function playUntil(
 	const fold = panel.getByRole('button', { name: 'Fold' });
 	const deadline = Date.now() + timeoutMs;
 	while (!(await done()) && Date.now() < deadline) {
-		if (await call.isVisible()) {
+		// After an action the panel stays up, disabled, until the table answers. Deciding then
+		// would read the last turn's button, and the click would wait and land on the next
+		// turn's (a bot's big bet), so decide only on an enabled button.
+		if ((await call.isVisible()) && (await call.isEnabled().catch(() => false))) {
 			// Bounded, like the click: the turn (and the button) can end between the two calls.
-			const label = await call.textContent({ timeout: 1000 }).catch(() => null);
-			if (label === null) continue;
+			const label = (await call.textContent({ timeout: 1000 }).catch(() => null))?.trim();
+			if (!label) continue;
 			const amount = Number(/(\d+)$/.exec(label)?.[1] ?? 0);
 			const big = amount > 1000 && (await fold.isVisible());
-			// A short timeout: the turn may end as we click, and the button with it.
-			await (big ? fold : call).click({ timeout: 1000 }).catch(() => {});
+			// Click the very button decided on: if the turn moves on first, its label changes,
+			// nothing matches, and the short timeout lets the next pass decide again.
+			const target = big ? fold : panel.getByRole('button', { name: label, exact: true });
+			await target.click({ timeout: 1000 }).catch(() => {});
 		} else {
 			await page.waitForTimeout(100);
 		}
