@@ -20,6 +20,9 @@ test('two people and a bot play on through a disconnect', async ({
 	browser,
 	cspViolations
 }) => {
+	// Four hands with two people take about 50 s in WebKit on CI's runners, close to the
+	// default 60 s, so the test gets the time its own waits allow (60 s and 90 s of play).
+	test.setTimeout(180_000);
 	await sitDown(page, 3);
 	const tableId = await tableIdOf(page);
 	const bob = await stranger(browser);
