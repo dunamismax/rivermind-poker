@@ -193,12 +193,26 @@ def test_an_abandoned_practice_table_closes_when_the_server_needs_room() -> None
         alice, bob = Player(client), Player(client)
         old = practice(alice)["table_id"]
         runner = server_runner(client, old)
+        guest = runner.table.seats[0]
+        assert guest is not None and guest.bot is None
+
+        def quiet() -> bool:
+            return guest.sitting_out and not runner.table.hand_in_progress
+
+        def guests_turn() -> bool:
+            turn = runner.table.turn
+            return turn is not None and turn.seat == 0 and turn.final > runner.options.clock.now()
+
         # Nobody follows the table: the guest times out until they are sat out, and then it goes quiet.
+        # Each step waits for the guest's own turn first. Moving the clock while the bot's thread is
+        # still deciding would time the bot out instead, and a hand the bot folds without the guest
+        # timing out resets the guest's absences (they count as connected), so under load the test
+        # could run out of steps (CI on 36201aa).
         for _ in range(50):
-            if runner.table.seats[0].sitting_out and not runner.table.hand_in_progress:  # type: ignore[union-attr]
+            wait_for(lambda: quiet() or guests_turn())
+            if quiet():
                 break
             advance(client, 60)
-            wait_for(lambda: runner.table.turn is None or runner.table.turn.final > runner.options.clock.now())
         else:
             raise AssertionError("the absent guest was never sat out")
         advance(client, PRACTICE_IDLE_SECONDS + 1)
