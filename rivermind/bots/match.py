@@ -308,3 +308,34 @@ def render_markdown(report: dict[str, Any], *, name: str, command: str) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+GATE_OPPONENTS = ("heuristic", "calling_station")
+GATE_STACK_BB = 100
+
+
+def gate(report: dict[str, Any], incumbent: str | None = None, stack_bb: int = GATE_STACK_BB) -> dict[str, Any]:
+    """The P5.5 promotion gate on a report: the 95% interval's lower bound above zero against each gate opponent.
+
+    A replacement must also clear it against the incumbent (``blueprint:<checkpoint>``),
+    which the report must have played.
+    """
+    wanted = list(GATE_OPPONENTS) + ([incumbent] if incumbent else [])
+    checks = []
+    for opponent in wanted:
+        found = [r for r in report["results"] if r["opponent"] == opponent and r["stack_bb"] == stack_bb]
+        if not found:
+            checks.append({"opponent": opponent, "stack_bb": stack_bb, "passed": False, "reason": "not in the report"})
+            continue
+        r = found[0]
+        lower = r["ci95_bb_per_100"][0]
+        checks.append(
+            {
+                "opponent": opponent,
+                "stack_bb": stack_bb,
+                "bb_per_100": r["bb_per_100"],
+                "ci95_bb_per_100": r["ci95_bb_per_100"],
+                "passed": lower > 0,
+            }
+        )
+    return {"passed": all(c["passed"] for c in checks), "checks": checks}

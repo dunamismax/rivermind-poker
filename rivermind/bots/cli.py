@@ -366,3 +366,20 @@ def evaluate_command(
     (out_dir / f"{name}.json").write_text(json.dumps(report, indent=2) + "\n")
     (out_dir / f"{name}.md").write_text(render_markdown(report, name=name, command=command))
     click.echo(json.dumps({"report": str(out_dir / f"{name}.md"), "seconds": round(time.time() - started, 1)}, indent=2))
+
+
+@blueprint.command("gate")
+@click.argument("report")
+@click.option("--incumbent", default=None, help="blueprint:<checkpoint> of the champion a replacement must also beat.")
+def gate_command(report: str, incumbent: str | None) -> None:
+    """Check an evaluation REPORT (JSON) against the P5.5 promotion gate; exits 1 when it fails."""
+    from rivermind.bots.match import gate
+
+    try:
+        data = json.loads(Path(report).read_text())
+    except (OSError, ValueError) as e:
+        raise click.ClickException(f"{report} is not a readable report") from e
+    result = gate(data, incumbent)
+    click.echo(json.dumps(result, indent=2))
+    if not result["passed"]:
+        raise SystemExit(1)

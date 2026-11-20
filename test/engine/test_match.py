@@ -160,3 +160,20 @@ def test_a_match_is_reproducible_whatever_the_workers() -> None:
     other = run_matchup(Matchup("random", "heuristic", stack_bb=40, deals=120, seed=4)).summary()
     assert other != one
     assert one["bb_per_100"] < 0  # random loses to RiverMind Easy
+
+
+def test_the_promotion_gate_needs_both_lower_bounds_above_zero() -> None:
+    from rivermind.bots.match import gate
+
+    def row(opponent: str, lo: float, stack: int = 100) -> dict[str, object]:
+        return {"opponent": opponent, "stack_bb": stack, "bb_per_100": lo + 10, "ci95_bb_per_100": [lo, lo + 20]}
+
+    report = {"results": [row("heuristic", 3.0), row("calling_station", 50.0), row("heuristic", -5.0, 40)]}
+    assert gate(report)["passed"]
+    report["results"][0] = row("heuristic", -0.5)
+    assert not gate(report)["passed"]
+    report["results"][0] = row("heuristic", 3.0)
+    # A replacement must beat the incumbent too, in the same report.
+    assert not gate(report, "blueprint:old")["passed"]
+    report["results"].append(row("blueprint:old", 1.0))
+    assert gate(report, "blueprint:old")["passed"]
