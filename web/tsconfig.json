@@ -7,6 +7,8 @@
 	"include": [
 		"server",
 		"src",
+		"scripts/**/*.ts",
+		"drizzle.config.ts",
 		"vite.config.ts",
 		"vite.server.config.ts",
 		"prettier.config.js",

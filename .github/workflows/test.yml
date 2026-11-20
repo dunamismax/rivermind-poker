@@ -36,6 +36,24 @@ jobs:
   web:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # PostgreSQL for the Vitest database tests (*.db.spec.ts), which fail
+    # rather than skip in CI.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: rivermind
+          POSTGRES_PASSWORD: rivermind
+          POSTGRES_DB: rivermind_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rivermind -d rivermind_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      RIVERMIND_TEST_DATABASE_URL: postgresql://rivermind:rivermind@localhost:5432/rivermind_test
     defaults:
       run:
         working-directory: web

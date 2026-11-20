@@ -49,6 +49,24 @@ After changing the models, generate a migration and review it, then check that `
 DATABASE_URL=postgresql://localhost/rivermind uv run alembic revision --autogenerate -m "describe the change"
 ```
 
+### Drizzle (P4B.3)
+
+The Node server will use the same database through Drizzle ORM on node-postgres. [`web/src/lib/server/db/schema.ts`](web/src/lib/server/db/schema.ts) declares every table, constraint and index of Alembic head `0006`, and [`web/drizzle/`](web/drizzle/) holds the SQL migrations, starting with `0000_baseline`, which builds exactly Alembic's schema. `test/db/test_drizzle_baseline.py` compares the two on every pytest run with the database, so until the Python server is retired (P4B.8) a schema change needs both an Alembic revision and a Drizzle migration. Tables are not schema-qualified: they follow `search_path`, which is `app` on ubuntu-vm and `public` locally.
+
+`pnpm db:migrate` (from `web/`) applies pending migrations to `DATABASE_URL`, after `SET ROLE` to `RIVERMIND_MIGRATION_ROLE` when that is set. A database that Alembic has already migrated to `0006`, such as the live one, is adopted: the baseline is recorded as applied in `drizzle.__drizzle_migrations` and nothing else changes. To change the schema, edit `schema.ts`, generate a migration and review it. `drizzle-kit` writes `"public".` before referenced tables, so delete that qualifier; a Vitest test fails while it is there.
+
+```sh
+cd web
+pnpm db:generate --name describe_the_change
+DATABASE_URL=postgresql://localhost/rivermind pnpm db:migrate
+```
+
+The Vitest database tests (`*.db.spec.ts`) use `RIVERMIND_TEST_DATABASE_URL` like pytest, refuse a database whose name lacks `test`, and are skipped locally without it but fail in CI, where the `web` job has its own PostgreSQL 18 service. They drop the `public` and `drizzle` schemas, so do not run them at the same time as pytest on the same database.
+
+```sh
+cd web && RIVERMIND_TEST_DATABASE_URL=postgresql://localhost/rivermind_test pnpm test
+```
+
 ## Work with a learned bot
 
 Clustering turns the two hole cards and the shared board into a bucket for each betting stage. Training uses those buckets and the betting history to learn an action distribution through self-play. Keep tables and checkpoints from the same experiment together. Load artifacts that you generated or trust because joblib uses Python pickle serialization.
@@ -167,7 +185,7 @@ ssh root@ubuntu-vm 'bash /home/sawyer/github/rivermind-poker/deploy/update.sh'
 
 [The script](deploy/update.sh) fast-forwards the checkout and syncs the locked environment on Python 3.12. It runs the full test suite and builds the web client from the frozen lockfile (Node from `web/.node-version`, through mise on the server, and pnpm through corepack), and stops before the live site changes if either fails. It then migrates the site database. It then installs the [table server unit](deploy/rivermind-poker.service), the [web server unit](deploy/rivermind-poker-web.service) and the [Caddy site](deploy/rivermindpoker.com.caddy), and restarts the table server. It copies the build into a new release directory under `/srv/rivermindpoker.com/` (as `build/`, beside a `package.json` that marks it as ES modules), switches the `current` symlink to it atomically, restarts the web server and reloads Caddy. The three newest releases are kept; to roll the client back, point `current` at an older one and restart `rivermind-poker-web`. Releases from before P4B.1 are static files and cannot be rolled back to that way. The web server runs as a dynamic user with no access to home directories, and the release needs no `node_modules`, since `pnpm build` bundles everything. It caches `/_app/immutable/*` for a year and makes everything else revalidate, so browsers pick up a deploy on their next load. The unit runs `serve-nl` with `DATABASE_URL` from `web.env`, so open tables are in PostgreSQL and survive the restart; players see the client reconnect for a few seconds. The secret that signs session cookies is `/var/lib/rivermind-poker/secret`; replacing it signs every player out, and they come back as new players. A change to the table snapshot format (`rivermind/server/snapshot.py`) can make saved tables unrestorable: they are closed with a log message, so call out such changes before deploying. The short-deck game's old `/var/lib/rivermind-poker/tables.sqlite3` and `artifacts/rm06/` are no longer used. Deploying to the live domain needs the owner’s authorization.
 
-The site database is set up once with [`deploy/setup-database.sh`](deploy/setup-database.sh), run as root on ubuntu-vm. It is safe to rerun and keeps existing passwords. It creates PostgreSQL roles for an owner, migrations, the web service and tests, plus the `rivermind_poker` and `rivermind_poker_test` databases and pg_hba rules for 127.0.0.1. Credentials go in root-only `/etc/rivermind-poker/web.env`, `migration.env` and `test.env`. `update.sh` runs the test suite against the test database when `test.env` exists, runs `alembic upgrade head` on the site database before restarting the service, and stops if `web.env` is missing, since the unit passes its `DATABASE_URL` to the app.
+The site database is set up once with [`deploy/setup-database.sh`](deploy/setup-database.sh), run as root on ubuntu-vm. It is safe to rerun and keeps existing passwords. It creates PostgreSQL roles for an owner, migrations, the web service and tests, plus the `rivermind_poker` and `rivermind_poker_test` databases, the site's `app` schema and the `drizzle` schema where `pnpm db:migrate` records migrations (both owned by the owner role), and pg_hba rules for 127.0.0.1. Credentials go in root-only `/etc/rivermind-poker/web.env`, `migration.env` and `test.env`. `update.sh` runs the test suite against the test database when `test.env` exists, runs `alembic upgrade head` on the site database before restarting the service, and stops if `web.env` is missing, since the unit passes its `DATABASE_URL` to the app.
 
 After a deploy, `pnpm e2e:live` from `web/` checks the site’s headers, plays a hand at 2, 6 and 9 seats, and sits out, comes back and rebuys; with `LIVE_RESTART_COMMAND="ssh root@ubuntu-vm systemctl restart rivermind-poker"` it also restarts the service mid-hand and checks the hand continues. Set `LIVE_URL` to smoke-test another deployment.
 

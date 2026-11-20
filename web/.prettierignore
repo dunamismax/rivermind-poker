@@ -8,6 +8,9 @@ bun.lockb
 # Miscellaneous
 /static/
 
+# Written by drizzle-kit (pnpm db:generate)
+/drizzle/
+
 # Generated from the Python protocol models
 /src/lib/protocol.ts
 /src/lib/protocol-v2.ts

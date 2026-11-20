@@ -7,12 +7,15 @@
 #   rivermind_poker              the site database, owned by a NOLOGIN role
 #   rivermind_poker_owner        owns the database and its `app` schema
 #   rivermind_poker_migration    LOGIN, NOINHERIT; may SET ROLE to the owner,
-#                                which Alembic does (RIVERMIND_MIGRATION_ROLE)
+#                                which Alembic and `pnpm db:migrate` do
+#                                (RIVERMIND_MIGRATION_ROLE)
 #   rivermind_poker_web          LOGIN, NOINHERIT; reads and writes rows only
 #   rivermind_poker_test         LOGIN; owns the separate rivermind_poker_test
 #                                database used by the deploy's test run
 # Each role may connect only to its database over 127.0.0.1 with
-# scram-sha-256 (pg_hba.conf). All roles use search_path = app. Credentials
+# scram-sha-256 (pg_hba.conf). All roles use search_path = app. The owner
+# also owns the `drizzle` schema, where Drizzle's migrator records applied
+# migrations (P4B.3); the web role cannot see it. Credentials
 # are written once as root-only env files in /etc/rivermind-poker:
 #   web.env        DATABASE_URL for the service (EnvironmentFile in the unit)
 #   migration.env  DATABASE_URL and RIVERMIND_MIGRATION_ROLE for update.sh
@@ -88,6 +91,8 @@ SQL
 
 psql_admin -d "$DB" <<'SQL'
 CREATE SCHEMA IF NOT EXISTS app AUTHORIZATION :"owner";
+CREATE SCHEMA IF NOT EXISTS drizzle AUTHORIZATION :"owner";
+REVOKE ALL ON SCHEMA drizzle FROM PUBLIC;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA app TO :"web";
 ALTER DEFAULT PRIVILEGES FOR ROLE :"owner" IN SCHEMA app

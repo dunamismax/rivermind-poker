@@ -77,7 +77,19 @@ export default defineConfig({
 				test: {
 					name: 'unit',
 					environment: 'node',
-					include: ['src/**/*.{test,spec}.{js,ts}', 'server/**/*.{test,spec}.ts']
+					include: ['src/**/*.{test,spec}.{js,ts}', 'server/**/*.{test,spec}.ts'],
+					exclude: ['src/**/*.db.spec.ts']
+				}
+			},
+			{
+				// Tests against RIVERMIND_TEST_DATABASE_URL (src/lib/server/db/testing.ts).
+				// Each one resets the database, so the files run one at a time.
+				extends: './vite.config.ts',
+				test: {
+					name: 'db',
+					environment: 'node',
+					include: ['src/**/*.db.spec.ts'],
+					fileParallelism: false
 				}
 			}
 		]
