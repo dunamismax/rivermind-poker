@@ -144,7 +144,7 @@ Training memory is then about 0.35 GB of shared tables, plus 0.42 GB of memory-m
 
 **Time.**
 
-- **Card tables (P5.2, measured).** A full build takes 3 to 5 minutes and peaks at 2.3 to 3.1 GB summed over its processes, about a tenth of the hour estimated here before P5.2. With six workers it took 200 s and 2.3 GB: river equities 25 s, turn and flop histograms 5 and 7 s, turn k-means 91 s, flop k-means 70 s. With ten workers it took 289 s and 3.1 GB, while other tests ran. The river equity step costs 0.62 ms a board. The histograms are cheap because they reuse the river rows; most of the time is k-means.
+- **Card tables (P5.2, measured).** A full build takes 3 to 5 minutes and peaks at 2.3 to 3.2 GB summed over its processes, about a tenth of the hour estimated here before P5.2. From commit `401b49e` with ten workers it took 193 s and 3.2 GB: river equities 20 s, turn and flop histograms 5 and 6 s, turn k-means 93 s and flop k-means 66 s. With six workers it took 200 s and 2.3 GB, and a ten-worker build that shared the CPU with a test run took 289 s. The river equity step costs 0.62 ms a board. The histograms are cheap because they reuse the river rows; most of the time is k-means.
 - **Training (P5.3).** As a planning rule, aim for an average of 1,000 updates per info set; P5.3 stops on measured progress, not on this number. That is 11,671,436 × 1,000 / 13.9 ≈ 840 million iterations at 100 big blinds and 5,438,760 × 1,000 / 10.8 ≈ 504 million at 50. At the prototype’s ten-process rate that is about 2.1 hours at 100 big blinds and 0.8 hours at 50 (whose iterations are about 1.5 times faster). Allowing three times for the real trainer’s lookups, batch merging, checkpoints and evaluation snapshots, the first heads-up blueprint is **about 9 hours of training: one overnight run**. Budget 24 hours of wall-clock time including restarts.
 - **Scaling up.** The large tree with 4,000 buckets a street has about 208 million info sets at 100 big blinds and updates 25.2 per iteration. That is about 8.2 billion iterations, around 5 days on this Mac by the same rule. It is a reasonable second run if the first champion leaves visible weaknesses. Neither run needs other machines (Q-5).
 
@@ -158,7 +158,7 @@ Built sets live under `artifacts/` (ignored by Git), so a checkpoint’s manifes
 | --- | --- | --- |
 | `hu-m1`, seed 0 | 169, 1,000, 1,000 and 1,000 buckets; 50 bins; k-means fitted on 500,000 hands, at most 300 iterations; Python 3.12.15, NumPy 2.5.5 | `preflop.npy` `a0a6e5ed…8d8304c9`, `flop.npy` `947731ea…aea03bab`, `turn.npy` `cd14176b…aeb5bc3c`, `river.npy` `756d746b…84eb34ae` |
 
-The full hashes of every file are in the set’s `manifest.json`. Two builds with 10 and 6 workers gave byte-identical files.
+The full hashes of every file are in the set’s `manifest.json`. Three full builds (10 and 6 workers before commit `401b49e`, and 10 workers from it) gave byte-identical files.
 
 ## 6-max and 9-max
 
