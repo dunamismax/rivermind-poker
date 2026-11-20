@@ -96,8 +96,11 @@ export async function playUntil(
 	while (!(await done()) && Date.now() < deadline) {
 		// After an action the panel stays up, disabled, until the table answers. Deciding then
 		// would read the last turn's button, and the click would wait and land on the next
-		// turn's (a bot's big bet), so decide only on an enabled button.
-		if ((await call.isVisible()) && (await call.isEnabled().catch(() => false))) {
+		// turn's (a bot's big bet), so decide only on an enabled button. Bounded: if the turn
+		// ends after isVisible, an unbounded isEnabled waits for our next turn, and when the
+		// other player's loop has already stopped, that turn comes only after their action
+		// clock and time bank run out (about 50 s).
+		if ((await call.isVisible()) && (await call.isEnabled({ timeout: 1000 }).catch(() => false))) {
 			// Bounded, like the click: the turn (and the button) can end between the two calls.
 			const label = (await call.textContent({ timeout: 1000 }).catch(() => null))?.trim();
 			if (!label) continue;

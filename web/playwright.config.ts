@@ -14,7 +14,9 @@ export default defineConfig({
 	retries: process.env.CI ? 1 : 0,
 	timeout: 60_000,
 	reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
-	use: { trace: 'retain-on-failure' },
+	// Traces keep their DOM snapshots but not the screencast: recording it slowed every
+	// WebKit action to about a second on CI's runners, so the multi-hand tests ran out of time.
+	use: { trace: { mode: 'retain-on-failure', screenshots: false } },
 	projects: [
 		{ name: 'chromium', use: { ...devices['Desktop Chrome'], ...desktop } },
 		{ name: 'firefox', use: { ...devices['Desktop Firefox'], ...desktop } },

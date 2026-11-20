@@ -35,7 +35,9 @@ jobs:
   # /api and /ws to the real Python table server until the P4B.7 cutover.
   web:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # A run takes about 12 minutes, but Playwright's system packages come from
+    # Ubuntu's mirror, which has taken half an hour on a slow day.
+    timeout-minutes: 45
     # PostgreSQL for the Vitest database tests (*.db.spec.ts), which fail
     # rather than skip in CI.
     services:
