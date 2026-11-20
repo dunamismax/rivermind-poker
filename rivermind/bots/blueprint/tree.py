@@ -56,6 +56,10 @@ class Tree:
     terminal_value: list[int]
     width: tuple[int, int, int, int]
     """Slots per bucket on each street."""
+    measure: list[tuple[float | None, ...]] = field(default_factory=list, compare=False)
+    """Each action's size as (raise-to − current bet) / called pot, ``None`` for fold, check and call (for mapping; not hashed)."""
+    spr: list[float] = field(default_factory=list, compare=False)
+    """The effective stack behind over the pot at each node (for re-entering the tree; not hashed)."""
     _index: dict[str, int] = field(default_factory=dict, repr=False, compare=False)
 
     @property
@@ -67,6 +71,10 @@ class Tree:
 
     def nodes_on(self, street: int) -> int:
         return sum(1 for s in self.street if s == street)
+
+    def street_starts(self, street: int) -> list[int]:
+        """Nodes with no action yet on their street, after the pre-flop root."""
+        return [v for v in range(len(self)) if self.street[v] == street and (self.history[v] == "" or self.history[v].endswith("/"))]
 
     def node(self, history: str) -> int:
         """The decision node with this history (such as ``r0c/kb1c/k``)."""
@@ -120,6 +128,8 @@ def compile_tree(depth: int) -> Tree:
     children: list[tuple[int, ...]] = []
     terminal_kind: list[int] = []
     terminal_value: list[int] = []
+    measure: list[tuple[float | None, ...]] = []
+    spr: list[float] = []
     width = [0, 0, 0, 0]
 
     def terminal(state: HandState) -> int:
@@ -156,6 +166,14 @@ def compile_tree(depth: int) -> Tree:
         history.append(past)
         tokens.append(tuple(a.token for a in actions))
         children.append(())
+        owed = state.current_bet - state.street_bets[legal.seat]
+        measure.append(
+            tuple(
+                None if a.action.amount is None else (a.action.amount - state.current_bet) / (state.pot + owed)
+                for a in actions
+            )
+        )
+        spr.append(min(state.stacks) / state.pot)
         found = []
         for a in actions:
             child = apply(state, a.action)
@@ -181,6 +199,8 @@ def compile_tree(depth: int) -> Tree:
         terminal_kind=terminal_kind,
         terminal_value=terminal_value,
         width=(width[0], width[1], width[2], width[3]),
+        measure=measure,
+        spr=spr,
     )
 
 

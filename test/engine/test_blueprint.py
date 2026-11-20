@@ -333,6 +333,23 @@ def test_the_cli_trains_resumes_and_reads_a_blueprint(tmp_path: Path) -> None:
     assert wrong.exit_code != 0
     bp = Blueprint(latest_checkpoint(run))  # type: ignore[arg-type]
     assert bp.iteration == 6_000
+
+    # Evaluate it: the report is the same on one worker or two.
+    reports = []
+    for workers in ("1", "2"):
+        out = tmp_path / f"evals{workers}"
+        args = ["blueprint", "evaluate", str(run), "--name", "tiny", "--out", str(out), "--deals", "60"]
+        args += ["--against", "heuristic@100", "--against", "random@40", "--workers", workers]
+        evaluated = runner.invoke(cli, args)
+        assert evaluated.exit_code == 0, evaluated.output
+        reports.append(((out / "tiny.json").read_text(), (out / "tiny.md").read_text()))
+    assert reports[0][0] == reports[1][0].replace("evals2", "evals1")
+    report = json.loads(reports[0][0])
+    assert [(r["opponent"], r["stack_bb"], r["hands"]) for r in report["results"]] == [("heuristic", 100, 120), ("random", 40, 120)]
+    assert report["candidate"]["iteration"] == 6_000 and report["candidate"]["files"] == {
+        k: v["sha256"] for k, v in read_manifest(latest_checkpoint(run))["files"].items()  # type: ignore[arg-type]
+    }
+    assert 0 < report["results"][0]["trained_share"] <= 1 and "--against heuristic@100" in reports[0][1]
     shutil.rmtree(run)
 
 

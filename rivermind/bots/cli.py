@@ -297,3 +297,72 @@ def strategy_command(checkpoint: str, hole: str, board: str, history: str, depth
     except (CheckpointError, TableError, KeyError, ValueError) as e:
         raise click.ClickException(str(e)) from e
     click.echo(json.dumps(shown, indent=2))
+
+
+@blueprint.command("evaluate")
+@click.argument("checkpoint")
+@click.option("--name", required=True, help="Report name: writes OUT/NAME.json and OUT/NAME.md.")
+@click.option("--out", default="docs/evaluations", show_default=True)
+@click.option("--deals", default=20_000, show_default=True, help="Deals per matchup (each played twice).")
+@click.option("--seed", default=0, show_default=True)
+@click.option("--workers", default=None, type=int, help="Processes to use (default: every CPU).")
+@click.option("--tables", "tables_path", default=None, help="Card table set (default: the one the checkpoint names).")
+@click.option(
+    "--against",
+    multiple=True,
+    help="OPPONENT@STACK_BB, such as heuristic@100 or blueprint:<checkpoint>@100; repeatable (default: the P5.4 plan).",
+)
+def evaluate_command(
+    checkpoint: str, name: str, out: str, deals: int, seed: int, workers: int | None, tables_path: str | None, against: tuple[str, ...]
+) -> None:
+    """Evaluate a blueprint CHECKPOINT (or a run's latest) in duplicate heads-up matches (P5.4)."""
+    import os
+    import shlex
+    import time
+
+    from rivermind.bots.blueprint import latest_checkpoint
+    from rivermind.bots.match import DEFAULT_PLAN, evaluate, render_markdown
+
+    target = Path(checkpoint)
+    if not (target / "manifest.json").exists():
+        found = latest_checkpoint(target)
+        if found is None:
+            raise click.ClickException(f"{checkpoint} is neither a checkpoint nor a run with one")
+        target = found
+    plan = []
+    for item in against:
+        opponent, _, stack = item.rpartition("@")
+        if not opponent or not stack.isdigit():
+            raise click.ClickException(f"--against takes OPPONENT@STACK_BB, not {item!r}")
+        plan.append((opponent, int(stack)))
+    started = time.time()
+
+    def progress(r: dict) -> None:  # type: ignore[type-arg]
+        lo, hi = r["ci95_bb_per_100"]
+        click.echo(f"{r['opponent']} at {r['stack_bb']} bb: {r['bb_per_100']:+.2f} bb/100 ({lo:+.2f} to {hi:+.2f})", err=True)
+
+    try:
+        report = evaluate(
+            f"blueprint:{target}",
+            plan or DEFAULT_PLAN,
+            deals=deals,
+            seed=seed,
+            workers=workers or os.cpu_count() or 1,
+            tables=tables_path,
+            progress=progress,
+        )
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
+    argv = ["uv", "run", "--locked", "rivermind-poker", "blueprint", "evaluate", str(target), "--name", name]
+    argv += ["--out", out, "--deals", str(deals), "--seed", str(seed)]
+    if tables_path:
+        argv += ["--tables", tables_path]
+    for opponent, stack_bb in plan:
+        argv += ["--against", f"{opponent}@{stack_bb}"]
+    command = shlex.join(argv)
+    report["command"] = command
+    out_dir = Path(out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / f"{name}.json").write_text(json.dumps(report, indent=2) + "\n")
+    (out_dir / f"{name}.md").write_text(render_markdown(report, name=name, command=command))
+    click.echo(json.dumps({"report": str(out_dir / f"{name}.md"), "seconds": round(time.time() - started, 1)}, indent=2))

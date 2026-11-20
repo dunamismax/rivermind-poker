@@ -64,6 +64,26 @@ class CallingStationPolicy:
         return _passive(_legal(view))
 
 
+class MinBetPolicy:
+    """An evaluation probe: on every street it opens with the minimum bet or raise, then calls.
+
+    It bets or raises the minimum whenever nobody has bet or raised on the
+    street yet (the blinds do not count), and otherwise checks or calls,
+    never folding. Opening this small falls below every abstract size a
+    blueprint knows, so the probe shows what that mapping costs
+    (``docs/bots.md``).
+    """
+
+    name = "min_bettor"
+
+    def act(self, view: SeatView, rng: random.Random) -> Action:
+        legal = _legal(view)
+        opened = any(a.kind in (ActionKind.BET, ActionKind.RAISE) for a in view.street_actions)
+        if not opened and legal.raise_kind is not None:
+            return Action(legal.raise_kind, legal.min_to)
+        return _passive(legal)
+
+
 # Hand strength
 
 

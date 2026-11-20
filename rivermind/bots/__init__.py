@@ -7,6 +7,7 @@ returns a legal action. Bots never see a ``HandState``.
 from .policies import (
     CallingStationPolicy,
     HeuristicPolicy,
+    MinBetPolicy,
     Policy,
     RandomPolicy,
     chen_score,
@@ -16,6 +17,7 @@ from .policies import (
 __all__ = [
     "CallingStationPolicy",
     "HeuristicPolicy",
+    "MinBetPolicy",
     "Policy",
     "RandomPolicy",
     "chen_score",

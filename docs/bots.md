@@ -52,11 +52,14 @@ and to *B* otherwise. This is the pseudo-harmonic mapping of Ganzfried and Sandh
 
 - A bet or raise **smaller than the smallest abstract size** maps to that size. Mapping it to a check would leave the bot facing a bet at a node where it believes it can check. Tiny bets are therefore a known way to probe the blueprint. P5.4 adds a min-betting probe to the report, and real-time search (P5.8) is the real fix.
 - A raise **larger than the largest non-all-in size**, or beyond the raise levels the tree has, maps between that size and all-in by the same rule, or straight to all-in if all-in is the only raise left.
+- A **real all-in** maps to the abstract all-in, so the bot knows its opponent has nothing behind.
 - **Folds, checks and calls** need no mapping. A call of an off-tree bet is the call of the mapped bet.
 
-**The bot’s own sizes.** The chosen abstract size is computed from the **real** pot, current bet and stacks with the size rules above, rounded to whole chips and clamped to the legal minimum and maximum (`LegalActions.min_to` and `max_to`). All-in is `max_to`.
+**The bot’s own sizes.** The chosen abstract size is computed from the **real** pot, current bet and stacks with the size rules above, rounded to whole chips and clamped to the legal minimum and maximum (`LegalActions.min_to` and `max_to`). All-in is `max_to`. If the real stacks drop that size (it would be all-in, or leave too little behind), the bot plays the real size whose *x* is closest.
 
-**Re-entering the tree.** Mapping can leave the abstract history with no decision left while the real hand goes on, for example after a real raise mapped to an all-in that the bot called with chips behind. Then the bot restarts the current street at the abstract node with an empty history on that street whose ratio of stack to pot is closest to the real one (by the absolute difference of their logarithms) and continues from there. Its card bucket does not depend on the history, so nothing else changes.
+**Re-entering the tree.** Mapping can leave the abstract history with no decision left while the real hand goes on, for example after a real raise mapped to an all-in that the bot called with chips behind. Then the bot restarts the current street at the abstract node with an empty history on that street whose ratio of stack to pot is closest to the real one (by the absolute difference of their logarithms) and continues from there. Its card bucket does not depend on the history, so nothing else changes. A real action that has no counterpart at the node it reaches also sends the bot back to the start of the street; if the street’s actions do not fit from there either, the bot checks or calls.
+
+**How the bot keeps its place (P5.4).** [`BlueprintPolicy`](../rivermind/bots/blueprint/policy.py) works from the `SeatView` alone: at each decision it replays the hand’s real actions onto the tree, street by street. It remembers every abstract token it has given a real action, its own choices and its mapping draws alike, so a later decision never draws a mapping again. A table that knows when a hand starts can call `new_hand()`; otherwise the bot tells a hand from an earlier one with the same cards by its actions. It counts its decisions by outcome (`trained`, `borrowed`, `untrained_node`, `lost`) and its mappings (`off_tree`, `below_smallest`, `reentries`, `resized`), and the evaluation reports them.
 
 ## Card abstraction
 
@@ -189,6 +192,16 @@ uv run --locked rivermind-poker blueprint strategy RUN AsAh     # or HOLE BOARD 
 - Trained strategies reach more of the tree: by 25.7 million iterations an iteration visited 86 decision nodes, not the 46 of uniform play, and ten workers slowed to 30,000 to 40,000 a second. The P5.1 estimate assumed the uniform rate, so a run takes about twice as long as estimated, before pruning wins some of that back.
 - The Mac was shared with other work during these measurements (load averages up to 120), which cost another factor of two at times; the speeds above are from quieter moments.
 - Memory: the main process holds about 0.8 GB and each worker about 0.5 GB (physical footprint), about 6 GB with ten workers. Summed resident sizes read 11 to 14 GB because they count the shared memory-mapped table pages once per process.
+
+## Evaluation (P5.4)
+
+[`rivermind/bots/match.py`](../rivermind/bots/match.py) plays **duplicate** heads-up matches on the engine. Each deal is one shuffled deck played twice, once with the candidate on the button and once with the opponent there, from fresh stacks each time. A deal’s value is the candidate’s mean winnings over its two hands, and the 95% interval is 1.96 standard errors over deals, which are independent, with both rotations of a deal kept together. Two calling stations score exactly zero. Decks come from the seed and the deal number, and each seat’s policy from its own generator seeded by the seed, the deal, the rotation and the seat. Deals go to workers in fixed blocks of 50 with fresh policies and are added in deal order, so a report is the same whatever the number of workers.
+
+```sh
+uv run --locked rivermind-poker blueprint evaluate RUN_OR_CHECKPOINT --name NAME   # writes docs/evaluations/NAME.{md,json}
+```
+
+The default plan plays 20,000 deals (40,000 hands) per matchup at 50/100: RiverMind Easy (`heuristic`), the calling station, random and the min-bet probe at 100 big blinds, and RiverMind Easy and the calling station, the two opponents of the P5.5 gate, at 40 and 150. `--against OPPONENT@STACK_BB` replaces the plan, and `blueprint:<checkpoint>` names an incumbent. The **min-bet probe** (`MinBetPolicy`) opens every street with the smallest legal bet or raise and otherwise checks or calls. Each report records the game, seed, deals, the candidate checkpoint’s file, tree and card hashes and the commit that trained it, each opponent’s source hash, the engine and software, every result with the candidate’s decision counts and the command that reproduces it. [docs/evaluations](evaluations/) holds the reports.
 
 ## 6-max and 9-max
 
