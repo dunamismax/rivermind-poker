@@ -41,6 +41,8 @@ This archive holds the evidence for finished work and older session handoffs, mo
 
 ## Phase 5A session handoffs
 
+**2026-11-19 · Practice, heads-up opponent and replay take priority (D-13).** The owner moved these three features ahead of broader work. Phase 5A starts with P6.0b, qualifies and serves the first heads-up champion at P5.7a, then adds table replay at P6.1. P5.9 verifies them together before Phase 5B. Replay sharing stays in Phase 6. Checked step order, dependencies, local links and the handoff rotation. Next action is P6.0b in the lobby and table server.
+
 **2026-11-19 · Player experience and adoption plan.** The owner asked for roadmap additions based on the project review. A live guest had 542 chips against a 2,000 minimum buy-in at the lowest stakes. Added P6.0b for wallet-independent practice, P6.7a for friend invites and P7.1a for a first-time playtest and aggregate usage baseline. Expanded P5.7, P6.1 and P6.7 with the first evaluated heads-up release, post-hand review and public learning pages. Verified the step dependencies and the handoff archive. Next action is P5.1, with practice and replay eligible to run during Phase 5.
 
 ## Phase 6 session handoffs

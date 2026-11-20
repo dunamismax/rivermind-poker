@@ -1,0 +1,59 @@
+# RiverMind Poker web server (SvelteKit on Node, D-14): installed as
+# /etc/systemd/system/rivermind-poker-web.service by deploy/update.sh.
+# Runs the current release in /srv/rivermindpoker.com/current (its build/
+# directory, bundled by `pnpm build`, and a package.json) on loopback. Caddy
+# sends every page and asset here and, until the P4B.7 cutover, sends /api/*
+# and /ws straight to rivermind-poker.service (deploy/rivermindpoker.com.caddy).
+# The release needs no node_modules and no access to the checkout, so the
+# service runs as a dynamic user that can read nothing of the host's homes.
+[Unit]
+Description=RiverMind Poker web server (rivermindpoker.com)
+Documentation=https://github.com/dunamismax/rivermind-poker
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/srv/rivermindpoker.com/current/build/start.js
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+DynamicUser=yes
+User=rivermind-poker-web
+WorkingDirectory=/srv/rivermindpoker.com/current
+ExecStart=/usr/bin/node build/start.js
+# ORIGIN makes SvelteKit see https://rivermindpoker.com behind Caddy, so pages
+# name wss://rivermindpoker.com in their connect-src.
+Environment=HOST=127.0.0.1 PORT=4320 NODE_ENV=production ORIGIN=https://rivermindpoker.com
+Environment=SHUTDOWN_TIMEOUT=10
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+SyslogIdentifier=rivermind-poker-web
+
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# No MemoryDenyWriteExecute: V8's JIT needs writable, executable pages.
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+# Pages and assets only until P4B.7, which moves the tables here and raises these.
+MemoryHigh=512M
+MemoryMax=1G
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

@@ -1,11 +1,12 @@
 # rivermindpoker.com: installed as /etc/caddy/sites/rivermindpoker.com.caddy by
 # deploy/update.sh and loaded by the host Caddyfile (`import /etc/caddy/sites/*.caddy`).
 # DNS for both names points at the host, so Caddy obtains and renews certificates.
-# Caddy serves the SvelteKit build itself from /srv/rivermindpoker.com/current,
-# which update.sh points at the latest release, with the 200.html fallback for
-# every route. Only /api/* and the /ws WebSocket go to rivermind-poker.service
-# on 127.0.0.1:4316. Hashed files under /_app/immutable/ are cached for a year;
-# everything else revalidates, so a deploy reaches browsers on their next load.
+# Pages and assets come from the SvelteKit Node server, rivermind-poker-web.service
+# on 127.0.0.1:4320, which sets their Cache-Control (a year for the hashed files
+# under /_app/immutable/, revalidate for everything else) and a CSP carrying the
+# hash of SvelteKit's start-up script. Until the P4B.7 cutover, /api/* and the
+# /ws WebSocket go straight to the Python table server, rivermind-poker.service
+# on 127.0.0.1:4316.
 #
 # Check and reload: caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
 
@@ -22,8 +23,10 @@ rivermindpoker.com {
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
-		# The client is same-origin static files plus one WebSocket; no inline code.
-		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self' wss://rivermindpoker.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		# The client is same-origin files plus one WebSocket, with no inline code but
+		# the start-up script whose hash the pages' own policy names. `?` keeps that
+		# policy and gives every other response (the API, errors) this one.
+		?Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self' wss://rivermindpoker.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 		-Server
 	}
 
@@ -78,18 +81,7 @@ rivermindpoker.com {
 	}
 
 	handle {
-		root * /srv/rivermindpoker.com/current
-		@immutable path /_app/immutable/*
-		@revalidate not path /_app/immutable/*
-		header @immutable Cache-Control "public, max-age=31536000, immutable"
-		header @revalidate Cache-Control "no-cache"
-		# Every other route is the app page, but a missing asset is a 404.
-		@page {
-			not path /_app/*
-			not file
-		}
-		rewrite @page /200.html
-		file_server
+		reverse_proxy 127.0.0.1:4320
 	}
 
 	handle_errors 502 503 504 {

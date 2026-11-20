@@ -1,11 +1,13 @@
 import { defineConfig, type Plugin } from 'vitest/config';
-import adapter from '@sveltejs/adapter-static';
+import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
 
-// `rivermind-poker serve` (port 8000 by default) owns /api and /ws. In
-// development and preview, Vite forwards both so the client stays same-origin,
-// as it is behind Caddy in production.
-const backend = process.env.RIVERMIND_BACKEND ?? 'http://127.0.0.1:8000';
+// Until the P4B.7 cutover, `rivermind-poker serve-nl` (port 8000 by default)
+// owns /api and /ws. In development and preview, Vite forwards both so the
+// client stays same-origin; the built Node server does the same with
+// RIVERMIND_LEGACY_API (server/legacy.ts).
+const backend =
+	process.env.RIVERMIND_LEGACY_API ?? process.env.RIVERMIND_BACKEND ?? 'http://127.0.0.1:8000';
 const proxy = {
 	'/api': { target: backend, changeOrigin: true },
 	'/ws': { target: backend, ws: true, changeOrigin: true }
@@ -39,8 +41,25 @@ export default defineConfig({
 				runes: ({ filename }) =>
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
-			// A single-page app: every route is served by the 200.html fallback.
-			adapter: adapter({ fallback: '200.html' })
+			// The Node build: server/index.ts mounts its handler.js beside the /ws socket.
+			adapter: adapter(),
+			// The same policy Caddy and serve-nl send. SvelteKit adds the hash of the
+			// inline script that starts the app, and src/hooks.server.ts adds the
+			// page's own WebSocket origin to connect-src.
+			csp: {
+				mode: 'hash',
+				directives: {
+					'default-src': ['self'],
+					'img-src': ['self', 'data:'],
+					'style-src': ['self'],
+					'script-src': ['self'],
+					'connect-src': ['self'],
+					'object-src': ['none'],
+					'frame-ancestors': ['none'],
+					'base-uri': ['self'],
+					'form-action': ['self']
+				}
+			}
 		})
 	],
 	build: {
@@ -58,7 +77,7 @@ export default defineConfig({
 				test: {
 					name: 'unit',
 					environment: 'node',
-					include: ['src/**/*.{test,spec}.{js,ts}']
+					include: ['src/**/*.{test,spec}.{js,ts}', 'server/**/*.{test,spec}.ts']
 				}
 			}
 		]

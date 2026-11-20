@@ -41,15 +41,14 @@ test('serves the client with the site headers', async ({ page, request }) => {
 	const html = await request.get('/');
 	expect(html.status()).toBe(200);
 	expect(html.headers()['cache-control']).toBe('no-cache');
-	expect(html.headers()['content-security-policy']).toContain("script-src 'self';");
-	const fallback = await request.get('/some/route');
-	expect(fallback.status()).toBe(200);
-	expect(await fallback.text()).toBe(await html.text());
+	// The page's own policy: 'self' plus the hash of SvelteKit's start-up script.
+	expect(html.headers()['content-security-policy']).toMatch(/script-src 'self' 'sha256-[^']+';/);
+	expect((await request.get('/some/route')).status()).toBe(404);
 	const asset = (await html.text()).match(/\/_app\/immutable\/[^"']+\.js/)?.[0];
 	expect(asset).toBeTruthy();
 	const script = await request.get(asset!);
 	expect(script.status()).toBe(200);
-	expect(script.headers()['cache-control']).toBe('public, max-age=31536000, immutable');
+	expect(script.headers()['cache-control']).toMatch(/^public, ?max-age=31536000, ?immutable$/);
 	expect((await request.get('/_app/immutable/missing.js')).status()).toBe(404);
 	const config = await request.get('/api/config');
 	expect(config.ok()).toBe(true);

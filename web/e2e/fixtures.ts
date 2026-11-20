@@ -17,12 +17,12 @@ export const withCsp = base.extend<{ cspViolations: string[] }>({
 	}
 });
 
-// One `serve-nl` per worker, on its own port, so projects run in parallel.
+// One site (Node server and serve-nl) per worker, on its own ports, so projects run in parallel.
 export const test = withCsp.extend<object, { server: TableServer }>({
 	server: [
 		// eslint-disable-next-line no-empty-pattern
 		async ({}, use, workerInfo) => {
-			const server = new TableServer(8700 + workerInfo.parallelIndex);
+			const server = new TableServer(8800 + workerInfo.parallelIndex);
 			await server.start();
 			await use(server);
 			await server.dispose();

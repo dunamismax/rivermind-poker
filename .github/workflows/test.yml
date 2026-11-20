@@ -31,7 +31,8 @@ jobs:
       - run: uv run --locked pytest
 
   # The SvelteKit client: types, lint, unit tests, the production build and
-  # Playwright in three browsers against the real Python table server.
+  # Playwright in three browsers against the built Node server, which forwards
+  # /api and /ws to the real Python table server until the P4B.7 cutover.
   web:
     runs-on: ubuntu-latest
     timeout-minutes: 30

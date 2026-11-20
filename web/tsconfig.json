@@ -5,8 +5,10 @@
 		"types": ["$app/types", "node"]
 	},
 	"include": [
+		"server",
 		"src",
 		"vite.config.ts",
+		"vite.server.config.ts",
 		"prettier.config.js",
 		"eslint.config.js",
 		"playwright.config.ts",

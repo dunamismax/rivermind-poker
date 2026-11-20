@@ -5,8 +5,9 @@
 # /opt/uv-python, runs the tests (with the database tests, once
 # deploy/setup-database.sh has run) and builds the web client from the frozen
 # lockfile, stopping before the live site changes if any of that fails. Then it
-# migrates the database, installs the systemd unit and Caddy site, restarts the service, publishes the
-# build as a release under /srv/rivermindpoker.com and checks the app answers.
+# migrates the database, installs the systemd units and Caddy site, restarts the
+# table server, publishes the build as a release under /srv/rivermindpoker.com,
+# restarts the Node web server on it and checks both answer.
 # The service needs /etc/rivermind-poker/web.env from deploy/setup-database.sh,
 # since tables live in PostgreSQL. Node (the major in web/.node-version) must be on
 # sawyer's PATH, directly or through mise; pnpm comes from corepack.
@@ -62,7 +63,9 @@ as_sawyer env NODE_MAJOR="$NODE_MAJOR" WEB="$REPO/web" COREPACK_ENABLE_DOWNLOAD_
         cd "$WEB"
         corepack pnpm install --frozen-lockfile
         corepack pnpm build'
-[[ -f "$REPO/web/build/200.html" ]] || { echo "web build has no 200.html" >&2; exit 1; }
+for built in start.js handler.js client; do
+    [[ -e "$REPO/web/build/$built" ]] || { echo "web build has no $built" >&2; exit 1; }
+done
 
 id rivermind-poker >/dev/null 2>&1 || useradd --system --no-create-home \
     --home-dir /nonexistent --shell /usr/sbin/nologin rivermind-poker
@@ -78,6 +81,7 @@ else
 fi
 
 install -m 0644 "$REPO/deploy/rivermind-poker.service" /etc/systemd/system/rivermind-poker.service
+install -m 0644 "$REPO/deploy/rivermind-poker-web.service" /etc/systemd/system/rivermind-poker-web.service
 install -m 0644 "$REPO/deploy/rivermindpoker.com.caddy" /etc/caddy/sites/rivermindpoker.com.caddy
 # The host's Caddy reload preflight requires every access log to be declared
 # in its tmpfiles config, which also creates the file with caddy ownership.
@@ -90,13 +94,19 @@ systemctl daemon-reload
 systemctl enable rivermind-poker.service
 systemctl restart rivermind-poker.service
 
-# Publish the client as a new root-owned release and switch Caddy's root to it
-# atomically. The three newest releases are kept for a quick rollback: point
-# current at an older one with `ln -sfn <release> current.new && mv -T ...`.
+# Publish the web build as a new root-owned release (its build/ directory and a
+# package.json marking it as ES modules), switch current to it atomically and
+# restart the Node web server there. The three newest releases are kept for a
+# quick rollback: point current at an older one with
+# `ln -sfn <release> current.new && mv -T ...` and restart rivermind-poker-web.
+# Releases from before P4B.1 are static files with no build/start.js and
+# cannot be rolled back to this way.
 RELEASES=/srv/rivermindpoker.com
 RELEASE=$(date -u +%Y%m%dT%H%M%SZ)-$(as_sawyer git -C "$REPO" rev-parse --short=12 HEAD)
 install -d -m 0755 "$RELEASES"
-cp -R "$REPO/web/build" "$RELEASES/$RELEASE.tmp"
+install -d -m 0755 "$RELEASES/$RELEASE.tmp"
+cp -R "$REPO/web/build" "$RELEASES/$RELEASE.tmp/build"
+printf '{ "private": true, "type": "module" }\n' > "$RELEASES/$RELEASE.tmp/package.json"
 chown -R root:root "$RELEASES/$RELEASE.tmp"
 chmod -R u=rwX,go=rX "$RELEASES/$RELEASE.tmp"
 mv -T "$RELEASES/$RELEASE.tmp" "$RELEASES/$RELEASE"
@@ -104,6 +114,8 @@ ln -sfn "$RELEASE" "$RELEASES/current.new"
 mv -T "$RELEASES/current.new" "$RELEASES/current"
 find "$RELEASES" -mindepth 1 -maxdepth 1 -type d -name '20*Z-*' -printf '%f\n' |
     sort -r | tail -n +4 | while read -r old; do rm -rf "${RELEASES:?}/$old"; done
+systemctl enable rivermind-poker-web.service
+systemctl restart rivermind-poker-web.service
 # The reload runs the host preflight, which validates the whole config as the
 # caddy user. (Validating as root would create log files caddy cannot write.)
 systemctl reload caddy
@@ -112,4 +124,8 @@ for _ in $(seq 60); do
     curl -fsS http://127.0.0.1:4316/api/config && echo && break
     sleep 1
 done
-systemctl --no-pager --lines=5 status rivermind-poker.service
+for _ in $(seq 30); do
+    curl -fsS http://127.0.0.1:4320/healthz && break
+    sleep 1
+done
+systemctl --no-pager --lines=5 status rivermind-poker.service rivermind-poker-web.service

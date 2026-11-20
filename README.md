@@ -22,11 +22,12 @@ Those paths are examples for locally generated files. The terminal records compl
 
 ### In the browser
 
-The browser game is no-limit hold’em at 2 to 9 seats against labelled bots, as at https://rivermindpoker.com. Build the SvelteKit client once (Node and pnpm as in [CONTRIBUTING.md](CONTRIBUTING.md#sveltekit-client)), then serve it with the no-limit table server.
+The browser game is no-limit hold’em at 2 to 9 seats against labelled bots, as at https://rivermindpoker.com. Build the SvelteKit client once (Node and pnpm as in [CONTRIBUTING.md](CONTRIBUTING.md#sveltekit-client)). Then start the no-limit table server and the site’s Node server, which forwards the table API to it.
 
 ```sh
 (cd web && pnpm install --frozen-lockfile && pnpm build)
-uv run rivermind-poker serve-nl --client_dir web/build --secret_file artifacts/secret
+uv run rivermind-poker serve-nl --port 8001 --secret_file artifacts/secret &
+(cd web && PORT=8000 ORIGIN=http://127.0.0.1:8000 RIVERMIND_LEGACY_API=http://127.0.0.1:8001 pnpm start)
 ```
 
 Open http://127.0.0.1:8000, choose the seats, bots, blinds and buy-in, and sit down. It works on desktop and mobile browsers, and a reload or dropped connection rejoins your table. Set `DATABASE_URL` to a migrated PostgreSQL database (see [CONTRIBUTING.md](CONTRIBUTING.md#postgresql)) to keep tables, mid-hand included, across server restarts.
