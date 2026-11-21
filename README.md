@@ -21,7 +21,7 @@ The live site has no-limit hold’em at 2 to 9 seats against labelled bots: rand
 
 **Now:** the live site runs on the TypeScript stack (decision D-14 in [BUILD.md](BUILD.md#settled-decisions)): SvelteKit and Tailwind CSS 4 on Node, with the table server, the engine and the bots in the same Node service and Drizzle on PostgreSQL. The engine, the bots and the table server are checked against their Python originals byte for byte, and open tables, guests and hands carried over at the cutover. The Python table server was retired at P4B.8; deploys fix forward, each release checked as a candidate before it takes traffic. Python keeps the offline work: the reference engine, training and evaluation.
 
-**Next:** replay from the table, which is built and waits for a deploy: a player steps through any hand they played, from the table or from “Your hands”, and plays on with the review open. After it, the three player priorities are checked together on the live site. RiverMind Hard plays the heads-up champion `hu-m1-s0-1024m`, 1.024 billion training iterations of the `hu-m1` blueprint, at two-seat tables and in practice. Over 20,000 duplicate deals each at 100 big blinds, the strategy the site serves won +58.8 big blinds per 100 hands against RiverMind Easy (95% interval +50.1 to +67.5), +224.9 against the calling station and +21.1 (+10.5 to +31.8) against the first champion, trained for an eighth as long. The server plays the model only after checking every file against [the registry](docs/models.md), which lists every run put to the promotion gate with its reports.
+**Next:** replay from the table, which is built and waits for a deploy: a player steps through any hand they played, from the table or from “Your hands”, and plays on with the review open. The three player priorities are tested together in the browser, and are checked on the live site once it is deployed. RiverMind Hard plays the heads-up champion `hu-m1-s0-1024m`, 1.024 billion training iterations of the `hu-m1` blueprint, at two-seat tables and in practice. Over 20,000 duplicate deals each at 100 big blinds, the strategy the site serves won +58.8 big blinds per 100 hands against RiverMind Easy (95% interval +50.1 to +67.5), +224.9 against the calling station and +21.1 (+10.5 to +31.8) against the first champion, trained for an eighth as long. The server plays the model only after checking every file against [the registry](docs/models.md), which lists every run put to the promotion gate with its reports.
 
 ## What RiverMind is
 
@@ -50,8 +50,8 @@ The live site has no-limit hold’em at 2 to 9 seats against labelled bots: rand
 | 2 | No-limit hold’em engine for 2 to 9 seats: rules, fixtures, property tests, fuzzing, hand histories | Done |
 | 3 | Table server v2: multi-seat tables in PostgreSQL, action clocks, the live cutover | Done |
 | 4 | Multiplayer and identity: guests, play-chip wallets, the lobby, safety controls, fair dealing | Done |
-| 4B | TypeScript stack migration: SvelteKit on Node, Tailwind CSS 4, Drizzle | In progress |
-| 5A | One-click practice (done), an evaluated heads-up opponent, replay from the table | Next |
+| 4B | TypeScript stack migration: SvelteKit on Node, Tailwind CSS 4, Drizzle | Done |
+| 5A | One-click practice and an evaluated heads-up opponent (live), replay from the table (built, awaiting a deploy) | In progress |
 | 5B | 6-max and 9-max bots, difficulty levels | |
 | 6 | Full-featured site: replay sharing, stats, leaderboards, sit-and-go tournaments, accessibility | |
 | 7 | Hardening and the 1.0 release: monitoring, backups, load tests, a security review | |
