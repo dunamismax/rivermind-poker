@@ -333,6 +333,184 @@
         }
       ],
       "note": "Against the simple bots it wins less than `hu-m1-s0-128m` did (+226.66 against +308.33 from the calling station at 100 big blinds). The gate asks that it beats them and the champion, and it beats the champion head to head."
+    },
+    {
+      "date": "2026-11-21",
+      "format": "heads-up",
+      "name": "hu-m1-s0-1280m",
+      "outcome": "inconclusive",
+      "incumbent": "hu-m1-s0-1024m",
+      "checkpoint": {
+        "abstraction": "hu-m1",
+        "iteration": 1280000000,
+        "manifest_sha256": "befd6fc74573ad1fd54f30283cc2a8b810082d76aef50f00063b3535c7e237b8",
+        "files": {
+          "regrets.npy": "9ae584957b5c1120f594528bffdd009a8e53b863810668ed8f65e968808d6b6e",
+          "strategy.npy": "198eed242556b6ae16d5363cc6570d077986d0cfde1f678899ac8b7f3685c14c"
+        },
+        "trees": [
+          {
+            "depth": 50,
+            "sha256": "378a4e1da9cb5cba898f76c8e4f2dcf90f589b855a87f914d50d68b590613881"
+          },
+          {
+            "depth": 100,
+            "sha256": "220a7cab487c973ba65fa3deee6e562804cba0a3474df52c086d483a61f2287b"
+          }
+        ],
+        "settings": {
+          "abstraction": "hu-m1",
+          "depths": [
+            50,
+            100
+          ],
+          "seed": 0,
+          "chunk_size": 1000,
+          "chunks_per_batch": 64,
+          "discount_every": 1000000,
+          "discount_until": 40000000,
+          "prune_after": 20000000,
+          "prune_probability": 0.95,
+          "prune_threshold": -10000000,
+          "regret_floor": -11000000
+        },
+        "engine": {
+          "package": "0.1.0.dev0",
+          "source_sha256": "0de2ecb86194f3d623e1a1253693ed5dc77ce01f252bd69de332f259816c8e1c"
+        },
+        "trained_by": "06d0627c3997c9692ff1dd4c5c2d46697278068d",
+        "cards": {
+          "seed": 0,
+          "table_set": "4ff8b0efe6ceae251843a229c5c0c42b255a42cf543ebaafc56d1d702ffca06a",
+          "sha256": {
+            "flop.npy": "947731ea66128594522a01031aaad4ad7da71ca82cd322108d6f39e7aea03bab",
+            "flop_board_class.npy": "8c462e944e1a0cc938a5c5006a73b98704082c13b9dd8cee4d3751318f128d90",
+            "flop_board_perm.npy": "79ddeedbfe5f51451f9c4677bea6ef787388508be66956348e9f2d470c6a41e9",
+            "flop_centroids.npy": "f66375d2d522ec41f4e4652b59a3e697e7fe47c4c92df9ebca5d27466258e079",
+            "flop_class_keys.npy": "692202294023b9add67fa711c63e31adf69e482d02b2666057c7cf24da2f27e8",
+            "preflop.npy": "a0a6e5edcc3d3a55fb6acff95b5dbe38615f9687cf56b4d5ca3a6b7f8d8304c9",
+            "river.npy": "756d746b6c09c612c7eaad9600dd8c6e04b054ed24d5cc54b58b9d4584eb34ae",
+            "river_board_class.npy": "2774e5c73e93a1d1bac4a0ee6780598a260d47b7fe0b3de57403f872ef04ca67",
+            "river_board_perm.npy": "b0a7e4fb7ba73ae9fb8ead43e2f5deca46cdc094204d90a9a37e49cd8c2d6310",
+            "river_centroids.npy": "c7d93abc0efd3bc8f40f3818aea30a379a9d0c7b80846193a3f5ffea455d3dc4",
+            "river_class_keys.npy": "3ac0b1e28c229bd72af627f57b05ccab9714907051fbcbae147637e086dec4d2",
+            "turn.npy": "cd14176b9acd407d5f7f8fb122e888ba7935911835f25bb942665236aeb5bc3c",
+            "turn_board_class.npy": "697ed9714efb06a07aa80d50f478c42bbb9669e0af4d3057fd814f1e979d2539",
+            "turn_board_perm.npy": "8e50452ad6c830ee79d4edf3fc951384c18b271b77c80a288d30684dff44dcfb",
+            "turn_centroids.npy": "436488ed22572c97e158178028279d4a895dd43f1b74b2c718f3d6fa0c528dc9",
+            "turn_class_keys.npy": "8d0eb5addf91ea96de22b477da5c6e6b696a002d524328b1d359337c242448d5"
+          }
+        }
+      },
+      "bundle": {
+        "levels": 255,
+        "table_set": "4ff8b0efe6ceae251843a229c5c0c42b255a42cf543ebaafc56d1d702ffca06a",
+        "files": {
+          "flop.u16": "3dca2b64fd249330d3799f70c5cb3eee2ee85d1ce094d6ece36c45e0c08e38c4",
+          "flop_board_class.i32": "67a78cbcee85c489cd3b596f0f9e8d01ad723e5f7e66280efec6fadd697f0d56",
+          "flop_board_perm.u8": "a8ef0761d9e1e9f29613414a1a39f2b9f34085e0f8577f832da38186067456cc",
+          "preflop.u16": "d5af6ddb0de195ca7bd271a0a72e382de518ea533b6388bb427852f1a6a73684",
+          "river.u16": "32ee024c21c55119210935a4ac82172f17e3513a5548edb4c6c0058a065444db",
+          "river_board_class.i32": "c3dada6d5a3cdb98aa10eb7a27cc910067199f475c40fb253de2453338abf48e",
+          "river_board_perm.u8": "8e9eb9dc0c32f7de8f5623eaf4810b9a08c8b06d0d4ea936c5e5d570d5e6b6ae",
+          "strategy.u8": "e5c6feca643e596b65d3165d79285a80063fcc4c5ad3b5d3838e264493e63179",
+          "trees.json": "217be9c6f9ce9906bed0b7c8710897b3ccd6d45040986a96f90bb0895589588d",
+          "turn.u16": "a74292a46fb71f3660037e3fbacbd56571b5c5578a2ecca29e453cf9c146b57c",
+          "turn_board_class.i32": "eada7f2a31bbca64601652f278170a0e8106df76ffc8bdd55fb5a806053f875a",
+          "turn_board_perm.u8": "a39dec6f2d532e67060b8192251eac6d26d58f6ddcdff149edb254da66dcd925"
+        }
+      },
+      "evaluations": [
+        {
+          "candidate": "checkpoint",
+          "report": "evaluations/hu-m1-s0-1280m.json",
+          "sha256": "9451ded9d8f980e9dc1d025971b1833de1a42a55c5543b89a946660f16a0e62e",
+          "outcome": "inconclusive",
+          "deals": 20000,
+          "seed": 0,
+          "checks": [
+            {
+              "opponent": "heuristic",
+              "stack_bb": 100,
+              "bb_per_100": 57.21,
+              "ci95_bb_per_100": [
+                48.61,
+                65.81
+              ],
+              "passed": true,
+              "outcome": "passed"
+            },
+            {
+              "opponent": "calling_station",
+              "stack_bb": 100,
+              "bb_per_100": 224.44,
+              "ci95_bb_per_100": [
+                208.43,
+                240.44
+              ],
+              "passed": true,
+              "outcome": "passed"
+            },
+            {
+              "opponent": "incumbent",
+              "stack_bb": 100,
+              "bb_per_100": 7.21,
+              "ci95_bb_per_100": [
+                -2.46,
+                16.89
+              ],
+              "passed": false,
+              "outcome": "inconclusive",
+              "incumbent": "hu-m1-s0-1024m"
+            }
+          ]
+        },
+        {
+          "candidate": "bundle",
+          "report": "evaluations/hu-m1-s0-1280m-served.json",
+          "sha256": "4cf2e947253e251a757f176c0eed9b32ae0c8ad2379c2d764d5c030916fe7a17",
+          "outcome": "inconclusive",
+          "deals": 20000,
+          "seed": 0,
+          "checks": [
+            {
+              "opponent": "heuristic",
+              "stack_bb": 100,
+              "bb_per_100": 57.14,
+              "ci95_bb_per_100": [
+                48.56,
+                65.73
+              ],
+              "passed": true,
+              "outcome": "passed"
+            },
+            {
+              "opponent": "calling_station",
+              "stack_bb": 100,
+              "bb_per_100": 223.64,
+              "ci95_bb_per_100": [
+                207.67,
+                239.61
+              ],
+              "passed": true,
+              "outcome": "passed"
+            },
+            {
+              "opponent": "incumbent",
+              "stack_bb": 100,
+              "bb_per_100": 6.59,
+              "ci95_bb_per_100": [
+                -3.08,
+                16.27
+              ],
+              "passed": false,
+              "outcome": "inconclusive",
+              "incumbent": "hu-m1-s0-1024m"
+            }
+          ]
+        }
+      ],
+      "note": null
     }
   ]
 }
