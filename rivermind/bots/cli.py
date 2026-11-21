@@ -338,25 +338,34 @@ def strategy_command(checkpoint: str, hole: str, board: str, history: str, depth
 @click.option(
     "--against",
     multiple=True,
-    help="OPPONENT@STACK_BB, such as heuristic@100 or blueprint:<checkpoint>@100; repeatable (default: the P5.4 plan).",
+    help="OPPONENT@STACK_BB, such as heuristic@100, blueprint:<checkpoint>@100 or bundle:<directory>@100; repeatable (default: the P5.4 plan).",
 )
 def evaluate_command(
     checkpoint: str, name: str, out: str, deals: int, seed: int, workers: int | None, tables_path: str | None, against: tuple[str, ...]
 ) -> None:
-    """Evaluate a blueprint CHECKPOINT (or a run's latest) in duplicate heads-up matches (P5.4)."""
+    """Evaluate a blueprint CHECKPOINT (or a run's latest) in duplicate heads-up matches (P5.4).
+
+    CHECKPOINT may also be a serving bundle, which plays the rounded strategy the site serves (P5.5).
+    """
     import os
     import shlex
     import time
 
     from rivermind.bots.blueprint import latest_checkpoint
+    from rivermind.bots.blueprint.bundle import KIND as BUNDLE_KIND
     from rivermind.bots.match import DEFAULT_PLAN, evaluate, render_markdown
 
     target = Path(checkpoint)
     if not (target / "manifest.json").exists():
         found = latest_checkpoint(target)
         if found is None:
-            raise click.ClickException(f"{checkpoint} is neither a checkpoint nor a run with one")
+            raise click.ClickException(f"{checkpoint} is neither a checkpoint, a serving bundle nor a run with a checkpoint")
         target = found
+    try:
+        kind = json.loads((target / "manifest.json").read_text()).get("kind")
+    except (OSError, ValueError) as e:
+        raise click.ClickException(f"{target} has no readable manifest.json") from e
+    candidate = f"bundle:{target}" if kind == BUNDLE_KIND else f"blueprint:{target}"
     plan = []
     for item in against:
         opponent, _, stack = item.rpartition("@")
@@ -371,7 +380,7 @@ def evaluate_command(
 
     try:
         report = evaluate(
-            f"blueprint:{target}",
+            candidate,
             plan or DEFAULT_PLAN,
             deals=deals,
             seed=seed,
@@ -379,7 +388,7 @@ def evaluate_command(
             tables=tables_path,
             progress=progress,
         )
-    except ValueError as e:
+    except (ValueError, OSError) as e:
         raise click.ClickException(str(e)) from e
     argv = ["uv", "run", "--locked", "rivermind-poker", "blueprint", "evaluate", str(target), "--name", name]
     argv += ["--out", out, "--deals", str(deals), "--seed", str(seed)]
@@ -398,7 +407,7 @@ def evaluate_command(
 
 @blueprint.command("gate")
 @click.argument("report")
-@click.option("--incumbent", default=None, help="blueprint:<checkpoint> of the champion a replacement must also beat.")
+@click.option("--incumbent", default=None, help="blueprint:<checkpoint> (or bundle:<directory>) of the champion a replacement must also beat.")
 def gate_command(report: str, incumbent: str | None) -> None:
     """Check an evaluation REPORT (JSON) against the P5.5 promotion gate; exits 1 when it fails."""
     from rivermind.bots.match import gate
@@ -410,4 +419,122 @@ def gate_command(report: str, incumbent: str | None) -> None:
     result = gate(data, incumbent)
     click.echo(json.dumps(result, indent=2))
     if not result["passed"]:
+        raise SystemExit(1)
+
+
+@blueprint.command("promote")
+@click.argument("report")
+@click.option("--served", default=None, help="The report of the serving bundle exported from the same checkpoint; needed to promote.")
+@click.option("--name", default=None, help="The model's name (default: REPORT's file name).")
+@click.option("--checkpoint", default=None, help="The evaluated checkpoint (default: the path REPORT names).")
+@click.option("--bundle", default=None, help="The evaluated bundle (default: the path the served report names).")
+@click.option("--registry", "registry_path", default="docs/models.json", show_default=True)
+@click.option("--page", default="docs/models.md", show_default=True)
+@click.option("--store", default="artifacts/models", show_default=True, help="Where a promoted run's checkpoint and bundle are kept.")
+@click.option("--date", default=None, help="The decision's date (default: today).")
+@click.option("--note", default=None, help="A sentence recorded with the decision.")
+def promote_command(
+    report: str,
+    served: str | None,
+    name: str | None,
+    checkpoint: str | None,
+    bundle: str | None,
+    registry_path: str,
+    page: str,
+    store: str,
+    date: str | None,
+    note: str | None,
+) -> None:
+    """Put the candidate of REPORT (JSON) to the promotion gate and record the decision (P5.5).
+
+    The gate is the one `blueprint gate` applies, against the format's champion
+    too when there is one, and it must hold for the checkpoint (REPORT) and for
+    the serving bundle exported from it (--served). The decision goes into the
+    registry and its page whatever the outcome; a promoted run's checkpoint and
+    bundle are also kept under --store. Exits 1 unless the run was promoted.
+    """
+    import time
+
+    from rivermind.bots import registry as reg
+
+    report_path = Path(report)
+    try:
+        data = reg._read_report(report_path)
+        served_data = reg._read_report(Path(served)) if served else None
+        checkpoint_path = Path(checkpoint or data["candidate"].get("checkpoint") or "")
+        described = reg.describe_checkpoint(checkpoint_path)
+        bundle_path = None
+        described_bundle = None
+        if served_data is not None:
+            bundle_path = Path(bundle or served_data["candidate"].get("bundle") or "")
+            described_bundle = reg.describe_bundle(bundle_path, checkpoint_path)
+        registry = reg.load(registry_path)
+        decision = reg.decide(
+            registry,
+            name=name or report_path.stem,
+            date=date or time.strftime("%Y-%m-%d"),
+            report=data,
+            report_path=reg._published(report_path, Path(registry_path)),
+            report_sha256=reg._sha256(report_path),
+            checkpoint=described,
+            served=served_data,
+            served_path=reg._published(Path(served), Path(registry_path)) if served else None,
+            served_sha256=reg._sha256(Path(served)) if served else None,
+            bundle=described_bundle,
+            note=note,
+        )
+        kept = None
+        if decision["outcome"] == "promoted":
+            assert bundle_path is not None
+            kept = reg.keep(decision, checkpoint_path, bundle_path, store)
+        reg.write(registry, registry_path, page)
+    except (reg.RegistryError, OSError) as e:
+        raise click.ClickException(str(e)) from e
+    shown = {
+        "name": decision["name"],
+        "format": decision["format"],
+        "outcome": decision["outcome"],
+        "incumbent": decision["incumbent"],
+        "evaluations": [{k: e[k] for k in ("candidate", "report", "outcome", "checks")} for e in decision["evaluations"]],
+        "kept": str(kept) if kept else None,
+        "registry": registry_path,
+        "page": page,
+    }
+    click.echo(json.dumps(shown, indent=2))
+    if decision["outcome"] != "promoted":
+        raise SystemExit(1)
+
+
+@blueprint.command("champions")
+@click.option("--registry", "registry_path", default="docs/models.json", show_default=True)
+@click.option("--verify", default=None, help="Check the champions' files kept in this directory, such as artifacts/models.")
+def champions_command(registry_path: str, verify: str | None) -> None:
+    """List each format's champion from the registry; with --verify, check its kept files' hashes. Exits 1 on a mismatch."""
+    from rivermind.bots import registry as reg
+
+    try:
+        registry = reg.load(registry_path)
+    except reg.RegistryError as e:
+        raise click.ClickException(str(e)) from e
+    shown = []
+    bad = False
+    for fmt, d in reg.champions(registry).items():
+        entry = {
+            "format": fmt,
+            "name": d["name"],
+            "promoted": d["date"],
+            "iteration": d["checkpoint"]["iteration"],
+            "strategy.npy": d["checkpoint"]["files"].get("strategy.npy"),
+            "strategy.u8": d["bundle"]["files"].get("strategy.u8"),
+            "table_set": d["checkpoint"]["cards"]["table_set"],
+            "evaluations": [e["report"] for e in d["evaluations"]],
+        }
+        if verify is not None:
+            problems = reg.verify_kept(d, Path(verify) / d["name"])
+            entry["kept"] = str(Path(verify) / d["name"])
+            entry["problems"] = problems
+            bad = bad or bool(problems)
+        shown.append(entry)
+    click.echo(json.dumps(shown, indent=2))
+    if bad:
         raise SystemExit(1)

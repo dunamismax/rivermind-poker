@@ -208,6 +208,9 @@ After a change to either side of the bots, run `pnpm bots:parity` from `web/` (C
 | Evaluate a checkpoint (P5.4) | `blueprint evaluate <checkpoint> --name <name> --out docs/evaluations` | See [an example report](docs/evaluations/hu-m1-s0-128m.md) for the full command |
 | Check a report against the promotion gate (P5.5) | `blueprint gate <report.json>` | Exits 1 on failure; `--incumbent` for a replacement |
 | Export a serving bundle (P4B.6) | `uv run --locked rivermind-poker blueprint export <checkpoint> --out <dir>` | Bundles go under `artifacts/bundles/` |
+| Evaluate what the site serves (P5.5) | `blueprint evaluate <bundle> --name <name>-served` | A bundle plays its rounded strategy on its own card tables |
+| Put a run to the gate and record it (P5.5) | `blueprint promote <report.json> --served <bundle report.json>` | Writes `docs/models.json` and `docs/models.md` whatever the outcome, and keeps a promoted run in `artifacts/models/<name>/`; exits 1 unless promoted |
+| List the champions and check their kept files | `blueprint champions --verify artifacts/models` | Exits 1 on a missing or changed file |
 
 ### Web
 
@@ -256,6 +259,7 @@ pnpm e2e:live   # against https://rivermindpoker.com (or LIVE_URL)
 - **Blueprint runs** are byte-for-byte a function of their settings, trees and card tables, whatever the worker count or where they were stopped and resumed. After changing the trainer, compare the `regrets.npy` and `strategy.npy` hashes of two runs with different worker counts.
 - Every chunk of a batch starts from the same regrets, so the number of batches limits how far the strategy can move. On Kuhn poker ([the test helpers](test/engine/blueprint_helpers.py)), 25 batches of 64,000 iterations left an exploitability of 0.078, while 750 batches of 400 (300,000 iterations) reached 0.011. Tests train Kuhn poker in small batches; the CLI test uses the real card tables and is skipped without them.
 - **Training workers are separate processes**, and macOS starts them with spawn, so pytest monkeypatches do not reach them. To test server scheduling with deterministic updates, use the thread workers in [the training test helpers](test/functional/training_helpers.py), and keep a real-worker CLI run for the end-to-end check.
+- **Champions.** `docs/models.json` is the registry and `blueprint promote` is the only thing that writes it or the generated part of `docs/models.md`; pytest fails when the page, the registry or a recorded report disagree. Never edit a recorded report: the registry holds its SHA-256. A run prunes its old checkpoints (`--keep`), so a promoted checkpoint lives on in `artifacts/models/<name>/`, and reports name an incumbent by that path. Commit code before evaluating, so a report records a clean commit.
 - **Artifacts** (card tables, checkpoints, bundles, local runs) go under the ignored `artifacts/` directory and never into Git. The small tracked [action-sequence fixture](test/fixtures/action_sequences.pkl) is the exception. Keep checkpoints paired with the tables that define their buckets.
 - **Saved state.** When changing a saved format, check its writer and every consumer (resume, offline play, the table server’s restore). Exercise existing-format data and document any migration or regeneration it needs. Load only trusted pickle and joblib artifacts.
 
@@ -378,7 +382,8 @@ The site runs on the owner’s ubuntu-vm. [CONTRIBUTING.md](CONTRIBUTING.md#depl
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to develop, run and deploy each part; each Phase 4B step updates it as it lands |
 | [docs/rules.md](docs/rules.md) | The no-limit rules, with worked examples |
 | [docs/bots.md](docs/bots.md) | Bot design, card tables, training, evaluation and serving |
-| [docs/evaluations/](docs/evaluations/) | One report per evaluated checkpoint, with everything needed to reproduce it |
+| [docs/evaluations/](docs/evaluations/) | One report per evaluated checkpoint or bundle, with everything needed to reproduce it |
+| [docs/models.md](docs/models.md) | The champions and every run put to the promotion gate, generated from `docs/models.json` |
 | [docs/design.md](docs/design.md) | The pixel-art kit and its rules |
 | [docs/voice.md](docs/voice.md) | Table voice: threat model, encryption, media server, audio settings and host needs |
 | This file | Durable conventions, verified commands and recurring pitfalls |

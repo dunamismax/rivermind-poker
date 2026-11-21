@@ -53,15 +53,30 @@ def _loaded(checkpoint: str, tables: str | None) -> tuple[Any, Any]:
     return bp, CardTables(tables or bp.manifest["cards"]["path"])
 
 
+@lru_cache(maxsize=4)
+def _bundle(path: str) -> Any:
+    """A serving bundle, opened once per process. ``describe_policy`` checks its files; the workers do not repeat that."""
+    from .blueprint.bundle import ServingBundle
+
+    return ServingBundle(path, verify=False)
+
+
 def make_policy(spec: str, tables: str | None = None) -> Policy:
-    """A policy from its name, or ``blueprint:<checkpoint>`` for a trained blueprint."""
+    """A policy from its name, ``blueprint:<checkpoint>`` for a trained blueprint or ``bundle:<directory>`` for a serving bundle.
+
+    A bundle plays its own ``uint8`` strategy on its own card-table arrays,
+    which is what the site serves (P4B.6), so ``tables`` does not apply to it.
+    """
     if spec in SIMPLE:
         return SIMPLE[spec]()
     if spec.startswith("blueprint:"):
         from .blueprint.policy import BlueprintPolicy
 
         return BlueprintPolicy(*_loaded(spec.split(":", 1)[1], tables))
-    raise ValueError(f"unknown policy {spec!r}; use one of {', '.join(SIMPLE)} or blueprint:<checkpoint>")
+    if spec.startswith("bundle:"):
+        policy: Policy = _bundle(spec.split(":", 1)[1]).policy()
+        return policy
+    raise ValueError(f"unknown policy {spec!r}; use one of {', '.join(SIMPLE)}, blueprint:<checkpoint> or bundle:<directory>")
 
 
 @dataclass(frozen=True)
@@ -207,7 +222,24 @@ def describe_policy(spec: str) -> dict[str, Any]:
             "files": {k: v["sha256"] for k, v in m["files"].items()},
             "trees": [t["sha256"] for t in m["game"]["trees"]],
             "cards": m["cards"]["sha256"],
-            "trained_by": m["software"].get("commit"),
+            "trained_by": m.get("software", {}).get("commit"),
+        }
+    if spec.startswith("bundle:"):
+        from .blueprint.bundle import ServingBundle
+
+        path = Path(spec.split(":", 1)[1])
+        b = ServingBundle(path, verify=True).manifest
+        return {
+            "spec": "bundle",
+            "bundle": str(path),
+            "iteration": b["checkpoint"].get("iteration"),
+            "levels": b["strategy"]["levels"],
+            "files": {k: v["sha256"] for k, v in b["files"].items()},
+            "trees": [t["sha256"] for t in b["game"]["trees"]],
+            "cards": b["cards"]["sha256"],
+            "table_set": b["cards"]["table_set"],
+            "exported_from": {k: b["checkpoint"].get(k) for k in ("manifest_sha256", "strategy_sha256")},
+            "exported_by": b["software"].get("git_commit"),
         }
     source = Path(__file__).with_name("policies.py").read_bytes()
     return {"spec": spec, "source": "rivermind/bots/policies.py", "source_sha256": hashlib.sha256(source).hexdigest()}
@@ -278,11 +310,21 @@ def evaluate(
 
 def render_markdown(report: dict[str, Any], *, name: str, command: str) -> str:
     c = report["candidate"]
+    if c["spec"] == "bundle":
+        iterations = f", {c['iteration']:,} iterations" if c.get("iteration") else ""
+        candidate = (
+            f"Candidate: the serving bundle `{c['bundle']}`{iterations}: the strategy the site serves,"
+            f" rounded to multiples of 1/{c['levels']} (`strategy.u8` `{c['files']['strategy.u8'][:8]}…`),"
+            f" on the bundle’s own card tables (table set `{c['table_set'][:8]}…`)."
+        )
+    else:
+        candidate = f"Candidate: `{c.get('checkpoint', c['spec'])}`" + (
+            f", {c['iteration']:,} iterations, trained at `{(c.get('trained_by') or 'unknown')[:7]}`." if "iteration" in c else "."
+        )
     lines = [
         f"# Evaluation: {name}",
         "",
-        f"Candidate: `{c.get('checkpoint', c['spec'])}`"
-        + (f", {c['iteration']:,} iterations, trained at `{(c.get('trained_by') or 'unknown')[:7]}`." if "iteration" in c else "."),
+        candidate,
         f"Game: {report['game']['rules']}; blinds 50/100; {report['game']['format']}.",
         f"Seed {report['seed']}, {report['deals_per_matchup']:,} deals ({2 * report['deals_per_matchup']:,} hands) per matchup;"
         f" evaluated at `{(report['software']['commit'] or 'unknown')[:7]}`{' with local changes' if report['software']['dirty'] else ''}.",
@@ -317,18 +359,21 @@ GATE_STACK_BB = 100
 def gate(report: dict[str, Any], incumbent: str | None = None, stack_bb: int = GATE_STACK_BB) -> dict[str, Any]:
     """The P5.5 promotion gate on a report: the 95% interval's lower bound above zero against each gate opponent.
 
-    A replacement must also clear it against the incumbent (``blueprint:<checkpoint>``),
-    which the report must have played.
+    A replacement must also clear it against the incumbent (``blueprint:<checkpoint>``
+    or ``bundle:<directory>``), which the report must have played. Each check's
+    ``outcome`` is ``passed``, ``failed`` when the whole interval is below zero,
+    ``inconclusive`` when it spans zero, or ``missing``; the report's is the
+    worst of them.
     """
     wanted = list(GATE_OPPONENTS) + ([incumbent] if incumbent else [])
     checks = []
     for opponent in wanted:
         found = [r for r in report["results"] if r["opponent"] == opponent and r["stack_bb"] == stack_bb]
         if not found:
-            checks.append({"opponent": opponent, "stack_bb": stack_bb, "passed": False, "reason": "not in the report"})
+            checks.append({"opponent": opponent, "stack_bb": stack_bb, "passed": False, "outcome": "missing", "reason": "not in the report"})
             continue
         r = found[0]
-        lower = r["ci95_bb_per_100"][0]
+        lower, upper = r["ci95_bb_per_100"]
         checks.append(
             {
                 "opponent": opponent,
@@ -336,6 +381,9 @@ def gate(report: dict[str, Any], incumbent: str | None = None, stack_bb: int = G
                 "bb_per_100": r["bb_per_100"],
                 "ci95_bb_per_100": r["ci95_bb_per_100"],
                 "passed": lower > 0,
+                "outcome": "passed" if lower > 0 else "failed" if upper < 0 else "inconclusive",
             }
         )
-    return {"passed": all(c["passed"] for c in checks), "checks": checks}
+    outcomes = {c["outcome"] for c in checks}
+    outcome = next(o for o in ("missing", "failed", "inconclusive", "passed") if o in outcomes)
+    return {"passed": all(c["passed"] for c in checks), "outcome": outcome, "checks": checks}

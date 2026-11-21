@@ -228,7 +228,49 @@ cd web && pnpm bots:bench -- --bundle ../artifacts/bundles/hu-m1-s0-128m
 
 On 2026-11-20, the 128-million-iteration checkpoint of `hu-m1-s0` exported in 12 s to a 450 MB bundle (`strategy.u8` `ec57ac6f…`, table set `4ff8b0ef…`). The long parity run above matched 20,000 simple-bot hands, all 100,002 blueprint decisions (identical probabilities, not merely within 1e-9; 99.9% trained, 630 re-entries, 48 lost) and the buckets on 1,000 boards a street against the original `.npy` tables, in 70 s. On this Mac (Node 26.13, load average about 40 from the training run) the bundle loads in 1 to 2 s and a blueprint decision takes 0.006 ms at the median, 0.04 ms at p95 and 0.46 ms at p99 over 20,003 decisions, with 443 MB of array buffers. P5.7a measures it on ubuntu-vm.
 
-The P5.4 reports evaluate the `float64` checkpoint; the bundle serves its rounding, which moves each probability by about half a level (1/510) before renormalizing. P5.5 should confirm the served rounding keeps the gate, for example by evaluating the bundle through `BlueprintPolicy.from_bundle`.
+The P5.4 reports evaluate the `float64` checkpoint; the bundle serves its rounding, which moves each probability by about half a level (1/510) before renormalizing. The promotion gate is therefore applied to the bundle as well as the checkpoint ([below](#promotion-and-the-registry-p55)).
+
+## Promotion and the registry (P5.5)
+
+A **champion** is the bot the site serves for a format (heads-up now; 6-max and 9-max at P5.6). [docs/models.md](models.md) lists the champions and every run put to the gate, and [`models.json`](models.json) beside it is the registry that page is generated from ([`registry.py`](../rivermind/bots/registry.py)).
+
+**The gate.** At 100 big blinds, the lower bound of the 95% interval must be above zero against each of RiverMind Easy and the calling station. A replacement must clear the same bound against the format’s champion, in the same report. The gate is applied twice, to the checkpoint and to the serving bundle exported from it, because the bundle’s rounded strategy is what people play. A run whose interval lies wholly below zero in any of those matches has **failed**; one whose interval spans zero is **inconclusive** and can be put to the gate again with more deals. Both are recorded and leave the champion as it was.
+
+```sh
+# 1. Evaluate the checkpoint. A replacement adds every default matchup and the champion, by its kept path:
+uv run --locked rivermind-poker blueprint evaluate CHECKPOINT --name NAME \
+  [--against heuristic@100 … --against blueprint:artifacts/models/CHAMPION/checkpoint@100]
+# 2. Export the bundle and evaluate what the site would serve:
+uv run --locked rivermind-poker blueprint export CHECKPOINT --out artifacts/bundles/NAME
+uv run --locked rivermind-poker blueprint evaluate artifacts/bundles/NAME --name NAME-served [--against …]
+# 3. Put both reports to the gate and record the decision:
+uv run --locked rivermind-poker blueprint promote docs/evaluations/NAME.json --served docs/evaluations/NAME-served.json
+uv run --locked rivermind-poker blueprint champions --verify artifacts/models
+```
+
+`blueprint evaluate` takes a bundle wherever it takes a checkpoint, and `bundle:<directory>` wherever it takes `blueprint:<checkpoint>`. A bundle plays through the same `BlueprintPolicy` on its own `uint8` strategy and its own card-table arrays, so its report measures exactly the files Node loads, and it records their SHA-256s.
+
+`blueprint promote` checks before it records anything that every checkpoint file matches its manifest, that the report evaluated that checkpoint, that the bundle names that checkpoint and holds its card tables, that the bundle’s strategy is a fresh rounding of the checkpoint’s, and that the served report evaluated that bundle. It finds the champion in a report by its file hashes, not its path. It then appends the decision to `models.json`, rewrites the generated part of `models.md`, and exits 1 unless the run was promoted. A report can be recorded once, and the registry holds each report’s SHA-256, so a recorded report is never edited. pytest replays every decision from its reports and fails if the page, the registry or a report disagree.
+
+Commit code changes before evaluating: a report records the commit it ran at and whether `rivermind/` had local changes.
+
+### Where models are kept
+
+Artifacts never go into Git; the registry names them by SHA-256.
+
+- **This Mac** trains and evaluates. A promoted run’s checkpoint and bundle are kept in `artifacts/models/<name>/checkpoint` and `artifacts/models/<name>/bundle`, hard-linked from the run by `blueprint promote`. A training run prunes its older checkpoints (`--keep`), and the links keep a champion’s files when that happens. The card tables are in `artifacts/tables/hu-m1`.
+- **ubuntu-vm** holds the second copy, which is also what the site will serve from (P5.7a): `/srv/rivermind-poker/models/champions/<name>/` with the same two directories, and the card tables in `/srv/rivermind-poker/models/tables/hu-m1`. Everything there is owned by root and world-readable, so the sandboxed web service can read it and cannot change it.
+- **Backup.** The two machines are each other’s backup. The host’s nightly `ubuntu-vm-backup` covers configuration and databases and does not include `/srv/rivermind-poker/models`: a Git repository is the wrong place for files of this size. Losing both copies costs compute, not the model: the card tables rebuild byte for byte from their seed in about four minutes, and a run is a function of its settings, trees and card tables, so retraining to the champion’s iteration gives the same checkpoint, which the registry’s hashes will confirm.
+
+Copy a champion to the host and check it there (D-10; `COPYFILE_DISABLE=1` keeps macOS from adding `._*` files):
+
+```sh
+COPYFILE_DISABLE=1 rsync -a --chmod=D755,F644 artifacts/models/NAME root@ubuntu-vm:/srv/rivermind-poker/models/champions/
+ssh root@ubuntu-vm 'chown -R root:root /srv/rivermind-poker/models/champions/NAME'
+ssh root@ubuntu-vm 'cd /srv/rivermind-poker/models/champions/NAME && sha256sum checkpoint/* bundle/*'   # compare with models.json
+```
+
+Once the host’s checkout has the registry, `rivermind-poker blueprint champions --verify /srv/rivermind-poker/models/champions` does that comparison there.
 
 ## 6-max and 9-max
 
