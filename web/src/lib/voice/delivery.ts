@@ -169,7 +169,15 @@ export class Delivery {
 
 	// A commit and the GroupInfo that follows it, from the person the signalling
 	// socket belongs to. Accepted, it is the caller's to pass on to everyone else.
-	async submit(commit: Uint8Array, groupInfo: Uint8Array, from: Identity): Promise<Outcome> {
+	// `fromLeaf`, where the caller knows it, is the leaf that socket holds: a
+	// member's commit must then come from that leaf, and from no other of the
+	// same person's (a reloaded page's old one, say).
+	async submit(
+		commit: Uint8Array,
+		groupInfo: Uint8Array,
+		from: Identity,
+		fromLeaf?: number | null
+	): Promise<Outcome> {
 		const now = this.#held;
 		if (!now) return { accepted: false, refusal: 'no-group' };
 		const epoch = now.info.groupContext.epoch;
@@ -208,6 +216,7 @@ export class Delivery {
 			// A member: their own commit, of removals the service asked for and nothing more.
 			allowed =
 				sameIdentity(before.get(content.sender.leafIndex) ?? null, from) &&
+				(fromLeaf === undefined || fromLeaf === content.sender.leafIndex) &&
 				added.length === 0 &&
 				removed.length > 0 &&
 				removed.every((leaf) => this.#leaving.has(leaf)) &&

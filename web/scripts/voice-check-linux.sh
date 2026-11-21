@@ -6,8 +6,9 @@
 #   web/scripts/voice-check-linux.sh [arguments for playwright test]
 #
 # The tree is copied into the container, not mounted: colima shares only the
-# home directory. Install scripts are skipped, so nothing is fetched for
-# mediasoup, which these checks do not use.
+# home directory. The install runs install scripts, as CI's does: the room
+# checks start the voice service, whose mediasoup fetches its worker for the
+# container's platform from GitHub.
 set -euo pipefail
 web=$(cd "$(dirname "$0")/.." && pwd)
 node=$(cat "$web/.node-version")
@@ -23,7 +24,7 @@ mkdir -p /opt/node && tar -xzf /tmp/node.tar.gz -C /opt/node --strip-components 
 export PATH=/opt/node/bin:\$PATH CI=1
 npm install -g "pnpm@$pnpm" >/dev/null 2>&1
 cd /web
-pnpm install --frozen-lockfile --ignore-scripts 2>&1 | tail -1
+pnpm install --frozen-lockfile 2>&1 | tail -1
 pnpm exec svelte-kit sync
 pnpm exec playwright test --config playwright.voice-check.config.ts "\$@"
 SCRIPT

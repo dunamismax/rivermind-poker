@@ -6,6 +6,11 @@ import { defineConfig, type Plugin } from 'vite';
 // Content-Security-Policy, so a check that passes here passes under it.
 export const PORT = 4391;
 export const ORIGIN = `http://127.0.0.1:${PORT}`;
+// The voice service the room page talks to (playwright.voice-check.config.ts starts it).
+export const VOICE_PORT = 4392;
+export const VOICE_URL = `ws://127.0.0.1:${VOICE_PORT}/voice`;
+// The site secret it runs with, from which the checks sign their voice tokens.
+export const VOICE_SECRET = 'the voice checks’ own secret';
 
 // The site's policy (vite.config.ts and src/hooks.server.ts).
 const csp = [
@@ -13,7 +18,7 @@ const csp = [
 	"img-src 'self' data:",
 	"style-src 'self'",
 	"script-src 'self'",
-	"connect-src 'self'",
+	`connect-src 'self' ${VOICE_URL.replace(/\/voice$/, '')}`,
 	"object-src 'none'",
 	"frame-ancestors 'none'",
 	"base-uri 'self'",
@@ -45,6 +50,12 @@ export default defineConfig({
 	build: {
 		outDir: path.resolve(import.meta.dirname, '../../node_modules/.cache/voice-check'),
 		emptyOutDir: true,
+		rollupOptions: {
+			input: {
+				index: path.resolve(import.meta.dirname, 'index.html'),
+				room: path.resolve(import.meta.dirname, 'room.html')
+			}
+		},
 		minify: false,
 		target: 'es2022'
 	},

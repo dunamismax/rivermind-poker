@@ -14,7 +14,7 @@
 	},
 	"scripts": {
 		"dev": "vite dev",
-		"build": "vite build && vite build --config vite.server.config.ts && node scripts/check-inline-code.js",
+		"build": "vite build && vite build --config vite.server.config.ts && vite build --config vite.voice.config.ts && node scripts/check-inline-code.js",
 		"start": "node build/start.js",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",

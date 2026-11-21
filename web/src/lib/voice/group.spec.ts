@@ -638,10 +638,16 @@ describe('what the service will not pass on', () => {
 		expect(await room.delivery.submit(candidate.commit, candidate.groupInfo, bob.identity)).toEqual(
 			{ accepted: false, refusal: 'not-allowed' }
 		);
+		// Alice's identity, from a socket that holds another of her leaves (a page
+		// that reloaded holds its new leaf, not the old one).
+		expect(
+			await room.delivery.submit(candidate.commit, candidate.groupInfo, alice.identity, 5)
+		).toEqual({ accepted: false, refusal: 'not-allowed' });
 		const outcome = await room.delivery.submit(
 			candidate.commit,
 			candidate.groupInfo,
-			alice.identity
+			alice.identity,
+			alice.member.leaf
 		);
 		expect(outcome).toMatchObject({ accepted: true, epoch: 3n, removed: [2], joined: null });
 	});
