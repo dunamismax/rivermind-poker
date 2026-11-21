@@ -38,7 +38,7 @@ test('a player reviews the hands they played', async ({ page, cspViolations }) =
 
 	await page.getByRole('link', { name: 'How dealing works' }).click();
 	await expect(page.getByRole('heading', { name: 'Rules and fair dealing' })).toBeVisible();
-	await expect(page.getByText('secrets.SystemRandom')).toBeVisible();
+	await expect(page.getByText('crypto.randomInt')).toBeVisible();
 	await noOverflow(page);
 	await page.getByRole('link', { name: 'Your hands' }).click();
 	await expect(page).toHaveURL(/\/hands$/);

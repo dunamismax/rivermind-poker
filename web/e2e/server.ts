@@ -1,8 +1,8 @@
 // Runs the site as the browser tests see it: the built Node server
 // (`node build/start.js`) serving the pages, the API and the tables itself
-// (P4B.5b). Until the P4B.7 cutover the live tables are still in Python, so
-// with E2E_LEGACY=1 the Node server instead forwards /api/* and /ws to a real
-// `rivermind-poker serve-nl` on another port, as the live site does. Tables
+// (P4B.5b), as the live site does since the P4B.7 cutover. With E2E_LEGACY=1
+// the Node server instead forwards /api/* and /ws to a real `rivermind-poker
+// serve-nl` on another port, the rollback kept until P4B.8. Tables
 // live in memory; their durability is tested in Vitest and pytest.
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -70,7 +70,7 @@ class Child {
 	}
 }
 
-/** Whether the tables run in serve-nl behind the Node server, as they do live until P4B.7. */
+/** Whether the tables run in serve-nl behind the Node server, as they would after a rollback. */
 export const LEGACY = process.env.E2E_LEGACY === '1';
 
 // Quick bots and hands, so the tests play many of them, and a short practice

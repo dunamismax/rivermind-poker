@@ -1,13 +1,12 @@
 # rivermindpoker.com: installed as /etc/caddy/sites/rivermindpoker.com.caddy by
 # deploy/update.sh and loaded by the host Caddyfile (`import /etc/caddy/sites/*.caddy`).
 # DNS for both names points at the host, so Caddy obtains and renews certificates.
-# Pages and assets come from the SvelteKit Node server, rivermind-poker-web.service
-# on 127.0.0.1:4320, which sets their Cache-Control (a year for the hashed files
-# under /_app/immutable/, revalidate for everything else) and a CSP carrying the
-# hash of SvelteKit's start-up script; Caddy adds its policy only to its own
-# responses. Until the P4B.7 cutover, /api/* and the
-# /ws WebSocket go straight to the Python table server, rivermind-poker.service
-# on 127.0.0.1:4316.
+# Everything comes from the Node server, rivermind-poker-web.service on
+# 127.0.0.1:4320: pages and assets, the API and the tables' /ws WebSocket
+# (P4B.7). It sets the pages' Cache-Control (a year for the hashed files under
+# /_app/immutable/, revalidate for everything else) and a CSP carrying the hash
+# of SvelteKit's start-up script; Caddy adds its policy only to the API, the
+# socket handshake and its own error page.
 #
 # Check and reload: caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
 
@@ -68,17 +67,18 @@ rivermindpoker.com {
 
 	# The Node server sends each page's policy itself, with the hash of SvelteKit's
 	# start-up script, and leaves it off a 304, so the browser keeps the cached
-	# page's. Caddy must not add a policy to anything Node answers: Chromium
-	# applies a 304's headers to the cached page, and this stricter policy would
-	# block the start-up script on every reload. Caddy's own responses get it.
+	# page's. Caddy must not add a policy to a page or an asset: Chromium applies
+	# a 304's headers to the cached page, and this stricter policy would block the
+	# start-up script on every reload. The API's answers, the socket handshake and
+	# Caddy's own error page get it.
 	handle /api/* {
 		header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self' wss://rivermindpoker.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-		reverse_proxy 127.0.0.1:4316
+		reverse_proxy 127.0.0.1:4320
 	}
 
 	handle /ws {
 		header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self' wss://rivermindpoker.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-		reverse_proxy 127.0.0.1:4316 {
+		reverse_proxy 127.0.0.1:4320 {
 			# A config reload would otherwise close every open game socket.
 			stream_close_delay 5m
 		}

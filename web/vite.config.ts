@@ -3,7 +3,7 @@ import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 
-// Until the P4B.7 cutover, `rivermind-poker serve-nl` (port 8000 by default)
+// In development a table server on another port (port 8000 by default)
 // owns /api and /ws. In development and preview, Vite forwards both so the
 // client stays same-origin; the built Node server does the same with
 // RIVERMIND_LEGACY_API (server/legacy.ts).

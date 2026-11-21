@@ -1,16 +1,22 @@
 # RiverMind Poker web server (SvelteKit on Node, D-14): installed as
 # /etc/systemd/system/rivermind-poker-web.service by deploy/update.sh.
 # Runs the current release in /srv/rivermindpoker.com/current (its build/
-# directory, bundled by `pnpm build`, and a package.json) on loopback. Caddy
-# sends every page and asset here and, until the P4B.7 cutover, sends /api/*
-# and /ws straight to rivermind-poker.service (deploy/rivermindpoker.com.caddy).
+# directory, bundled by `pnpm build`, and a package.json) on loopback. Since the
+# P4B.7 cutover it is the whole site: pages, assets, the API and the tables on
+# /ws, with every table saved to PostgreSQL after each change and restored at
+# start-up, so restarts and deploys keep every game. Caddy sends everything here
+# (deploy/rivermindpoker.com.caddy).
 # The release needs no node_modules and no access to the checkout, so the
 # service runs as a dynamic user that can read nothing of the host's homes.
 [Unit]
 Description=RiverMind Poker web server (rivermindpoker.com)
 Documentation=https://github.com/dunamismax/rivermind-poker
-After=network-online.target
+After=network-online.target postgresql.service
 Wants=network-online.target
+# Never beside the Python table server, kept stopped for a rollback until
+# P4B.8: both would restore and deal the same tables. Starting either stops
+# the other.
+Conflicts=rivermind-poker.service
 ConditionPathExists=/srv/rivermindpoker.com/current/build/start.js
 StartLimitIntervalSec=120
 StartLimitBurst=5
@@ -25,6 +31,16 @@ ExecStart=/usr/bin/node build/start.js
 # name wss://rivermindpoker.com in their connect-src.
 Environment=HOST=127.0.0.1 PORT=4320 NODE_ENV=production ORIGIN=https://rivermindpoker.com
 Environment=SHUTDOWN_TIMEOUT=10
+# The TypeScript API and table server (P4B.5a, P4B.5b). Hand pause, bot delay
+# and the table limit keep their defaults (3 s, 0.6 s, 200), as serve-nl ran.
+Environment=RIVERMIND_API=1
+# DATABASE_URL for the rivermind_poker_web role, from deploy/setup-database.sh.
+EnvironmentFile=/etc/rivermind-poker/web.env
+# The secret that signs session cookies: the one serve-nl made, so every guest
+# stays signed in. It stays root-only where it is; systemd hands this service a
+# read-only copy that the dynamic user can read.
+LoadCredential=secret:/var/lib/rivermind-poker/secret
+Environment=RIVERMIND_SECRET_FILE=%d/secret
 Restart=on-failure
 RestartSec=2
 TimeoutStopSec=15
@@ -50,10 +66,9 @@ LockPersonality=true
 SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 CapabilityBoundingSet=
-# Pages and assets only until P4B.7, which moves the tables here and raises these.
-MemoryHigh=512M
-MemoryMax=1G
-TasksMax=64
+MemoryHigh=2G
+MemoryMax=3G
+TasksMax=128
 
 [Install]
 WantedBy=multi-user.target

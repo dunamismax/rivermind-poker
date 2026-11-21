@@ -1,14 +1,12 @@
-# RiverMind Poker no-limit table server: installed as
-# /etc/systemd/system/rivermind-poker.service by deploy/update.sh.
-# Serves the git checkout in /home/sawyer/github/rivermind-poker on loopback;
-# Caddy proxies https://rivermindpoker.com/api and /ws to it
-# (deploy/rivermindpoker.com.caddy). The dedicated rivermind-poker user only
-# needs traverse access to /home/sawyer (ACL) and read access to the checkout,
-# its .venv and the Python under /opt/uv-python.
-# Every table is saved to PostgreSQL (DATABASE_URL in web.env) after each
-# change and restored on start, so restarts and deploys keep every game. The
-# secret that signs player tokens lives in the private state directory, so
-# players keep their identity across restarts too.
+# ROLLBACK ONLY (until P4B.8): the Python no-limit table server, serve-nl, which
+# ran the tables before the P4B.7 cutover. deploy/update.sh installs it as
+# /etc/systemd/system/rivermind-poker.service but leaves it stopped and
+# disabled; deploy/rollback-to-serve-nl.sh starts it. It must never run beside
+# a Node server that has the tables (RIVERMIND_API=1): both would restore and
+# deal the same tables. The live web unit names it in Conflicts= for that reason.
+# It serves the git checkout in /home/sawyer/github/rivermind-poker on loopback
+# as the rivermind-poker user, with DATABASE_URL from web.env and the session
+# secret in its private state directory, which the web unit reads as a credential.
 [Unit]
 Description=RiverMind Poker browser table (rivermindpoker.com)
 Documentation=https://github.com/dunamismax/rivermind-poker

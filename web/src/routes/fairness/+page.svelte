@@ -34,9 +34,8 @@
 			<ul class={list}>
 				<li>
 					Every hand uses a full 52-card deck, shuffled from scratch on the server before the hand.
-					The shuffle draws on the operating system’s cryptographic random number generator
-					(Python’s
-					<code class="text-green-light">secrets.SystemRandom</code>), the same source used for
+					The shuffle draws on the operating system’s cryptographic random number generator (Node’s
+					<code class="text-green-light">crypto.randomInt</code>), the same source used for
 					passwords and keys, so no one can predict or influence the order of the cards.
 				</li>
 				<li>

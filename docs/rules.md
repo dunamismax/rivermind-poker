@@ -14,7 +14,7 @@ Where card rooms differ, [Choices](#choices) lists the option chosen and why. Th
 
 ## 1. Deck and dealing
 
-1.1. Each hand uses one standard 52-card deck, shuffled before the hand. Live tables shuffle with the operating system’s cryptographic randomness (`secrets.SystemRandom`, D-8). The engine never shuffles by itself: the caller supplies either a deck order or a random generator, so tests, training and evaluation can replay deals exactly.
+1.1. Each hand uses one standard 52-card deck, shuffled before the hand. Live tables shuffle with the operating system’s cryptographic randomness (`crypto.randomInt` in the Node table server; `secrets.SystemRandom` in the Python one kept for a rollback; D-8). The engine never shuffles by itself: the caller supplies either a deck order or a random generator, so tests, training and evaluation can replay deals exactly.
 
 1.2. Cards are dealt from the top of the deck in order. Each player dealt in receives two hole cards, one at a time, starting with the player left of the button and going clockwise, twice round. Heads-up this means the big blind gets the first card.
 

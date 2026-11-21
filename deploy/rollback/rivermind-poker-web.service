@@ -1,0 +1,55 @@
+# ROLLBACK ONLY (until P4B.8): the web unit as it was before the P4B.7 cutover,
+# serving pages and assets while rivermind-poker.service (serve-nl) runs the
+# tables. deploy/rollback-to-serve-nl.sh installs it as
+# /etc/systemd/system/rivermind-poker-web.service in place of the live one.
+[Unit]
+Description=RiverMind Poker web server (rivermindpoker.com)
+Documentation=https://github.com/dunamismax/rivermind-poker
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/srv/rivermindpoker.com/current/build/start.js
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+DynamicUser=yes
+User=rivermind-poker-web
+WorkingDirectory=/srv/rivermindpoker.com/current
+ExecStart=/usr/bin/node build/start.js
+# ORIGIN makes SvelteKit see https://rivermindpoker.com behind Caddy, so pages
+# name wss://rivermindpoker.com in their connect-src.
+Environment=HOST=127.0.0.1 PORT=4320 NODE_ENV=production ORIGIN=https://rivermindpoker.com
+Environment=SHUTDOWN_TIMEOUT=10
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+SyslogIdentifier=rivermind-poker-web
+
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# No MemoryDenyWriteExecute: V8's JIT needs writable, executable pages.
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+# Pages and assets only: serve-nl has the tables.
+MemoryHigh=512M
+MemoryMax=1G
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

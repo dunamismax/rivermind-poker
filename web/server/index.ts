@@ -6,13 +6,13 @@
 //   RIVERMIND_BUILD_DIR     the adapter-node build (the bundle's own directory,
 //                           or web/build from the source)
 //   RIVERMIND_LEGACY_API    forward /api/* and /ws to this serve-nl, such as
-//                           http://127.0.0.1:4316, until the P4B.7 cutover
+//                           http://127.0.0.1:4316: the rollback to the Python
+//                           table server, kept until P4B.8
 //   RIVERMIND_API=1         otherwise, answer /api/* and /ws with the TypeScript
 //                           API and table server (P4B.5a, P4B.5b), set up as
 //                           src/lib/server/api/runtime.ts says
 //                           (RIVERMIND_SECRET_FILE, DATABASE_URL, ...).
-//                           Off until the cutover: live, Caddy sends /api and
-//                           /ws to serve-nl.
+//                           The live unit sets it since the P4B.7 cutover.
 //   SHUTDOWN_TIMEOUT        seconds a SIGTERM waits for open requests (10)
 //   ORIGIN, PROTOCOL_HEADER, HOST_HEADER, ADDRESS_HEADER, XFF_DEPTH and
 //   BODY_SIZE_LIMIT are read by SvelteKit's handler, as documented for adapter-node.

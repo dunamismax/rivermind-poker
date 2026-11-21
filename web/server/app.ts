@@ -1,9 +1,9 @@
 // The RiverMind Poker web server: SvelteKit's Node handler and the /ws
-// WebSocket on one HTTP server (D-2). Until the P4B.7 cutover the live tables
-// are in the Python server, so with a legacy target /api/* and /ws are
-// forwarded there (legacy.ts). Without one, /api/* is answered by the
-// TypeScript API (api.ts, P4B.5a) and /ws by the TypeScript table server
-// (`sockets`, P4B.5b). With neither, /ws accepts sockets and closes them.
+// WebSocket on one HTTP server (D-2). /api/* is answered by the TypeScript API
+// (api.ts, P4B.5a) and /ws by the TypeScript table server (`sockets`, P4B.5b),
+// as the live site runs since the P4B.7 cutover. With a legacy target both are
+// forwarded to the Python table server instead (legacy.ts): the rollback, kept
+// until P4B.8. With neither, /ws accepts sockets and closes them.
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Socket } from 'node:net';
@@ -17,7 +17,7 @@ export type Handler = (req: IncomingMessage, res: ServerResponse, next?: () => v
 export interface Options {
 	/** SvelteKit's request handler, from the build's handler.js. */
 	handler: Handler;
-	/** The Python table server to forward /api/* and /ws to, until the cutover. */
+	/** The Python table server to forward /api/* and /ws to: the rollback, until P4B.8. */
 	legacyApi?: URL | null;
 	/** How long a shutdown waits for open requests before closing them, in milliseconds. */
 	shutdownTimeoutMs?: number;
