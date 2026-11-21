@@ -134,7 +134,8 @@ web/                             SvelteKit app (Node 26.13.1 from web/.node-vers
   scripts/                       art generator, parity and benchmark scripts, migrator, moderation commands,
                                  inline-code check
   src/lib/voice/                 table voice (Phase 4C): SFrame (sframe.ts), its encoded-transform worker and
-                                 the page's handle on it (P4C.2), and the ts-mls design check (P4C.1)
+                                 the page's handle on it (P4C.2), the ts-mls design check (P4C.1) and, in
+                                 mls-vectors/, the MLS working group's test vectors against ts-mls (P4C.3)
   voice/check/                   the voice checks' page and Playwright checks (`pnpm voice:check`, in CI):
                                  SFrame's vectors and a call through the worker, in each browser
   voice/prototype/               the voice prototype (P4C.1): a mediasoup service, a test page and its
@@ -325,6 +326,7 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 - No frame passes a transform as it came. Sealing and opening go through `KeyStore` (`sframe.ts`) alone: a frame it cannot seal is dropped (`unsent`), and one it will not open is dropped under its reason. Never add a path that enqueues a frame untouched, for a missing key or anything else (D-15).
 - A key is bytes only until the page imports it. Give the worker each epoch's base key as a non-extractable `CryptoKey`, and derive AES keys with `deriveKey`, for one direction. `deriveBits` on a key is for the test vectors alone.
 - `sframe-vectors.json` is RFC 9605's appendix C as the RFC prints it, written by `node scripts/sframe-vectors.ts rfc9605.txt`. Never edit it by hand, and keep key ids and counters as hex strings: they are 64-bit.
+- The MLS working group's test vectors are fetched at a pinned commit and checked by hash (`web/src/lib/voice/mls-vectors/load.ts`), never committed: their repository states no license. A Vitest run that reports skipped tests there could not reach GitHub; CI fails instead. After changing the ts-mls pin, run them with the network up.
 - `sframe.ts`, `sframe-transform.ts` and the worker follow the engine files' rule: no `#lib` imports, relative `.ts` paths and only erasable TypeScript, so the worker, the check page and Node all load them as they are.
 
 - Import ts-mls by subpath (`ts-mls/createCommit.js`), never from `'ts-mls'`: its root loads a provider that needs `@noble/hashes`, which it does not declare, and the import fails under pnpm.

@@ -1,0 +1,271 @@
+// The MLS working group's treekem test vectors against the pinned ts-mls (P4C.3).
+// Adapted from ts-mls 1.6.4, test/test-vectors/treekem.test.ts (MIT, licenses/ts-mls.txt):
+// it imports the installed package by subpath and reads the working group's own files,
+// the cases for ciphersuite 0x0001, which load.ts fetches at a pinned commit and checks.
+import { expect, test, vi } from 'vitest';
+import { vectors } from './load.ts';
+import source from './source.json' with { type: 'json' };
+import {
+	type CiphersuiteId,
+	type CiphersuiteImpl,
+	getCiphersuiteFromId,
+	getCiphersuiteNameFromId
+} from 'ts-mls/crypto/ciphersuite.js';
+import { getCiphersuiteImpl } from 'ts-mls/crypto/getCiphersuiteImpl.js';
+import { decodeRatchetTree, getHpkePublicKey, type RatchetTree } from 'ts-mls/ratchetTree.js';
+import { hexToBytes } from './hex.ts';
+import {
+	applyUpdatePath,
+	createUpdatePath,
+	decodeUpdatePath,
+	type UpdatePath
+} from 'ts-mls/updatePath.js';
+import { type GroupContext } from 'ts-mls/groupContext.js';
+import { treeHashRoot } from 'ts-mls/treeHash.js';
+import { deriveSecret } from 'ts-mls/crypto/kdf.js';
+import { leafToNodeIndex, toLeafIndex } from 'ts-mls/treemath.js';
+import { applyUpdatePathSecret } from 'ts-mls/createCommit.js';
+import { getCommitSecret } from 'ts-mls/pathSecrets.js';
+import { type PrivateKeyPath, toPrivateKeyPath } from 'ts-mls/privateKeyPath.js';
+import { type PathSecrets } from 'ts-mls/pathSecrets.js';
+import { hpkeKeysMatch } from './key-match.ts';
+
+vi.setConfig({ testTimeout: 120_000 });
+
+const json = await vectors('treekem');
+
+test.concurrent.each(json.map((x, index) => [index, x]))(
+	`treekem test vectors %i`,
+	async (_index, x) => {
+		const impl = await getCiphersuiteImpl(getCiphersuiteFromId(x.cipher_suite as CiphersuiteId));
+		await treekemTest(x, impl);
+	},
+	20000
+);
+
+interface TreeKEMState {
+	cipher_suite: number;
+	confirmed_transcript_hash: string;
+	epoch: number;
+	group_id: string;
+	leaves_private: LeafPrivateState[];
+	ratchet_tree: string;
+	update_paths: UpdatePathState[];
+}
+interface LeafPrivateState {
+	encryption_priv: string;
+	signature_priv: string;
+	index: number;
+	path_secrets: PathSecretState[];
+}
+
+interface PathSecretState {
+	node: number;
+	path_secret: string;
+}
+
+interface UpdatePathState {
+	sender: number;
+	commit_secret: string;
+	path_secrets: (string | null)[];
+	tree_hash_after: string;
+	update_path: string;
+}
+
+async function treekemTest(data: TreeKEMState, impl: CiphersuiteImpl) {
+	const tree = decodeRatchetTree(hexToBytes(data.ratchet_tree), 0);
+
+	if (tree === undefined) throw new Error('could not decode tree');
+
+	const th = await treeHashRoot(tree[0], impl.hash);
+
+	const gc: GroupContext = {
+		version: 'mls10',
+		cipherSuite: getCiphersuiteNameFromId(data.cipher_suite as CiphersuiteId),
+		groupId: hexToBytes(data.group_id),
+		epoch: BigInt(data.epoch),
+		treeHash: th,
+		confirmedTranscriptHash: hexToBytes(data.confirmed_transcript_hash),
+		extensions: []
+	};
+
+	const privatePaths = await getPrivatePaths(data, impl);
+
+	await testTreeKeys(data, tree, impl);
+
+	for (const path of data.update_paths) {
+		const updatePath = decodeUpdatePath(hexToBytes(path.update_path), 0);
+
+		if (updatePath === undefined) throw new Error('could not decode updatepath');
+
+		const updatedTree = await applyUpdatePath(
+			tree[0],
+			toLeafIndex(path.sender),
+			updatePath[0],
+			impl.hash
+		);
+
+		const th = await treeHashRoot(updatedTree, impl.hash);
+
+		expect(th).toStrictEqual(hexToBytes(path.tree_hash_after));
+
+		const updatedGroupContext = { ...gc, treeHash: th };
+
+		const senderLeafState = data.leaves_private.find((lp) => lp.index === path.sender);
+		if (senderLeafState === undefined) {
+			throw new Error('Could not find leaf for sender');
+		}
+		const [t, newUpdatePath, newSecrets] = await createUpdatePath(
+			updatedTree,
+			toLeafIndex(path.sender),
+			updatedGroupContext,
+			hexToBytes(senderLeafState.signature_priv),
+			impl
+		);
+
+		const rootSecret = newSecrets.slice().pop()!;
+		const newCommitSecret = await deriveSecret(rootSecret.secret, 'path', impl.kdf);
+		const newGroupContext = {
+			...gc,
+			treeHash: await treeHashRoot(t, impl.hash),
+			epoch: gc.epoch + 1n
+		};
+
+		for (const pp of privatePaths) {
+			if (pp.leafIndex === path.sender) {
+				expect(path.path_secrets[pp.leafIndex]).toBeNull();
+			} else {
+				await testCommitSecret(tree, pp, path, updatedGroupContext, updatePath[0], impl);
+
+				await testNewUpdatePath(
+					tree,
+					pp,
+					path,
+					newGroupContext,
+					newUpdatePath,
+					impl,
+					newCommitSecret
+				);
+			}
+		}
+	}
+}
+
+async function testNewUpdatePath(
+	tree: [RatchetTree, number],
+	pp: PrivateKeyPath,
+	path: UpdatePathState,
+	newGroupContext: GroupContext,
+	newUpdatePath: UpdatePath,
+	impl: CiphersuiteImpl,
+	newCommitSecret: Uint8Array
+) {
+	const secret = await applyUpdatePathSecret(
+		tree[0],
+		pp,
+		toLeafIndex(path.sender),
+		newGroupContext,
+		newUpdatePath,
+		[],
+		impl
+	);
+
+	const commitSecret = await getCommitSecret(
+		tree[0],
+		secret.nodeIndex,
+		secret.pathSecret,
+		impl.kdf
+	);
+
+	expect(commitSecret).toStrictEqual(newCommitSecret);
+}
+
+async function testCommitSecret(
+	tree: [RatchetTree, number],
+	pp: PrivateKeyPath,
+	path: UpdatePathState,
+	updatedGroupContext: GroupContext,
+	updatePath: UpdatePath,
+	impl: CiphersuiteImpl
+) {
+	const privateP = await applyUpdatePathSecret(
+		tree[0],
+		pp,
+		toLeafIndex(path.sender),
+		updatedGroupContext,
+		updatePath,
+		[],
+		impl
+	);
+
+	expect(privateP.pathSecret).toStrictEqual(hexToBytes(path.path_secrets[pp.leafIndex]!));
+
+	const commitSecret = await getCommitSecret(
+		tree[0],
+		privateP.nodeIndex,
+		privateP.pathSecret,
+		impl.kdf
+	);
+
+	expect(commitSecret).toStrictEqual(hexToBytes(path.commit_secret));
+}
+
+async function getPrivatePaths(
+	data: TreeKEMState,
+	impl: CiphersuiteImpl
+): Promise<PrivateKeyPath[]> {
+	return await Promise.all(
+		data.leaves_private.map(async (leaf) => {
+			const nodeSecrets: PathSecrets = leaf.path_secrets.reduce(
+				(acc, ps) => ({ ...acc, [ps.node]: hexToBytes(ps.path_secret) }),
+				{}
+			);
+
+			const pks = await toPrivateKeyPath(nodeSecrets, leaf.index, impl);
+
+			return {
+				...pks,
+				privateKeys: {
+					...pks.privateKeys,
+					[leafToNodeIndex(toLeafIndex(leaf.index))]: hexToBytes(leaf.encryption_priv)
+				}
+			};
+		})
+	);
+}
+
+async function testTreeKeys(
+	data: TreeKEMState,
+	tree: [RatchetTree, number],
+	impl: CiphersuiteImpl
+) {
+	for (const leaf of data.leaves_private) {
+		const nodeSecrets: PathSecrets = leaf.path_secrets.reduce(
+			(acc, ps) => ({ ...acc, [ps.node]: hexToBytes(ps.path_secret) }),
+			{}
+		);
+
+		const node = tree[0][leafToNodeIndex(toLeafIndex(leaf.index))];
+		if (node === undefined || node.nodeType === 'parent')
+			throw new Error('No leaf found at leaf index');
+
+		expect(
+			await hpkeKeysMatch(node.leaf.hpkePublicKey, hexToBytes(leaf.encryption_priv), impl.hpke)
+		).toBe(true);
+
+		for (const [nodeIndex, pathSecret] of Object.entries(nodeSecrets)) {
+			const s = await deriveSecret(pathSecret, 'node', impl.kdf);
+			const { publicKey } = await impl.hpke.deriveKeyPair(s);
+
+			const node = tree[0][Number(nodeIndex)];
+			if (node === undefined) throw new Error('No node found at node index');
+
+			expect(getHpkePublicKey(node)).toStrictEqual(await impl.hpke.exportPublicKey(publicKey));
+		}
+	}
+}
+
+// Without the working group's files (load.ts) this file has nothing to run, and says so.
+test.skipIf(json.length === 0)('the treekem vectors for ciphersuite 0x0001 are all here', () => {
+	expect(json).toHaveLength(source.files['treekem'].cases);
+});

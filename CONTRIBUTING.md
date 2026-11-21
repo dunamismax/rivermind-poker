@@ -296,6 +296,12 @@ VOICE_DEBUG=1 pnpm voice:check -g heard  # with the page's console
 
 A frame that is not opened is never passed to the decoder, and a frame that cannot be sealed is never sent. Each is counted in its transform's tally under the reason: `malformed`, `unknown-key`, `stale-epoch`, `wrong-sender`, `tampered` or `replayed` on the way in, `unsent` on the way out.
 
+### The MLS test vectors (P4C.3)
+
+`pnpm test` also holds the pinned ts-mls to the MLS working group's interoperability test vectors for ciphersuite 0x0001 ([`web/src/lib/voice/mls-vectors/`](web/src/lib/voice/mls-vectors/), 395 cases in 14 spec files). The vectors are not in this repository, because the working group's states no license: [`load.ts`](web/src/lib/voice/mls-vectors/load.ts) fetches them from GitHub at the commit [`source.json`](web/src/lib/voice/mls-vectors/source.json) pins, checks each file's SHA-256 and keeps them in `node_modules/.cache/mls-vectors/`. The first run needs the network. Without it the vector checks are reported as skipped, except in CI, where that is a failure.
+
+To move to a newer commit of the working group's files, change `commit` in `source.json`, then each file's `sha256` (`shasum -a 256`) and `cases` (its cases with `cipher_suite` 1, or all of them where the file has no such field), and run the specs.
+
 ### The prototype (P4C.1)
 
 The prototype talks through a mediasoup service, with frames sealed by the site's own worker since P4C.2.
