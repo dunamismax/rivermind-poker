@@ -15,6 +15,8 @@
 		"eslint.config.js",
 		"playwright.config.ts",
 		"playwright.live.config.ts",
-		"e2e"
+		"playwright.voice.config.ts",
+		"e2e",
+		"voice"
 	]
 }

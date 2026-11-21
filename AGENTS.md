@@ -133,6 +133,9 @@ web/                             SvelteKit app (Node 26.13.1 from web/.node-vers
   drizzle/                       SQL migrations (never edit an applied one)
   scripts/                       art generator, parity and benchmark scripts, migrator, moderation commands,
                                  inline-code check
+  src/lib/voice/                 table voice (Phase 4C); so far the ts-mls design check (P4C.1)
+  voice/prototype/               the voice prototype (P4C.1): a mediasoup service, a test page and its
+                                 Playwright checks (`pnpm voice:proto`); not part of the site or its build
   e2e/                           Playwright tests against the Node table server; journey.e2e.ts against one
                                  on PostgreSQL; *.live.ts run against the live site; visual/ holds the
                                  screenshot comparison's scenes and its seeded test-only server
@@ -227,6 +230,8 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 
 `pnpm visual` and `pnpm visual:compare` capture fixed scenes and compare two commits pixel for pixel; run them for any change to styles or markup ([CONTRIBUTING.md](CONTRIBUTING.md#comparing-screenshots-p4b2)).
 
+`pnpm voice:proto` runs the voice prototype's checks (P4C.1) against a mediasoup service it starts itself; it is not part of `pnpm e2e` or CI, has its own `test-results-voice`, and is for changes under `web/voice/` ([CONTRIBUTING.md](CONTRIBUTING.md#table-voice)).
+
 `pnpm format` is the quickest way to satisfy the Prettier half of `pnpm lint`. Pass `--project chromium` to `pnpm e2e` for a quick run.
 
 ### Database, art and protocol
@@ -308,6 +313,16 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 - A phone's felt can be 356px tall. A pod with its badge and tags is 82px, so the tall seat map (`layout.ts`) has one row above the board; check a change to it at 402 × 677 with nine seats, at a showdown and with blinds posted from the bottom corners.
 - `web/src/lib/protocol-v2.ts` is the no-limit protocol's only source. After changing `poker_ai/web/protocol.py`, run `pnpm protocol` and commit the regenerated `web/src/lib/protocol.ts`.
 
+### Table voice
+
+[docs/voice.md](docs/voice.md) is the design, with what the P4C.1 prototype found.
+
+- Import ts-mls by subpath (`ts-mls/createCommit.js`), never from `'ts-mls'`: its root loads a provider that needs `@noble/hashes`, which it does not declare, and the import fails under pnpm.
+- Never call `joinGroupExternal` with `resync` set for a member whose signature key may not be in the group. ts-mls 1.6.4 finds the old leaf by signature key alone and never returns when there is none. A reloaded page joins as a newcomer, and the service proposes its stale leaf's removal.
+- A ts-mls state is never changed in place: every call returns the next one. Keep the state a commit was made from until the service has accepted that commit.
+- The service gives a client the Router's capabilities without `urn:ietf:params:rtp-hdrext:ssrc-audio-level` and refuses a producer that names it. Audio levels on the wire would tell the server who is speaking.
+- mediasoup's install script downloads its worker binary from GitHub for the platform, the architecture and, on Linux, the kernel's major version. `allowBuilds` in `web/pnpm-workspace.yaml` permits it. A release carries no `node_modules`, so a bundled service needs the binary beside it and `MEDIASOUP_WORKER_BIN` naming it (`web/voice/prototype/bundle.ts` shows how).
+
 ### Styles
 
 Pages and components are styled with Tailwind utilities on the theme `pnpm art` generates ([docs/design.md](docs/design.md#styling-tailwind-on-the-kits-own-theme) has the tokens, variants and what stays outside utilities). Check every change to styles or markup with `pnpm visual` against captures of the commit before it.
@@ -349,6 +364,8 @@ Keep the `poker_ai` Python namespace and the legacy `poker_ai` command. Existing
 - Playwright empties its output directory when a run starts. A second run with the same configuration in `web/` deletes the first one's traces, and its tests then fail on `ENOENT`. `pnpm visual` has its own directory for that reason; do not start a second `pnpm e2e` beside a running one.
 - `pnpm e2e` and `pnpm visual` build the working tree when they start (unless `E2E_SKIP_BUILD` is set). Capture every “before” run of a screenshot comparison before the first edit, or from a copy of the commit (`git archive HEAD web`, its own `pnpm install --frozen-lockfile`, `E2E_MODELS_TAG` set, and `VISUAL_OUT` as an absolute path). A second “before” run started after editing began captured the half-made change, and the comparison then passed pixels it should have flagged.
 - The trace keeps DOM snapshots but not the screencast (`screenshots: false` in `playwright.config.ts`). The screencast made every WebKit action slow enough to time tests out in CI; don’t turn it back on.
+
+**Voice in Playwright.** Each engine needs its own handling, and what it cannot do is in [docs/voice.md](docs/voice.md#testing) and `web/voice/prototype/browsers.ts`. In short: Firefox's fake microphone works from preferences; Chromium's does not work on this Mac (`getUserMedia` never settles), so a Web Audio tone stands in; Playwright's WebKit needs the `microphone` permission, one browser per person and no `AudioContext`, and connects only from a page that has captured. Firefox's ICE fails against a media address on loopback alone, so a test service also listens on the LAN address. A hung `getUserMedia` or a hung `page.evaluate` keeps a browser alive past its test: bound such experiments with a kill, and check for stray browsers afterwards.
 
 **The browser pane.** When the pane is hidden, the page runs in the background and CSS animations stay on their first frame, so an element with an entrance animation (a reaction bubble, a win label) looks invisible. Finish them with `document.getAnimations()` before judging a screenshot.
 
@@ -413,6 +430,7 @@ Every version is exact: `web/package.json` pins each dependency (at the host's b
 | TypeScript, Vite, Vitest | 6.0.3, 8.3.8, 5.1.1 | |
 | Playwright | 1.65.1 | Chromium, Firefox and WebKit |
 | Drizzle ORM, drizzle-kit, pg | 0.45.4, 0.31.11, 8.23.1 | |
+| mediasoup, mediasoup-client, ts-mls | 3.32.2, 3.26.0, 1.6.4 | table voice (Phase 4C); mediasoup's worker binary comes with its install script |
 | PostgreSQL | 18 | the host cluster on ubuntu-vm, and the `postgres:18` service in CI |
 
 These tools change quickly. Look up current documentation rather than relying on memory ([section 15](#15-context7-documentation-lookup)).

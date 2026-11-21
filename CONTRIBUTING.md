@@ -269,6 +269,31 @@ pnpm visual:compare ../artifacts/visual/before-1 ../artifacts/visual/before-2 ..
 
 `pnpm visual:compare` passes a pixel only when some "before" capture has exactly that value there. One "before" run is the strict test. Several allow for what a browser does not draw the same way twice: Chromium anti-aliases the fanned (rotated) cards differently between runs of one build at three device pixels per CSS pixel, by 15 to 130 pixels in a capture of 11.6 million, so capture that size a few more times (`--project chromium -g "@3"`) when it is the only difference. `--diff` writes each failing capture with the changed pixels in magenta. `pnpm visual` builds first unless `E2E_SKIP_BUILD` is set, keeps its own `test-results-visual`, and takes ports from 8950 (`VISUAL_PORT`).
 
+## Table voice
+
+Table voice is Phase 4C; [docs/voice.md](docs/voice.md) holds the design and what the prototype found. So far only the prototype exists (P4C.1), in [`web/voice/prototype/`](web/voice/prototype/). It is not part of the site, the build or `pnpm e2e`.
+
+```sh
+pnpm voice:proto                       # every check: Chromium, Firefox, WebKit, then one room of all three
+pnpm voice:proto --project firefox     # one engine
+VOICE_DEBUG=1 pnpm voice:proto -g TCP  # with each page's console
+node voice/prototype/server.ts         # the service alone, at http://127.0.0.1:4390/?room=a&freq=440
+```
+
+`pnpm voice:proto` starts the prototype service itself: one mediasoup worker with a `WebRtcServer` on UDP and TCP 44390, a Router per room, signalling on a WebSocket and the test page under the site's CSP, on `127.0.0.1:4390`. Each person is a browser context that sends one audio track through an encrypting worker and reports what it decoded from everyone else. The checks are two-person rooms, a nine-person room that also measures the service, a member with the wrong key, a control that leaves the audio-level extension in, media over TCP, and fake capture devices. Media also listens on this machine's first LAN address, because Firefox's ICE fails against a loopback address alone (`VOICE_SERVER_ARGS="--listen-ip 127.0.0.1"` shows it); nothing else is exposed.
+
+How each engine has to be started is in [`browsers.ts`](web/voice/prototype/browsers.ts): Playwright's WebKit needs a browser per person, the microphone permission and no Web Audio, and Chromium's fake microphone does not work on macOS here, so its capture check is skipped.
+
+The group-key check is an ordinary Vitest spec, [`mls-design.spec.ts`](web/src/lib/voice/mls-design.spec.ts), and runs with `pnpm test`. Import ts-mls by subpath (`ts-mls/createCommit.js`), never from its root: the root loads a provider that needs a package ts-mls does not declare.
+
+`mediasoup` runs a C++ worker beside Node. Its install script downloads the worker built for the platform, the architecture and, on Linux, the kernel's major version from mediasoup's GitHub release, which `allowBuilds` in `web/pnpm-workspace.yaml` permits; with no download it tries to compile one. To check a host, run the self-test, or bundle it as a release would be and run that where there is no `node_modules`:
+
+```sh
+node voice/prototype/sfu-selftest.ts
+node voice/prototype/bundle.ts /tmp/voice-selftest
+MEDIASOUP_WORKER_BIN=/tmp/voice-selftest/mediasoup-worker node /tmp/voice-selftest/sfu-selftest.js
+```
+
 ## Deploy rivermindpoker.com
 
 The site runs on the owner’s ubuntu-vm under the host's web platform contract (`/home/sawyer/github/ubuntu-vm-backup/docs/web-platform.md`). Caddy terminates HTTPS and proxies everything to `rivermind-poker-web.service`, the Node server running the current release from `/srv/rivermindpoker.com/current` on `127.0.0.1:4320` on Node 26 (`/opt/node-26/bin/node`): pages and assets, `/api/*` and the tables' `/ws`. Its tables are saved to PostgreSQL after every change and restored at start-up, so a restart or a deploy keeps every game, hands in progress included. After pushing `main`, update the live site with the following command.
