@@ -71,6 +71,9 @@ function agrees(detail: p.HandDetail, steps: ReplayStep[]): void {
 		// What a seat won less what it put in is what the hand cost or paid it.
 		expect(seat.won - seat.total).toBe(stored.net);
 	}
+	// A step's sentences are its line; the result has one for each pot after any returned bet.
+	for (const step of steps) expect(step.lines.join(' ')).toBe(step.text);
+	expect(last.lines.slice(-last.awards.length)).toEqual(last.awards.map((a) => a.text));
 	// The pot only grows until the result, and each action adds what it says.
 	steps.slice(0, -1).forEach((step, i) => {
 		if (i === 0) return;
@@ -185,6 +188,10 @@ describe('replaying a stored hand', () => {
 			expect(result.text).toBe(
 				'Ann takes back 200 that nobody called. Ann wins the pot of 200: everyone else folded.'
 			);
+			expect(result.lines).toEqual([
+				'Ann takes back 200 that nobody called.',
+				'Ann wins the pot of 200: everyone else folded.'
+			]);
 			expect(result.pot).toBe(200);
 			expect(seatOf(result, 0)).toMatchObject({ total: 100, won: 200, net: 100 });
 			// No showdown: each viewer sees their own cards and nobody else's, to the end.
@@ -242,18 +249,34 @@ describe('replaying a stored hand', () => {
 		const detail = view(1);
 		const steps = buildReplay(detail);
 		agrees(detail, steps);
-		// Both all-in before the flop: the three streets come one after another.
+		// Both all-in before the flop: the hands are turned over (rule 12.1), then the
+		// three streets come one after another.
 		expect(kinds(steps)).toEqual([
 			'posts',
 			'action',
 			'action',
+			'tabled',
 			'street',
 			'street',
 			'street',
 			'showdown',
 			'result'
 		]);
-		expect(steps.slice(3, 6).map((s) => s.text)).toEqual([
+		expect(steps[3].text).toBe('All in: Ann shows 2♣ 3♦ and Bob shows 4♣ 5♦.');
+		expect(steps[3].board).toEqual([]);
+		// Bob sees only his own cards until then, and both hands from then on.
+		expect(steps.map(shown)).toEqual([
+			[1],
+			[1],
+			[1],
+			[0, 1],
+			[0, 1],
+			[0, 1],
+			[0, 1],
+			[0, 1],
+			[0, 1]
+		]);
+		expect(steps.slice(4, 7).map((s) => s.text)).toEqual([
 			'Flop: A♠ K♠ Q♠',
 			'Turn: J♠',
 			'River: 10♠'

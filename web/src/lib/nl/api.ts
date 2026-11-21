@@ -334,3 +334,28 @@ export async function fetchHand(
 	}
 	return value as unknown as HandDetail;
 }
+
+/**
+ * The id of a hand the player played at a table: hand `handNo` there, or with
+ * null their newest one. Null when they were not dealt into it, or it is older
+ * than the last sixty hands they played anywhere.
+ */
+export async function findHand(
+	tableId: string,
+	handNo: number | null,
+	fetcher: typeof fetch = fetch
+): Promise<string | null> {
+	let before: string | null = null;
+	for (let page = 0; page < 3; page += 1) {
+		const { hands, more } = await fetchHands(before, fetcher);
+		for (const hand of hands) {
+			if (hand.table_id !== tableId) continue;
+			if (handNo === null || hand.hand_no === handNo) return hand.hand_id;
+			// Newest first: past its number, the hand is not there.
+			if (hand.hand_no < handNo) return null;
+		}
+		if (!more || hands.length === 0) return null;
+		before = hands[hands.length - 1].hand_id;
+	}
+	return null;
+}

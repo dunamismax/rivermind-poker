@@ -1,3 +1,6 @@
+import type { Locator } from '@playwright/test';
+import type { Card } from '../src/lib/protocol-v2.ts';
+import { cardName } from '../src/lib/wording.ts';
 import { expect, nameOf, noOverflow, playUntilHand, sitDown, test } from './fixtures.ts';
 
 // Fair dealing and transparency (P4.6): a player opens the hands they played,
@@ -25,6 +28,46 @@ test('a player reviews the hands they played', async ({ page, cspViolations }) =
 	await expect(detail.locator('pre')).toContainText(me);
 	await expect(detail.locator('pre')).toContainText('*** Result ***');
 	await noOverflow(page);
+
+	// The hand opens on its result and steps back to the blinds and forward again (P6.1).
+	const replay = detail.locator('.replay');
+	const steps = await replay.getAttribute('data-steps');
+	await expect(replay).toHaveAttribute('data-step', steps!);
+	await expect(replay.getByRole('status')).toContainText(/the pot of [\d,]+/);
+	await expect(mine.locator('.net')).toHaveText(/^[+-]?[\d,]+$/);
+	await detail.getByRole('button', { name: 'First' }).click();
+	await expect(replay).toHaveAttribute('data-step', '1');
+	await expect(replay.getByRole('status')).toContainText(`posts the`);
+	await expect(replay.locator('.board img.slot')).toHaveCount(5);
+	await expect(mine.locator('img.face')).toHaveCount(2);
+	await page.keyboard.press('ArrowRight');
+	await expect(replay).toHaveAttribute('data-step', '2');
+	await detail.getByRole('button', { name: 'Last' }).click();
+	await expect(replay).toHaveAttribute('data-step', steps!);
+	await noOverflow(page);
+
+	// Another hand opened over this one shows its own board and cards, not the first hand's.
+	const second = await page.evaluate(async () => {
+		const list = (await (await fetch('/api/hands?limit=2')).json()) as {
+			hands: { hand_id: string; hand_no: number }[];
+		};
+		const hand = list.hands[1];
+		const stored = (await (await fetch(`/api/hands/${hand.hand_id}`)).json()) as {
+			hand: { board: { rank: number; suit: string }[]; cards: { rank: number; suit: string }[] };
+		};
+		return { handNo: hand.hand_no, board: stored.hand.board, cards: stored.hand.cards };
+	});
+	await rows.nth(1).getByRole('button').click();
+	const other = page.getByRole('region', { name: new RegExp(`^Hand ${second.handNo} at `) });
+	await expect(other).toBeVisible();
+	const alts = (cards: Locator) =>
+		cards.evaluateAll((imgs) => imgs.map((img) => img.getAttribute('alt')));
+	await expect
+		.poll(() => alts(other.locator('.replay .board img.face')))
+		.toEqual(second.board.map((card) => cardName(card as Card)));
+	await expect
+		.poll(() => alts(other.getByRole('listitem').filter({ hasText: 'You' }).locator('img')))
+		.toEqual(second.cards.map((card) => cardName(card as Card)));
 
 	// The link to a hand opens it again.
 	const url = new URL(page.url());

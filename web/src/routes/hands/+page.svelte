@@ -2,6 +2,7 @@
 	// Your hands (P4.6): the finished hands this player was dealt into, newest
 	// first, each with every card they may see: their own, the board and the
 	// hands shown at showdown. Folded and mucked hands never reach the page.
+	// An open hand can be stepped through from the blinds to the result (P6.1).
 	// `/hands?hand=ID` opens one of the player's hands directly.
 	import { onMount } from 'svelte';
 	import { replaceState } from '$app/navigation';
@@ -9,6 +10,7 @@
 	import PlayingCard from '#lib/components/PlayingCard.svelte';
 	import SiteHeader from '#lib/components/SiteHeader.svelte';
 	import { ApiError, fetchHand, fetchHands, startSession } from '#lib/nl/api.ts';
+	import HandReplay from '#lib/nl/HandReplay.svelte';
 	import type { HandDetail, HandSummary } from '#lib/protocol-v2.ts';
 
 	let hands = $state<HandSummary[]>([]);
@@ -29,8 +31,6 @@
 		n > 0 ? `+${n.toLocaleString('en-US')}` : n.toLocaleString('en-US');
 
 	const panel = 'px-8 pt-6 pb-8';
-	const tag = 'tag ml-3 bg-ink px-3 text-s text-violet-light';
-	const goldTag = 'tag gold ml-3 bg-gold px-3 text-s text-ink';
 	/** A result's colour: won, lost or even. */
 	const tone = (net: number) =>
 		net > 0 ? 'won text-green-light' : net < 0 ? 'lost text-red-light' : 'text-paper-shade';
@@ -92,8 +92,8 @@
 	<section class="px-panel intro {panel}">
 		<h2 class="mb-4 text-l text-gold text-shadow-ink">Your hands</h2>
 		<p>
-			Every hand you were dealt into, newest first. Open one to see your cards, the board, every
-			action and the hands shown at showdown. Folded and mucked hands stay hidden.
+			Every hand you were dealt into, newest first. Open one to step through it: your cards, the
+			board, every action and the hands shown at showdown. Folded and mucked hands stay hidden.
 			<a class="text-gold-light" href={resolve('/fairness')}>How dealing works</a>
 		</p>
 	</section>
@@ -110,47 +110,12 @@
 				<button type="button" class="px-btn small" onclick={close}>Close</button>
 			</div>
 			<p class="meta text-s text-paper-shade">
-				{#if open.hand.practice}Practice chips ·
-				{/if}{when(open.hand.at)} · Blinds {open.hand.small_blind}/{open.hand.big_blind} · Pot {open.hand.pot.toLocaleString(
-					'en-US'
-				)}
+				{open.hand.practice ? 'Practice chips · ' : ''}{when(open.hand.at)} · Blinds {open.hand
+					.small_blind}/{open.hand.big_blind} · Pot {open.hand.pot.toLocaleString('en-US')}
 			</p>
-			<div class="board my-6 flex gap-2 lt-600:[&>.card+.card]:-ml-7" aria-label="Board">
-				{#each Array.from({ length: 5 }, (_, i) => open!.hand.board[i]) as card, i (i)}
-					<PlayingCard {card} />
-				{/each}
+			<div class="my-6">
+				<HandReplay detail={open} roomy />
 			</div>
-			<ul class="seats grid gap-3">
-				{#each open.seats as seat (seat.seat)}
-					<li
-						class="grid grid-cols-[minmax(0,1fr)_auto_90px] items-center gap-5 border-b-2 border-deep-slate py-2"
-						class:you={seat.you}
-					>
-						<span class={['who truncate', seat.you && 'text-gold-light']}>
-							{seat.name}{#if seat.kind === 'bot'}<span class={tag}>
-									Bot
-								</span>{/if}{#if seat.you}<span class={goldTag}>
-									You
-								</span>{/if}{#if open.button === seat.seat}<span class={tag}>Button</span>{/if}
-						</span>
-						<!-- Whole cards where there is room; phones keep the compact peek. -->
-						<span
-							class="hole flex gap-2 ge-600:h-auto ge-600:w-auto ge-600:overflow-visible ge-600:[--k:1] ge-600:[&>.card+.card]:-ml-13"
-							class:card-peek={seat.cards}
-							aria-label={seat.cards ? 'Cards' : 'Cards not shown'}
-						>
-							{#if seat.cards}
-								{#each seat.cards as card (`${card.rank}${card.suit}`)}<PlayingCard {card} />{/each}
-							{:else}
-								<span class="hidden-cards text-s text-paper-shade">Not shown</span>
-							{/if}
-						</span>
-						<span class="net text-right {tone(seat.net)}">
-							{signed(seat.net)}
-						</span>
-					</li>
-				{/each}
-			</ul>
 			<h4 class="mt-8 mb-4 text-m text-gold-light text-shadow-ink">Hand history</h4>
 			<pre
 				class="px-inset max-h-[420px] overflow-auto p-5 text-s leading-[1.5] wrap-anywhere whitespace-pre-wrap text-paper">{open.text}</pre>

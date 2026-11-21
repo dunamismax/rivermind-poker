@@ -204,6 +204,18 @@ CONFIGS.forEach(({ size, density }, config) => {
 			const result = page.locator('.result');
 			await playUntil(page, () => result.isVisible(), 120_000);
 			await shoot(page, file('result'));
+			// The settled hand under review (P6.1): its result, then a step part-way through.
+			await page.getByRole('button', { name: 'Review hand', exact: true }).click();
+			const review = page.getByRole('region', { name: 'Hand review' });
+			await expect(review.locator('.replay')).toBeVisible();
+			await shoot(page, file('review'));
+			await review.getByRole('button', { name: 'First' }).click();
+			await page.keyboard.press('ArrowRight');
+			await page.keyboard.press('ArrowRight');
+			await expect(review.locator('.replay')).toHaveAttribute('data-step', '3');
+			await shoot(page, file('review-step'));
+			await review.getByRole('button', { name: 'Close' }).click();
+			await expect(review).toHaveCount(0);
 			await leave(page);
 
 			// One-click practice.
@@ -247,6 +259,10 @@ CONFIGS.forEach(({ size, density }, config) => {
 			await hands.last().click();
 			await expect(page.getByRole('heading', { name: 'Hand history' })).toBeVisible();
 			await shoot(page, file('hand'));
+			// The same hand stepped back to its blinds.
+			await page.getByRole('button', { name: 'First' }).click();
+			await expect(page.locator('.replay')).toHaveAttribute('data-step', '1');
+			await shoot(page, file('hand-step'));
 
 			await context.close();
 			await other.close();

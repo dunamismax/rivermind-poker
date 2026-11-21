@@ -6,7 +6,8 @@
 // It is built from a `HandDetail`, which holds only what the viewer may see:
 // their own cards and the hands shown at showdown. The replay adds nothing to
 // that. It shows the viewer's cards throughout, as they held them, and every
-// other hand only from the showdown step on.
+// other hand only from the step at which it was turned over: the showdown, or
+// the end of the betting when the players were all-in with cards to come.
 
 import type {
 	ActionKind,
@@ -93,13 +94,15 @@ export interface Award {
 	text: string;
 }
 
-export type StepKind = 'posts' | 'action' | 'street' | 'showdown' | 'result';
+export type StepKind = 'posts' | 'action' | 'tabled' | 'street' | 'showdown' | 'result';
 
 export interface ReplayStep {
 	kind: StepKind;
 	street: Street;
 	/** What happened at this step, as one line. */
 	text: string;
+	/** The same in sentences: one, except on the result step, which has one for each pot. */
+	lines: string[];
 	/** The board as it stood. */
 	board: Card[];
 	/** Every chip put in so far; on the result step, the chips the pots held. */
@@ -207,6 +210,7 @@ export function buildReplay(detail: HandDetail): ReplayStep[] {
 			kind,
 			street,
 			text,
+			lines: [text],
 			board: detail.hand.board.slice(0, BOARD[street]),
 			pot,
 			seats: seats(kind === 'result'),
@@ -247,7 +251,17 @@ export function buildReplay(detail: HandDetail): ReplayStep[] {
 		if (action.action === 'fold') folded.add(action.seat);
 		push('action', describeAction(action, nameOf(action.seat)), action.seat, action.added);
 	}
-	// Players all-in before the river: the rest of the board comes with no more betting.
+	// Rule 12.1: when at most one player still in has chips behind, the betting is
+	// over and every hand still in is turned face up before the rest of the board.
+	const behind = detail.seats.filter((s) => !folded.has(s.seat) && !allIn.has(s.seat));
+	if (detail.hand.showdown && behind.length <= 1 && detail.hand.board.length > BOARD[street]) {
+		revealed = true;
+		const tabled = detail.seats
+			.filter((s) => s.shown && s.cards)
+			.map((s) => `${s.name} shows ${s.cards!.map(shortCard).join(' ')}`);
+		if (tabled.length) push('tabled', `All in: ${list(tabled)}.`);
+	}
+	// The rest of the board comes with no more betting.
 	dealTo('river');
 
 	if (detail.hand.showdown) {
@@ -267,7 +281,9 @@ export function buildReplay(detail: HandDetail): ReplayStep[] {
 	}
 	bet.clear();
 	const awards = detail.pots.map((p, i) => award(detail, p, i, nameOf));
-	const result = push('result', [...lines, ...awards.map((a) => a.text)].join(' '));
+	lines.push(...awards.map((a) => a.text));
+	const result = push('result', lines.join(' '));
+	result.lines = lines;
 	result.awards = awards;
 	for (const seat of result.seats) {
 		seat.won = awards.reduce(
@@ -283,4 +299,30 @@ export function describeAction(action: ActionRecord, who: string): string {
 	const amount = action.action === 'call' ? action.added : action.to;
 	const tail = action.action === 'fold' || action.action === 'check' ? '' : ` ${chips(amount)}`;
 	return `${who} ${VERBS[action.action]}${tail}${action.all_in ? ' and is all-in' : ''}.`;
+}
+
+/** Where in the hand a step is: its street, then “Showdown” and “Result”. */
+export function stageOf(step: ReplayStep): string {
+	if (step.kind === 'result') return 'Result';
+	return step.kind === 'showdown' ? 'Showdown' : STREET_NAMES[step.street];
+}
+
+/**
+ * The step a key moves the replay to from step `index` of `count`: the arrows
+ * go back and on one step, Home and End to the first and last. Null for any
+ * other key.
+ */
+export function stepForKey(key: string, index: number, count: number): number | null {
+	switch (key) {
+		case 'ArrowLeft':
+			return Math.max(0, index - 1);
+		case 'ArrowRight':
+			return Math.min(count - 1, index + 1);
+		case 'Home':
+			return 0;
+		case 'End':
+			return count - 1;
+		default:
+			return null;
+	}
 }

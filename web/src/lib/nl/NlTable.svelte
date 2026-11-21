@@ -1,14 +1,21 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { tableCardUrls } from '../card-assets.ts';
 	import PlayingCard from '../components/PlayingCard.svelte';
-	import type { BotOption, RelationKind, ReportReason, TableView } from '../protocol-v2.ts';
+	import type {
+		BotOption,
+		HandDetail,
+		RelationKind,
+		ReportReason,
+		TableView
+	} from '../protocol-v2.ts';
 	import ActionPanel from './ActionPanel.svelte';
-	import { fetchConfig } from './api.ts';
+	import { fetchConfig, fetchHand, findHand } from './api.ts';
 	import { describeEvent } from './bet.ts';
 	import type { NlConnection } from './connection.svelte.ts';
 	import { chipFor } from './faces.ts';
-	import { betClass, placeClass, sideClass } from './layout.ts';
+	import HandReplay from './HandReplay.svelte';
+	import { betClass, clockLeft, placeClass, sideClass } from './layout.ts';
 	import NlSeat from './NlSeat.svelte';
 	import { REACTIONS, REPORT_REASONS, relationText } from './safety.ts';
 	import './seat-places.css';
@@ -89,6 +96,61 @@
 			asked = null;
 			opponentError = `Could not change the opponent: ${e instanceof Error ? e.message : String(e)}`;
 		}
+	}
+
+	// Reviewing a finished hand without leaving the table (P6.1). The replay takes
+	// the hand log's place beside the table, or sits above the table on an upright
+	// screen, so the felt, the clocks and the action panel stay where they are
+	// and the next hand can be played with a review open. The settled result
+	// offers “Review hand” in the dock, and the hand log “Review last hand”: the
+	// seat tools have no room for it on a phone without pushing the table down.
+	let review = $state<HandDetail | null>(null);
+	let reviewLoading = $state(false);
+	let reviewPanel = $state<HTMLElement>();
+	let reviewHead = $state<HTMLElement>();
+	let reviewButton = $state<HTMLButtonElement>();
+	/** Whether the viewer was dealt into the hand on the felt, so it is among their hands. */
+	const dealtIn = $derived(
+		hand !== null &&
+			mine !== null &&
+			(hand.posts.some((post) => post.seat === mine) ||
+				hand.actions.some((action) => action.seat === mine) ||
+				(result?.net[mine] ?? 0) !== 0)
+	);
+	/** A hand has finished at this table, so there may be one of the viewer's to review. */
+	const reviewable = $derived(hand !== null && (result !== null || hand.hand_no > 1));
+	const reviewClock = $derived(review && myTurn && view.turn ? clockLeft(view.turn, now) : null);
+
+	/** Open hand `handNo` of this table, or the viewer's newest hand here. */
+	async function openReview(handNo: number | null) {
+		if (reviewLoading) return;
+		reviewLoading = true;
+		try {
+			const handId = await findHand(view.table_id, handNo);
+			if (handId === null) {
+				connection.notify(
+					handNo === null
+						? 'You have not finished a hand at this table yet.'
+						: `You were not dealt into hand #${handNo}, so it is not among your hands.`
+				);
+				return;
+			}
+			review = await fetchHand(handId);
+			await tick();
+			// Give the replay the keyboard, and scroll only as far as its heading: on a
+			// wide screen that is no scrolling at all, so the action panel stays in view.
+			reviewPanel?.focus({ preventScroll: true });
+			reviewHead?.scrollIntoView({ block: 'nearest' });
+		} catch (e) {
+			connection.notify(`Could not open the hand: ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			reviewLoading = false;
+		}
+	}
+
+	function closeReview() {
+		review = null;
+		reviewButton?.focus({ preventScroll: true });
 	}
 
 	let rebuyAmount = $state(0);
@@ -342,7 +404,9 @@
 
 	<!-- The arena leaves room around the felt for the seats on its rail. -->
 	<div
-		class="arena col-1 row-[2/5] px-37 pt-32 pb-54 seats-{count} lap:px-33 lap:pt-30 lap:pb-48 tall:row-3 phone:px-0 phone:pt-0 phone:pb-32"
+		class="arena col-1 row-[2/5] px-37 pt-32 pb-54 seats-{count} lap:px-33 lap:pt-30 lap:pb-48 {review
+			? 'tall:row-4'
+			: 'tall:row-3'} phone:px-0 phone:pt-0 phone:pb-32"
 	>
 		<div
 			class="stage relative mx-auto aspect-[21/10] w-[min(100%,calc((100dvh-340px)*2.1))] min-w-[min(100%,560px)] lap:aspect-[18/10] lap:w-[min(100%,calc((100dvh-330px)*1.8))] lap:min-w-[min(100%,480px)] tall:aspect-[16/10] tall:w-[min(100%,calc((100dvh-520px)*1.6))] tall:min-w-[min(100%,520px)] phone:aspect-[3/4] phone:max-h-[calc(100dvh-380px)] phone:min-h-[420px] phone:w-full phone:min-w-0"
@@ -425,7 +489,8 @@
 	     when the action panel opens. -->
 	<div
 		class={[
-			'dock col-2 row-2 grid min-h-98 content-start tall:sticky tall:bottom-0 tall:z-5 tall:col-1 tall:row-4 tall:min-h-0 tall:pb-[env(safe-area-inset-bottom)]',
+			'dock col-2 row-2 grid min-h-98 content-start tall:sticky tall:bottom-0 tall:z-5 tall:col-1 tall:min-h-0 tall:pb-[env(safe-area-inset-bottom)]',
+			review ? 'tall:row-5' : 'tall:row-4',
 			myTurn && 'tall:bg-[linear-gradient(to_bottom,transparent,var(--color-night)_12px)]'
 		]}
 	>
@@ -546,24 +611,45 @@
 				>
 					Play again with {view.settings.max_buy_in.toLocaleString('en-US')} chips
 				</button>
+				{#if result && hand && dealtIn}
+					<button
+						type="button"
+						class="px-btn small"
+						disabled={reviewLoading}
+						onclick={() => openReview(hand.hand_no)}
+					>
+						Review hand
+					</button>
+				{/if}
 			</div>
 		{:else}
-			<p
-				class="waiting px-inset grid min-h-32 place-items-center px-6 text-center text-mist phone:min-h-28 phone:text-s"
-				role="status"
+			<div
+				class="waiting px-inset flex min-h-32 flex-wrap items-center justify-center gap-x-6 gap-y-2 px-6 py-2 text-center text-mist phone:min-h-28 phone:py-0 phone:text-s"
 			>
-				{#if busted}
-					You are out of chips. Rebuy to keep playing.
-				{:else if view.you.sitting_out}
-					You are sitting out.
-				{:else if waitingFor}
-					Waiting for {waitingFor}…
-				{:else if result}
-					Next hand soon…
-				{:else}
-					&nbsp;
+				<p role="status">
+					{#if busted}
+						You are out of chips. Rebuy to keep playing.
+					{:else if view.you.sitting_out}
+						You are sitting out.
+					{:else if waitingFor}
+						Waiting for {waitingFor}…
+					{:else if result}
+						Next hand soon…
+					{:else}
+						&nbsp;
+					{/if}
+				</p>
+				{#if result && hand && dealtIn}
+					<button
+						type="button"
+						class="px-btn small"
+						disabled={reviewLoading}
+						onclick={() => openReview(hand.hand_no)}
+					>
+						Review hand
+					</button>
 				{/if}
-			</p>
+			</div>
 		{/if}
 	</div>
 
@@ -674,15 +760,58 @@
 		</div>
 	{/if}
 
-	<section
-		class="log px-inset col-2 row-4 max-h-[440px] min-h-60 self-stretch overflow-auto p-4 lap:max-h-[360px] tall:col-1 tall:row-5 tall:max-h-[220px]"
-		aria-label="Hand log"
-	>
-		<h2 class="mb-3 text-m text-gold text-shadow-ink">Hand log</h2>
-		<ol class="grid gap-2 text-s text-mist">
-			{#each lines as line (line.seq)}<li class="first:text-paper">{line.text}</li>{/each}
-		</ol>
-	</section>
+	{#if review}
+		<section
+			class="review px-inset col-2 row-4 grid content-start gap-4 self-start p-4 tall:col-1 tall:row-3"
+			aria-label="Hand review"
+			tabindex="-1"
+			bind:this={reviewPanel}
+		>
+			<div class="grid scroll-mt-4 gap-1" bind:this={reviewHead}>
+				<div class="flex items-center justify-between gap-4">
+					<h2 class="text-m text-gold text-shadow-ink">Hand #{review.hand.hand_no}</h2>
+					<button type="button" class="px-btn small" onclick={closeReview}>Close</button>
+				</div>
+				<!-- Always one line, so the steps below never move when the turn comes round. -->
+				<p class="min-h-[21px] truncate text-s text-paper-shade">
+					{#if reviewClock}
+						<span class="text-gold-light" role="status">Your turn at the table</span>
+						<span aria-hidden="true">
+							· {reviewClock.bank ? 'time bank ' : ''}{reviewClock.seconds}s
+						</span>
+					{:else}
+						{review.hand.practice ? 'Practice · ' : ''}Blinds {review.hand.small_blind}/{review.hand
+							.big_blind}
+					{/if}
+				</p>
+			</div>
+			<HandReplay detail={review} />
+		</section>
+	{:else}
+		<section
+			class="log px-inset col-2 row-4 max-h-[440px] min-h-60 self-stretch overflow-auto p-4 lap:max-h-[360px] tall:col-1 tall:row-5 tall:max-h-[220px]"
+			aria-label="Hand log"
+		>
+			<div class="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+				<h2 class="text-m text-gold text-shadow-ink">Hand log</h2>
+				{#if me}
+					<button
+						type="button"
+						class="px-btn small"
+						title={reviewable ? undefined : 'No hand has finished here yet'}
+						disabled={!reviewable || reviewLoading}
+						bind:this={reviewButton}
+						onclick={() => openReview(result && hand && dealtIn ? hand.hand_no : null)}
+					>
+						Review last hand
+					</button>
+				{/if}
+			</div>
+			<ol class="grid gap-2 text-s text-mist">
+				{#each lines as line (line.seq)}<li class="first:text-paper">{line.text}</li>{/each}
+			</ol>
+		</section>
+	{/if}
 	<p class="play-money col-span-full row-5 text-center text-s text-haze tall:row-6">
 		Play chips only: they can never be bought, sold or cashed out.
 	</p>
