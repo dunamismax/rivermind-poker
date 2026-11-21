@@ -134,8 +134,10 @@ web/                             SvelteKit app (Node 26.13.1 from web/.node-vers
   scripts/                       art generator, parity and benchmark scripts, migrator, moderation commands,
                                  inline-code check
   src/lib/voice/                 table voice (Phase 4C): SFrame (sframe.ts), its encoded-transform worker and
-                                 the page's handle on it (P4C.2), the ts-mls design check (P4C.1) and, in
-                                 mls-vectors/, the MLS working group's test vectors against ts-mls (P4C.3)
+                                 the page's handle on it (P4C.2); the MLS group (group.ts), the service's
+                                 delivery rules (delivery.ts), each epoch's keys (group-keys.ts) and the
+                                 voice code (P4C.3); the ts-mls design check (P4C.1); and, in mls-vectors/,
+                                 the MLS working group's test vectors against ts-mls
   voice/check/                   the voice checks' page and Playwright checks (`pnpm voice:check`, in CI):
                                  SFrame's vectors and a call through the worker, in each browser
   voice/prototype/               the voice prototype (P4C.1): a mediasoup service, a test page and its
@@ -326,6 +328,10 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 - No frame passes a transform as it came. Sealing and opening go through `KeyStore` (`sframe.ts`) alone: a frame it cannot seal is dropped (`unsent`), and one it will not open is dropped under its reason. Never add a path that enqueues a frame untouched, for a missing key or anything else (D-15).
 - A key is bytes only until the page imports it. Give the worker each epoch's base key as a non-extractable `CryptoKey`, and derive AES keys with `deriveKey`, for one direction. `deriveBits` on a key is for the test vectors alone.
 - `sframe-vectors.json` is RFC 9605's appendix C as the RFC prints it, written by `node scripts/sframe-vectors.ts rfc9605.txt`. Never edit it by hand, and keep key ids and counters as hex strings: they are 64-bit.
+- An MLS proposal dies with its epoch, and a commit refers to the proposals it carries out. So after every accepted commit the voice service proposes again each removal still wanted (`Delivery.submit` returns them), and sends them to everyone, a newcomer included: a member who missed a proposal cannot apply the commit that follows.
+- A member's state changes only through `Member.receive`. `commit` and `join` return a candidate, and the member moves to it only when the service has accepted the commit; a losing candidate is dropped.
+- Nothing on a page in voice makes a long WebCrypto call. Browsers run WebCrypto in one queue, the worker's AES included: a single 50 ms PBKDF2 call cost every Firefox listener that much audio. The voice code is stretched in sixty short rounds for that reason (`voice-code.ts`).
+- `EpochKeys` gives listeners a new epoch's key and moves the page's own sending in one step, and holds sending before `sendAs` when the group holds a stranger. Keep that order. A page tells `EpochKeys.seats` who is seated before it advances, or its own leaf is a stranger to it.
 - The MLS working group's test vectors are fetched at a pinned commit and checked by hash (`web/src/lib/voice/mls-vectors/load.ts`), never committed: their repository states no license. A Vitest run that reports skipped tests there could not reach GitHub; CI fails instead. After changing the ts-mls pin, run them with the network up.
 - `sframe.ts`, `sframe-transform.ts` and the worker follow the engine files' rule: no `#lib` imports, relative `.ts` paths and only erasable TypeScript, so the worker, the check page and Node all load them as they are.
 

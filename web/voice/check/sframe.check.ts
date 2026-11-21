@@ -221,6 +221,72 @@ test('a new epoch takes over without a refused frame, and a retired one is refus
 	}).toPass({ timeout: 45_000 });
 });
 
+test('the table voice code is the same words on this engine', async ({ page }) => {
+	await ready(page);
+	// The answer group-keys.spec.ts pins under Node.
+	expect(await page.evaluate(() => window.check.code())).toBe('media casino old equip');
+});
+
+// One 20 ms frame of decoded audio at 48 kHz.
+const ONE_FRAME = 960;
+
+for (const skewMs of [0, 60]) {
+	test(`a join and a leave cost a listener no frame, the listener ${skewMs} ms behind`, async ({
+		page
+	}, info) => {
+		// The speaker makes the group, so its leaf is 0, and the listener's stream is that leaf's.
+		await call(page, info.project.name, { from: 0 });
+		const first = await page.evaluate(() => window.check.groupStart());
+		expect(first).toMatchObject({
+			epoch: 1,
+			speaker: { leaf: 0, seatsOk: true },
+			listener: { leaf: 1, seatsOk: true }
+		});
+		expect(first.listener.code).toBe(first.speaker.code);
+		await expect(async () => {
+			const one = await report(page, 600);
+			expect(one.received!.frames).toBeGreaterThan(100);
+			expectHeard(one.heard);
+		}).toPass({ timeout: 45_000 });
+		const before = await report(page);
+
+		// Someone sits down and joins voice, then stands up again: two new epochs,
+		// each with a code of its own that both screens share.
+		const joined = await page.evaluate((ms) => window.check.groupJoin(ms), skewMs);
+		expect(joined.epoch).toBe(2);
+		expect(joined.listener.code).toBe(joined.speaker.code);
+		await page.waitForTimeout(1500);
+		const left = await page.evaluate((ms) => window.check.groupLeave(ms), skewMs);
+		expect(left.epoch).toBe(3);
+		expect(left.listener.code).toBe(left.speaker.code);
+		expect(new Set([first.speaker.code, joined.speaker.code, left.speaker.code]).size).toBe(3);
+		for (const one of [joined, left]) {
+			expect(one.speaker.seatsOk).toBe(true);
+			expect(one.listener.seatsOk).toBe(true);
+		}
+		await page.waitForTimeout(1500);
+
+		const after = await report(page, 600);
+		// Every frame sent was opened: none refused, none left unsent.
+		expect(refusals(after)).toEqual({});
+		expect(after.refused).toEqual([]);
+		expect(after.sent!.unsent).toBe(before.sent!.unsent);
+		expect(after.received!.frames).toBeGreaterThan(before.received!.frames + 100);
+		expectHeard(after.heard);
+		const concealed = after.heard.concealedSamples - before.heard.concealedSamples;
+		console.log(
+			`[voice-check] ${JSON.stringify({ engine: info.project.name, platform: process.platform, skewMs, concealedSamples: concealed, waited: after.received!.waited })}`
+		);
+		if (skewMs === 0) {
+			// Both pages reach each epoch together, as two pages told by one server do.
+			expect(concealed).toBeLessThanOrEqual(ONE_FRAME);
+		} else {
+			// The listener got frames before their key: it waited for it, and still dropped none.
+			expect(after.received!.waited).toBeGreaterThan(0);
+		}
+	});
+}
+
 test('what SFrame costs a page in a full room', async ({ page }, info) => {
 	await ready(page);
 	// 161 bytes is a 20 ms Opus frame at 64 kbps (docs/voice.md).

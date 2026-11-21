@@ -59,6 +59,7 @@ scope.onmessage = ({ data }) => {
 		if (data.type === 'epoch') store.add(data.epoch, data.baseKey);
 		else if (data.type === 'send') store.sendAs(data.sender, data.epoch);
 		else if (data.type === 'retire') store.retire(data.epoch);
+		else if (data.type === 'hold') store.hold(data.held);
 		else scope.postMessage({ type: 'tallies', id: data.id, tallies: [...tallies.values()] });
 	} catch (error) {
 		// A key the store will not take: the page hears of it, and nothing is sent under it.

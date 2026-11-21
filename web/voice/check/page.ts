@@ -12,10 +12,14 @@
 // check and the cost at once, and the button adds a call through the
 // microphone. Each result is shown on the page and posted to the server that
 // serves it, which prints it (vite.config.ts beside this).
+import { Delivery } from '../../src/lib/voice/delivery.ts';
+import { EpochKeys, type Epoch } from '../../src/lib/voice/group-keys.ts';
+import { Member, type Identity } from '../../src/lib/voice/group.ts';
 import { FrameCrypto, canEncryptFrames } from '../../src/lib/voice/sframe-client.ts';
 import type { Tally } from '../../src/lib/voice/sframe-transform.ts';
 import { importBaseKey } from '../../src/lib/voice/sframe.ts';
 import { checkVectors, type VectorCheck } from '../../src/lib/voice/sframe-vectors.ts';
+import { voiceCode } from '../../src/lib/voice/voice-code.ts';
 import type { BenchRequest, BenchResult } from './bench.worker.ts';
 
 export type Who = 'speaker' | 'listener';
@@ -50,6 +54,13 @@ export type CallReport = {
 	heard: Heard;
 };
 
+// Where the two pages of a call stand in the table's MLS group.
+export type GroupReport = {
+	epoch: number;
+	speaker: { leaf: number; code: string; seatsOk: boolean };
+	listener: { leaf: number; code: string; seatsOk: boolean };
+};
+
 export type Check = {
 	support(): { frames: boolean; scriptTransform: boolean; subtle: boolean };
 	vectors(): Promise<VectorCheck>;
@@ -62,6 +73,15 @@ export type Check = {
 	retire(who: Who, epoch: number): Promise<void>;
 	report(listenMs?: number): Promise<CallReport>;
 	bench(request: BenchRequest): Promise<BenchResult>;
+	// The table voice code of thirty-two bytes of 7, on this engine's WebCrypto.
+	code(): Promise<string>;
+	// Key the call from an MLS group instead: the speaker makes it at seat 0 and
+	// the listener joins at seat 1, with the service's delivery rules between them.
+	groupStart(): Promise<GroupReport>;
+	// Someone sits down at seat 2 and joins, or stands up again. The speaker's
+	// page reaches the new epoch first; the listener's follows `skewMs` later.
+	groupJoin(skewMs: number): Promise<GroupReport>;
+	groupLeave(skewMs: number): Promise<GroupReport>;
 };
 
 declare global {
@@ -197,7 +217,101 @@ async function report(listenMs = 0): Promise<CallReport> {
 	};
 }
 
+// The call's two pages as members of one table's group, and the voice service between them.
+type Grouped = {
+	delivery: Delivery;
+	pages: Record<Who, { identity: Identity; member: Member; keys: EpochKeys; epoch: Epoch }>;
+	third: Member | null;
+};
+let grouped: Grouped | null = null;
+const seat = (n: number): Identity => ({ player: `player-${n}`, seat: n });
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function groupReport(): GroupReport {
+	const { speaker, listener } = grouped!.pages;
+	const side = (page: typeof speaker) => ({
+		leaf: page.epoch.leaf,
+		code: page.epoch.code.join(' '),
+		seatsOk: page.epoch.seats.ok
+	});
+	return { epoch: Number(speaker.epoch.epoch), speaker: side(speaker), listener: side(listener) };
+}
+
+async function groupStart(): Promise<GroupReport> {
+	const { crypto } = theCall();
+	const delivery = await Delivery.create(new TextEncoder().encode('check-table'));
+	const key = delivery.servicePublicKey;
+	const made = await Member.create(seat(0), delivery.groupId, key);
+	if (!(await delivery.open(made.groupInfo, seat(0))).accepted) throw new Error('not opened');
+	const joined = await Member.join(seat(1), delivery.groupInfo!, key);
+	const outcome = await delivery.submit(joined.commit, joined.groupInfo, seat(1));
+	if (!outcome.accepted) throw new Error(outcome.refusal);
+	await made.member.receive(joined.commit);
+	const page = async (who: Who, identity: Identity, member: Member) => {
+		const keys = new EpochKeys(crypto[who]);
+		keys.seats([seat(0), seat(1)]);
+		return { identity, member, keys, epoch: await keys.advance(member) };
+	};
+	// The listener holds the first key before the speaker sends under it.
+	const listener = await page('listener', seat(1), joined.member);
+	await crypto.listener.tallies();
+	const speaker = await page('speaker', seat(0), made.member);
+	grouped = { delivery, pages: { speaker, listener }, third: null };
+	return groupReport();
+}
+
+// Both pages take the group's new epoch, each at its own pace as two people's
+// pages do: each applies what the service passed on to it, then takes the
+// keys. The listener's page starts `skewMs` after the speaker's.
+async function moved(
+	seated: Identity[],
+	skewMs: number,
+	hears: Record<Who, Uint8Array[]>
+): Promise<void> {
+	const take = async (who: Who, afterMs: number) => {
+		const page = grouped!.pages[who];
+		if (afterMs) await pause(afterMs);
+		for (const message of hears[who]) await page.member.receive(message);
+		page.keys.seats(seated);
+		page.epoch = await page.keys.advance(page.member);
+	};
+	await Promise.all([take('speaker', 0), take('listener', skewMs)]);
+}
+
+async function groupJoin(skewMs: number): Promise<GroupReport> {
+	const { delivery } = grouped!;
+	const candidate = await Member.join(seat(2), delivery.groupInfo!, delivery.servicePublicKey);
+	const outcome = await delivery.submit(candidate.commit, candidate.groupInfo, seat(2));
+	if (!outcome.accepted) throw new Error(outcome.refusal);
+	grouped!.third = candidate.member;
+	await moved([seat(0), seat(1), seat(2)], skewMs, {
+		speaker: [candidate.commit],
+		listener: [candidate.commit]
+	});
+	return groupReport();
+}
+
+async function groupLeave(skewMs: number): Promise<GroupReport> {
+	const { delivery, pages, third } = grouped!;
+	const proposal = await delivery.remove(third!.leaf);
+	if (!proposal) throw new Error('nobody to remove');
+	await pages.speaker.member.receive(proposal);
+	// The speaker holds the lowest leaf: it commits the removal, and has the new epoch at once.
+	const candidate = await pages.speaker.member.commit();
+	const outcome = await delivery.submit(candidate.commit, candidate.groupInfo, seat(0));
+	if (!outcome.accepted) throw new Error(outcome.refusal);
+	pages.speaker.member = candidate.member;
+	grouped!.third = null;
+	// The committer is a step ahead of everyone it tells: it already holds the new epoch.
+	await moved([seat(0), seat(1)], skewMs, { speaker: [], listener: [proposal, candidate.commit] });
+	return groupReport();
+}
+
 window.check = {
+	code: async () => (await voiceCode(new Uint8Array(32).fill(7))).join(' '),
+	groupStart,
+	groupJoin,
+	groupLeave,
 	support: () => ({
 		frames: canEncryptFrames(),
 		scriptTransform: typeof RTCRtpScriptTransform === 'function',

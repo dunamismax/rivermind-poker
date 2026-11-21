@@ -1,6 +1,6 @@
 # Table voice design
 
-This is the design for live voice at the table (Phase 4C, D-15). It records what voice must do, the threat model, the tools chosen and the ones rejected, how keys are agreed and media is encrypted, and what the host has to provide. [BUILD.md](../BUILD.md#phase-4c--table-voice) holds the steps and their evidence. P4C.1 checked this design with a working prototype, and [what the prototype found](#what-the-prototype-found-p4c1) lists what it confirmed, what it corrected here and what it left for later steps. P4C.2 built the frame encryption, and [frame encryption as built](#frame-encryption-as-built-p4c2) says how it works, what it refuses and what it costs.
+This is the design for live voice at the table (Phase 4C, D-15). It records what voice must do, the threat model, the tools chosen and the ones rejected, how keys are agreed and media is encrypted, and what the host has to provide. [BUILD.md](../BUILD.md#phase-4c--table-voice) holds the steps and their evidence. P4C.1 checked this design with a working prototype, and [what the prototype found](#what-the-prototype-found-p4c1) lists what it confirmed, what it corrected here and what it left for later steps. P4C.2 built the frame encryption, and [frame encryption as built](#frame-encryption-as-built-p4c2) says how it works, what it refuses and what it costs. P4C.3 built the group key, and [the group key as built](#the-group-key-as-built-p4c3) says the same of it.
 
 ## What voice is for
 
@@ -20,7 +20,7 @@ The people seated at a table talk to each other as they would at a real one. Voi
 - **The network.** DTLS-SRTP protects each hop, and SFrame protects the frames inside it.
 - **People who left.** Leaving the seat removes a member, which starts a new key epoch. Someone who stood up cannot decrypt what is said after.
 - **People who arrive.** Joining also starts a new epoch, so a newcomer cannot decrypt what was said before they joined, even holding a copy of the encrypted frames.
-- **A hidden listener.** Every client builds its member list from the group state, not from what the server says. A member the server adds shows up on every screen and is checked against the table’s seats. The **table voice code**, derived from the epoch authenticator, is the same on every screen in the same group. Players can read it aloud to confirm nobody is between them.
+- **A hidden listener.** Every client builds its member list from the group state, not from what the server says. A member the server adds shows up on every screen and is checked against the table’s seats, and a page stops sending while its group holds someone who is not seated. The **table voice code**, derived from the epoch authenticator, is the same on every screen in the same group. Players can read it aloud to confirm nobody is between them: a server that split a table into two groups, standing in for each player to the other, would pass the seat check, since a leaf only claims its seat, and the code is what would differ.
 
 **Not protected against**, and the privacy page says so
 
@@ -68,9 +68,9 @@ This is the design Discord adopted for its own end-to-end encrypted voice ([DAVE
 - The voice service is the group’s **external sender**: when someone leaves, it proposes their removal, and the remaining member with the lowest leaf index commits it. If that member is gone, the next one does. Members refuse a proposal the service did not sign.
 - The voice service orders commits: it accepts the first valid commit for an epoch and refuses the rest, the usual MLS delivery-service rule. Commits and proposals travel as MLS public messages, so the service can read their epoch and sender; they hold no secret, and it cannot read or forge application keys. A member whose commit lost drops it and applies the winner’s, which costs nothing: a ts-mls commit never changes the state it was made from.
 - **A reloaded page joins as a newcomer.** It has a new signature key, so the group cannot tell it from a stranger: it joins by an ordinary external commit, and the service proposes the removal of its stale leaf. For a moment the group holds two leaves for one seat, so the check of members against seats counts seats, not leaves. A page that kept its signature key but missed commits may instead **resync**, an external commit that replaces its own leaf. Never ask ts-mls 1.6.4 to resync under a new signature key: it finds the old leaf by that key alone, and `joinGroupExternal` with `resync` set never returns when there is no match.
-- **SFrame keys from MLS** follow RFC 9605 section 5.2: for each epoch, `base_key = MLS-Exporter("SFrame 1.0 Base Key", "", AEAD.Nk)`, and the key ID packs the sender’s leaf index and the low bits of the epoch, `KID = (sender_index << E) + (epoch % (1 << E))`. A receiver drops an old epoch when a new one with the same low bits arrives. P4C.3 fixes `E` and `S`; until it does the code uses the RFC’s own example, `E` = 4 and `S` = 6, sixteen epochs in flight and sixty-four leaves.
-- **Changing epochs without a gap.** Receivers keep the previous epoch’s keys for a short grace window, and senders switch once the commit is applied. P4C.3 measures that no audible gap follows a join or leave.
-- **The table voice code** is derived from the MLS epoch authenticator, shown as four short words, and changes whenever someone joins or leaves.
+- **SFrame keys from MLS** follow RFC 9605 section 5.2: for each epoch, `base_key = MLS-Exporter("SFrame 1.0 Base Key", "", AEAD.Nk)`, and the key ID packs the sender’s leaf index and the low bits of the epoch, `KID = (sender_index << E) + (epoch % (1 << E))`. A receiver drops an old epoch when a new one with the same low bits arrives. `E` = 4 and `S` = 6, the RFC’s own example: sixteen epochs in flight, where a page holds two, and sixty-four leaves, where a table of nine with every page reloading at once needs eighteen.
+- **Changing epochs without a gap.** A page takes a new epoch’s key the moment it has applied the commit and sends under it at once, so nothing said after someone left is sealed under a key they hold. It keeps the epoch before for two seconds, for frames still on their way. A listener handed a frame before it has the key waits up to 250 ms for the key and then opens the frame, with the stream’s later frames queued behind it in order. A join and a leave during a call cost a listener no frame and, with both pages moving at their own pace, no concealed audio at all ([measured](#the-group-key-as-built-p4c3)).
+- **The table voice code** is four words of the 2,048-word BIP-39 list, 44 bits, made from the MLS epoch authenticator stretched through 600,000 iterations of PBKDF2. It changes whenever someone joins or leaves.
 
 **What the server never sees:** keys, plaintext frames, or audio levels.
 
@@ -200,6 +200,53 @@ Every frame was sealed and opened long before the next was due. The service’s 
 - **A phone.** The figures above are a laptop’s. `crypto.subtle` needs a secure context, so a phone cannot load the check page from this Mac over the LAN; it is measured when a build a phone can load over HTTPS exists (P4C.2a).
 - **Safari itself.** Playwright’s WebKit is not Safari. The check page runs by hand in any browser (`/?run`, and a button for a call through the microphone) and posts what it finds to the server that serves it; nobody has run it in Safari yet (P4C.2a).
 - **CI’s own run.** The checks passed in Playwright’s Linux browsers in a container; GitHub’s runner has not run them yet (P4C.2a).
+
+## The group key as built (P4C.3)
+
+Four files in [`web/src/lib/voice/`](../web/src/lib/voice/) on ts-mls, with nothing a player sees yet: P4C.4’s service carries their messages, and P4C.5 puts them at a table.
+
+**The parts**
+
+- [`group.ts`](../web/src/lib/voice/group.ts), one member’s side. `Member.create` makes the group, naming the service as its only external sender. `Member.join` joins by external commit from the GroupInfo the service holds, and refuses a group that names any other external sender. `receive` applies what the service passes on. `commitRank` says whose turn it is to commit the removals the service proposed: 0 for the lowest leaf that is not itself going, 1 for the next, who steps in if the first stays quiet. `commit` and `join` each return a candidate: the commit, the GroupInfo that follows it, and the member as it will be if the service accepts. The member a commit was made from stands until then, and applies the winner if it loses.
+- [`delivery.ts`](../web/src/lib/voice/delivery.ts), the service’s side. It holds the latest GroupInfo and a signature key made for the room, in memory. `submit` accepts the first commit made from the current epoch and refuses the rest (`epoch-taken`). `remove` signs a removal as the external sender.
+- [`group-keys.ts`](../web/src/lib/voice/group-keys.ts), from the group to the audio. `EpochKeys.advance` exports the epoch’s base key, `MLS-Exporter("SFrame 1.0 Base Key", "", 16)`, imports it into WebCrypto, wipes the bytes, gives the key to the worker and moves the page’s sending to it. It returns the voice code and the seat check.
+- [`voice-code.ts`](../web/src/lib/voice/voice-code.ts), the four words. The list is BIP-39’s English one (`voice-words.json`, MIT, `licenses/python-mnemonic.txt`): 2,048 common words, no two alike in their first four letters.
+
+**What a member will apply, and what the service will pass on**
+
+A member applies three things and nothing else: a removal proposal signed by the service, a member’s commit of such removals (at least one, and no other proposal), and a newcomer’s external commit (its external init alone). So no member can add anyone, remove anyone the service did not name, or change who the external sender is, and a commit of nothing is refused too. ts-mls has checked the signatures and the membership tag before the rule is asked.
+
+The service cannot check a commit as a member does, because the membership tag is keyed with a group secret. It checks what is public. The GroupInfo with each commit must be for the next epoch, name the service as the only external sender, and be signed by a member in its own tree. Comparing the tree before and after, a newcomer’s commit must add exactly one leaf, carrying the identity of the socket it came from, and remove none; a member’s commit must come from that member’s own socket and remove only leaves the service asked to have removed. A member who lies to the service in a GroupInfo can break the room for newcomers and learns nothing; the room then starts a new group (P4C.7).
+
+**Found on the way**
+
+- **A removal proposal dies with its epoch.** If a join takes the epoch before anyone commits a pending removal, the proposal is gone. The service keeps the list of leaves it wants removed and proposes each again after every commit it accepts.
+- **A newcomer must be sent those proposals too.** The commit that carries out a removal refers to the proposal, and a member who never saw the proposal cannot apply the commit. The test that found this had the newcomer miss one, and the next commit left it behind.
+- **A long WebCrypto call stops the audio in Firefox.** The voice code was first stretched in one PBKDF2 call of 600,000 iterations, about 50 ms. Firefox ran it in the same queue as the worker’s AES, and every listener concealed 25 to 50 ms of audio at each join and leave. The stretching is now sixty chained rounds of 10,000 iterations, each fed the last one’s output: the same work, in the same order, with frames going between rounds. Nothing else on a page in voice should make a WebCrypto call that takes more than a few milliseconds.
+- **Holding the instant a seat empties would cut every speaker off.** The table reports an empty seat before the group has removed its leaf: the removal takes a proposal, a commit and a round trip. A page that stopped sending the moment the two disagreed dropped its own frames for that long, every time anyone stood up. Someone a page saw seated now has three seconds after leaving their seat before they count as a stranger. Someone who never held a seat has none.
+
+**What the group’s members are checked against**
+
+A leaf says who it is in a basic credential, `<seat>:<player>`, signed by a key made for the session. It is a claim: guests have no long-term identity (D-12). A page compares every leaf of its own copy of the tree with the people the table shows seated, by player and seat together, and stops sending (`hold`) while any leaf is a stranger. It counts seats, not leaves, since a reloaded page’s old leaf stays beside its new one until it is removed.
+
+The same operator runs the table and the voice service, so this check alone would not stop it lying about both. What it gives is that everyone in the voice group is someone every player can see at the table. The voice code covers the rest. Its 44 bits are few: someone running both halves of a split table could make commits until the two halves’ codes agreed, about four million tries for each half by the birthday bound. The stretching makes each try cost about 50 ms of one core, some hundred core-hours for every epoch, to be done again at each join and leave before anyone notices the pause.
+
+**Measured**
+
+In Playwright’s Chromium, Firefox and WebKit on this Mac, a call between two pages of one table’s group, a continuous signal playing, someone joining and then leaving, 1.5 s apart (`pnpm voice:check`):
+
+| | Frames refused or unsent | Concealed audio, of 20 ms a frame |
+| --- | --- | --- |
+| Both pages at their own pace, five runs an engine | 0 | 0 samples in all fifteen |
+| The listener’s page 60 ms behind the speaker’s, five runs an engine | 0 | 0 to 39 ms |
+
+A listener behind the speaker waited for the key at each of the two changes and opened every frame. In Playwright’s Linux Chromium and Firefox, in a container, the same check concealed nothing at the pages’ own pace and 12 to 18 ms with the listener behind. The voice code came out the same words on all three engines and under Node. In Vitest, a seeded random walk of 120 joins, leaves, reloads, simultaneous joins and quiet committers at up to nine seats ended every step with one epoch, one base key and one authenticator for everyone in voice, and every page that had left unable to follow.
+
+**Left for later steps**
+
+- **The wire.** Members and the service are driven directly in the tests. Voice signalling v1 (P4C.4) carries the messages, and P4C.5’s client decides when to act: it commits after `commitRank` turns of a timeout, joins again when its commit loses, and asks for a new group when its state cannot follow.
+- **Timing over a real network.** The measurements are two pages on one machine. P4C.7 measures the skew between pages across the service, and whether the 250 ms wait and the 2 s grace fit it.
+- **A member the service cannot hear from.** If nobody commits a removal, the leaf stays, and after three seconds every page holds. P4C.7’s recovery (a new group) is what ends that.
 
 ## The working group’s test vectors (P4C.3)
 

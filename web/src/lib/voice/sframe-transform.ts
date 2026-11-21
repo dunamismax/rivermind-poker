@@ -11,6 +11,7 @@ export type KeyMessage =
 	| { type: 'epoch'; epoch: bigint; baseKey: CryptoKey }
 	| { type: 'send'; sender: number; epoch: bigint }
 	| { type: 'retire'; epoch: bigint }
+	| { type: 'hold'; held: boolean }
 	| { type: 'tallies'; id: number };
 
 // What the worker tells the page: the tallies it asked for, or that the key
@@ -33,6 +34,8 @@ export type Tally = {
 	// Frames dropped: `unsent` on the way out, for want of a key to send under.
 	unsent: number;
 	refused: Record<Refusal, number>;
+	// Frames opened only after waiting for their epoch's key to arrive.
+	waited: number;
 	// Frames that arrived with no bytes at all, dropped unread. Firefox hands a
 	// receiver the padding packets its peer probes the connection with as a
 	// direct call starts; they hold nothing to open and nothing to play.
@@ -57,6 +60,7 @@ export function newTally(id: string, direction: Tally['direction']): Tally {
 			tampered: 0,
 			replayed: 0
 		},
+		waited: 0,
 		empty: 0,
 		ms: 0,
 		slowestMs: 0
@@ -93,13 +97,30 @@ export function encryptor(store: KeyStore, tally: Tally): Transformer<EncodedFra
 	};
 }
 
+// How long a receiver waits for the key of a frame from an epoch it has not
+// been given. When someone joins or leaves, every page moves to the new epoch
+// within a few milliseconds of the others but not at the same instant, and a
+// speaker who got there first is, for that moment, ahead of its listeners.
+export const KEY_WAIT_MS = 250;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 // Opens each frame a receiver is handed. One that does not open is dropped
 // and never reaches the decoder, which then conceals it as it would a lost packet.
+//
+// A frame under a key id this page does not hold waits up to `waitMs` for the
+// next epoch to arrive and is then tried once more. The stream's later frames
+// queue behind it in order, so a late key costs a pause the jitter buffer
+// absorbs and no frame. A stream waits once for each epoch the page is given:
+// frames nobody will ever send a key for are not waited on twice.
 export function decryptor(
 	store: KeyStore,
 	tally: Tally,
-	from: number | null
+	from: number | null,
+	waitMs: number = KEY_WAIT_MS
 ): Transformer<EncodedFrame, EncodedFrame> {
+	// The count of epochs at which this stream last waited in vain, or tried again in vain.
+	let gaveUpAt = -1;
 	return {
 		async transform(frame, controller) {
 			if (frame.data.byteLength === 0) {
@@ -107,7 +128,17 @@ export function decryptor(
 				return;
 			}
 			const started = performance.now();
-			const opened = await store.open(new Uint8Array(frame.data), from ?? undefined);
+			const bytes = new Uint8Array(frame.data);
+			let opened = await store.open(bytes, from ?? undefined);
+			if (!opened.ok && opened.refusal === 'unknown-key' && gaveUpAt !== store.added) {
+				const arrived = await Promise.race([
+					store.nextAdded().then(() => true),
+					sleep(waitMs).then(() => false)
+				]);
+				if (arrived) opened = await store.open(bytes, from ?? undefined);
+				if (!opened.ok) gaveUpAt = store.added;
+				else tally.waited += 1;
+			}
 			timed(tally, started);
 			if (!opened.ok) {
 				tally.refused[opened.refusal] += 1;

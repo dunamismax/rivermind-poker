@@ -278,6 +278,9 @@ export class KeyStore {
 	// The newest epoch this page has ever sent under, whether or not it still does.
 	#lastSent = -1n;
 	#sending: Sending | null = null;
+	#held = false;
+	#added = 0;
+	#waiting: (() => void)[] = [];
 
 	constructor(layout: Layout = LAYOUT) {
 		this.layout = layout;
@@ -297,6 +300,30 @@ export class KeyStore {
 		const slot = this.#slot(epoch);
 		if (this.#sending && this.#slot(this.#sending.epoch) === slot) this.#sending = null;
 		this.#slots.set(slot, { epoch, baseKey, sender: null, receiving: new Map() });
+		this.#added += 1;
+		for (const wake of this.#waiting.splice(0)) wake();
+	}
+
+	// How many epochs this page has been given, and a promise for the next one:
+	// a receiver handed a frame from an epoch it does not hold yet can wait a
+	// moment for the key instead of dropping the frame (sframe-transform.ts).
+	get added(): number {
+		return this.#added;
+	}
+
+	nextAdded(): Promise<void> {
+		return new Promise((resolve) => this.#waiting.push(resolve));
+	}
+
+	// Stop sending, or start again, without touching a key or a counter. While
+	// it is held a page seals nothing, so nothing leaves it: the group holds
+	// someone who is not at the table, and the page will not speak to them.
+	hold(held: boolean): void {
+		this.#held = held;
+	}
+
+	get held(): boolean {
+		return this.#held;
 	}
 
 	// Forget an epoch: its frames are refused from now on, and if this page was
@@ -347,7 +374,7 @@ export class KeyStore {
 	// A frame that cannot be sealed is never sent as it is.
 	async seal(frame: BufferSource): Promise<Bytes | null> {
 		const sending = this.#sending;
-		if (!sending || sending.next >= Number.MAX_SAFE_INTEGER) return null;
+		if (!sending || this.#held || sending.next >= Number.MAX_SAFE_INTEGER) return null;
 		// Taken before anything is awaited: two frames in flight never share a counter.
 		const ctr = BigInt(sending.next++);
 		return seal(await sending.key, ctr, frame);

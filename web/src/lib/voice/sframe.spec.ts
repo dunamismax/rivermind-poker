@@ -376,6 +376,19 @@ describe('the key store', () => {
 		expect(await speaker.seal(frame('unsent'))).toBeNull();
 	});
 
+	it('sends nothing while it is held, and loses no counter to it', async () => {
+		const { speaker, listener } = await pair(3, 5n);
+		expect(decodeHeader(await sealed(speaker, 'zero'))?.ctr).toBe(0n);
+		speaker.hold(true);
+		expect(speaker.held).toBe(true);
+		expect(await speaker.seal(frame('not sent'))).toBeNull();
+		expect(await speaker.seal(frame('nor this'))).toBeNull();
+		speaker.hold(false);
+		const next = await sealed(speaker, 'one');
+		expect(decodeHeader(next)?.ctr).toBe(1n);
+		expect(await refusal(listener, next)).toBe('opened');
+	});
+
 	it('will not send as a leaf it has opened frames from', async () => {
 		const { speaker, listener } = await pair(3, 5n);
 		expect(await refusal(listener, await sealed(speaker, 'hello'))).toBe('opened');

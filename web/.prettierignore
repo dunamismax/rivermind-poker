@@ -31,3 +31,6 @@ bun.lockb
 
 # RFC 9605 appendix C, as the RFC prints it (scripts/sframe-vectors.ts)
 /src/lib/voice/sframe-vectors.json
+
+# The BIP-39 English word list, as python-mnemonic publishes it (licenses/python-mnemonic.txt)
+/src/lib/voice/voice-words.json

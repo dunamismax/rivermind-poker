@@ -296,6 +296,22 @@ VOICE_DEBUG=1 pnpm voice:check -g heard  # with the page's console
 
 A frame that is not opened is never passed to the decoder, and a frame that cannot be sealed is never sent. Each is counted in its transform's tally under the reason: `malformed`, `unknown-key`, `stale-epoch`, `wrong-sender`, `tampered` or `replayed` on the way in, `unsent` on the way out.
 
+### The group key (P4C.3)
+
+The people in voice agree a key for each epoch through an MLS group (RFC 9420) on ts-mls. [docs/voice.md](docs/voice.md#the-group-key-as-built-p4c3) says how it works and what it refuses.
+
+| File | What it holds |
+| --- | --- |
+| [`group.ts`](web/src/lib/voice/group.ts) | `Member`, one person's side: create, join by external commit, apply what the service passes on, commit the removals the service proposed. |
+| [`delivery.ts`](web/src/lib/voice/delivery.ts) | `Delivery`, the voice service's side: one commit an epoch, what each sender may change, and removals signed as the external sender. |
+| [`group-keys.ts`](web/src/lib/voice/group-keys.ts) | `EpochKeys`: each epoch's SFrame base key into the worker, the grace window, and the check of members against seats. |
+| [`voice-code.ts`](web/src/lib/voice/voice-code.ts) | The four-word table voice code, from the epoch authenticator. [`voice-words.json`](web/src/lib/voice/voice-words.json) is the BIP-39 English list; Prettier must not touch it. |
+
+```sh
+pnpm test src/lib/voice/group.spec.ts src/lib/voice/group-keys.spec.ts
+pnpm voice:check -g "ms behind"   # a join and a leave during a real call, in three browsers
+```
+
 ### The MLS test vectors (P4C.3)
 
 `pnpm test` also holds the pinned ts-mls to the MLS working group's interoperability test vectors for ciphersuite 0x0001 ([`web/src/lib/voice/mls-vectors/`](web/src/lib/voice/mls-vectors/), 395 cases in 14 spec files). The vectors are not in this repository, because the working group's states no license: [`load.ts`](web/src/lib/voice/mls-vectors/load.ts) fetches them from GitHub at the commit [`source.json`](web/src/lib/voice/mls-vectors/source.json) pins, checks each file's SHA-256 and keeps them in `node_modules/.cache/mls-vectors/`. The first run needs the network. Without it the vector checks are reported as skipped, except in CI, where that is a failure.

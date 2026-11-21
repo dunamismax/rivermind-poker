@@ -54,6 +54,11 @@ export class FrameCrypto {
 		this.#post({ type: 'retire', epoch });
 	}
 
+	// Stop sending, or start again: while held, no frame leaves this page.
+	hold(held: boolean): void {
+		this.#post({ type: 'hold', held });
+	}
+
 	// Seal every frame this sender encodes. Set it before the sender negotiates
 	// (mediasoup-client's `onRtpSender`), so no frame goes out unsealed.
 	encrypt(sender: RTCRtpSender, id = 'send'): void {
