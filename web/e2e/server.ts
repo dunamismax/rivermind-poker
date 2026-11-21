@@ -1,7 +1,8 @@
 // Runs the site as the browser tests see it: the built Node server
 // (`node build/start.js`) serving the pages, the API and the tables itself
 // (P4B.5b), as the live site does. Tables live in memory; their durability is
-// tested in Vitest against PostgreSQL.
+// tested in Vitest against PostgreSQL. The one server the journey tests share
+// (e2e/journey-setup.ts) keeps everything in the disposable test database.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -88,12 +89,19 @@ export class TableServer {
 	readonly url: string;
 	readonly #web: Child;
 
-	constructor(readonly port: number) {
+	/**
+	 * @param databaseUrl A disposable, migrated database for the server to keep its players,
+	 *   wallets, tables and hands in (the P5.9 journey). Without one, everything lives in memory.
+	 */
+	constructor(
+		readonly port: number,
+		{ databaseUrl = '' }: { databaseUrl?: string } = {}
+	) {
 		this.url = `http://127.0.0.1:${port}`;
-		// Never a developer's database: these tables live in memory.
+		// Never a developer's database: only one a test names, and otherwise memory.
 		const tables: NodeJS.ProcessEnv = {
 			RIVERMIND_API: '1',
-			DATABASE_URL: '',
+			DATABASE_URL: databaseUrl,
 			RIVERMIND_HAND_PAUSE: HAND_PAUSE,
 			RIVERMIND_BOT_DELAY: BOT_DELAY,
 			RIVERMIND_PRACTICE_STACK: PRACTICE_STACK,

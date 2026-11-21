@@ -8,7 +8,8 @@ const phone = { viewport: { width: 375, height: 812 }, hasTouch: true };
 export default defineConfig({
 	testDir: 'e2e',
 	testMatch: '**/*.e2e.ts',
-	globalSetup: './e2e/global-setup.ts',
+	// The build and the test champion, then the database-backed server the journey tests share.
+	globalSetup: ['./e2e/global-setup.ts', './e2e/journey-setup.ts'],
 	forbidOnly: !!process.env.CI,
 	retries: process.env.CI ? 1 : 0,
 	timeout: 60_000,

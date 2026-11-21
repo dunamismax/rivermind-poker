@@ -131,10 +131,11 @@ web/                             SvelteKit app (Node 26.13.1 from web/.node-vers
   server/                        Node server: SvelteKit handler + /ws, /healthz (with REVISION), /api
   art/                           palette, sprites and font as text; cards/ holds the owner's PNG sprites
   drizzle/                       SQL migrations (never edit an applied one)
-  scripts/                       art generator, parity and benchmark scripts, migrator, inline-code check
-  e2e/                           Playwright tests against the Node table server; *.live.ts run against the
-                                 live site; visual/ holds the screenshot comparison's scenes and its seeded
-                                 test-only server
+  scripts/                       art generator, parity and benchmark scripts, migrator, moderation commands,
+                                 inline-code check
+  e2e/                           Playwright tests against the Node table server; journey.e2e.ts against one
+                                 on PostgreSQL; *.live.ts run against the live site; visual/ holds the
+                                 screenshot comparison's scenes and its seeded test-only server
 rivermind/engine/                reference no-limit engine, fuzz, bench, differential reference writer
 rivermind/bots/                  simple bots, cards/ (card tables), blueprint/ (training, policy, bundles),
                                  match.py (evaluation), differential.py (bot parity reference)
@@ -217,9 +218,12 @@ From `web/`, with Node 26.13.1 (`web/.node-version`) and pnpm 12.18.0 (`packageM
 ```sh
 pnpm install --frozen-lockfile
 pnpm check && pnpm lint && pnpm test && pnpm build
-pnpm e2e        # Chromium, Firefox and WebKit, desktop and phone, against the Node server and its own tables
+pnpm e2e        # Chromium, Firefox and WebKit, desktop and phone, against the Node server and its own tables;
+                # with RIVERMIND_TEST_DATABASE_URL set, also the P5.9 journey on PostgreSQL
 pnpm e2e:live   # against https://rivermindpoker.com (or LIVE_URL)
 ```
+
+The journey tests (`journey.e2e.ts`) share one database-backed server and empty `RIVERMIND_TEST_DATABASE_URL` when the run starts, so never run `pnpm e2e` beside `pnpm test` with that variable set; without it they are skipped locally, and the full run before a commit must include them.
 
 `pnpm visual` and `pnpm visual:compare` capture fixed scenes and compare two commits pixel for pixel; run them for any change to styles or markup ([CONTRIBUTING.md](CONTRIBUTING.md#comparing-screenshots-p4b2)).
 
@@ -233,6 +237,7 @@ pnpm e2e:live   # against https://rivermindpoker.com (or LIVE_URL)
 | Apply migrations (what production will run) | `pnpm db:migrate` |
 | Render the pixel art | `pnpm art`, or `pnpm art --preview <dir outside the repo>` for contact sheets |
 | Regenerate the short-deck `protocol.ts` | `pnpm protocol` |
+| Review reports and collusion signals, or give a player a new handle | `DATABASE_URL=… pnpm moderation reports`, `signals` or `rename PLAYER_ID`; `build/moderation.js` in a release |
 | Rewrite the table parity fixture (from the root) | `uv run --locked python -m test.server.table_differential --fixture` |
 | Check the TypeScript table against the Python one | `pnpm table:parity`, or `-- --sequences 400 --ops 300` for the long run |
 
@@ -337,7 +342,7 @@ Keep the `poker_ai` Python namespace and the legacy `poker_ai` command. Existing
 - The turn’s action panel opens above the table controls and pushes them down. Wait for the `Your action` group before clicking a button below it, or the click can land where the button was.
 - The lobby lists every open table on the test server, each with its own “Sit down”, and has its own “Blinds” filter. Reach the new-table form through `newTableForm()` and a listed table through its `li[data-table]` row.
 - After an action the panel stays up, disabled, until the table answers. Decide on an enabled button and click it by its exact label, as `playUntil` does: a click on a stale decision waits and lands on the next turn’s button. Give every check of a button’s state a timeout.
-- `playUntil` acts between two looks at its condition, so never use it to wait for our own turn: it can act on a panel that came up after it looked, and then report the turn that action ended. `ourTurn` in `replay.e2e.ts` waits without acting.
+- `playUntil` acts between two looks at its condition, so never use it to wait for our own turn: it can act on a panel that came up after it looked, and then report the turn that action ended. `ourTurn` in `e2e/review.ts` waits without acting.
 - RiverMind Easy folds to almost every raise, so a guest who shoves or folds rarely busts. The browser tests’ server runs `--practice_stack 300`, and a test that needs a bust checks or calls every turn: in a 40-seed simulation that busted every guest within 94 hands.
 - Playwright empties its output directory when a run starts. A second run with the same configuration in `web/` deletes the first one's traces, and its tests then fail on `ENOENT`. `pnpm visual` has its own directory for that reason; do not start a second `pnpm e2e` beside a running one.
 - `pnpm e2e` and `pnpm visual` build the working tree when they start (unless `E2E_SKIP_BUILD` is set). Capture every “before” run of a screenshot comparison before the first edit, or from a copy of the commit (`git archive HEAD web`, its own `pnpm install --frozen-lockfile`, `E2E_MODELS_TAG` set, and `VISUAL_OUT` as an absolute path). A second “before” run started after editing began captured the half-made change, and the comparison then passed pixels it should have flagged.
