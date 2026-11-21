@@ -2,6 +2,10 @@ import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocket, WebSocketServer } from 'ws';
+import { createApi } from '../src/lib/server/api/api.ts';
+import { UNLIMITED } from '../src/lib/server/api/safety.ts';
+import { Site } from '../src/lib/server/api/site.ts';
+import { MAX_BODY_BYTES } from './api.ts';
 import { createApp, TRY_AGAIN_LATER, type App, type Handler } from './app.ts';
 import { RESTARTING } from './legacy.ts';
 
@@ -22,11 +26,15 @@ const pages: Handler = (req, res) => {
 	res.end(`page ${req.url}`);
 };
 
-async function start(legacy: string | null = null): Promise<{ app: App; host: string }> {
+async function start(
+	legacy: string | null = null,
+	extra: Partial<Parameters<typeof createApp>[0]> = {}
+): Promise<{ app: App; host: string }> {
 	const app = createApp({
 		handler: pages,
 		legacyApi: legacy ? new URL(`http://${legacy}`) : null,
-		shutdownTimeoutMs: 500
+		shutdownTimeoutMs: 500,
+		...extra
 	});
 	const host = await listen(app.server);
 	running.push(() => app.close());
@@ -197,5 +205,56 @@ describe('shutting down', () => {
 		await app.close();
 		expect(await code).not.toBe(1000);
 		await expect(fetch(`http://${host}/healthz`)).rejects.toThrow();
+	});
+});
+
+describe('the TypeScript API (P4B.5a)', () => {
+	const site = () => new Site({ secret: Buffer.from('test-secret'), limits: UNLIMITED });
+
+	it('answers /api/* ahead of the handler, without SvelteKit refusing Origin-less requests', async () => {
+		const { host } = await start(null, { api: createApi(site()) });
+		const made = await fetch(`http://${host}/api/session`, { method: 'POST' });
+		expect(made.status).toBe(200);
+		const cookie = made.headers.getSetCookie();
+		expect(cookie).toHaveLength(1);
+		expect(cookie[0]).toMatch(/^rm_session=s1\.p_.*; SameSite=lax$/); // plain http to this machine
+		const headers = { cookie: cookie[0].split(';')[0] };
+		const wallet = await fetch(`http://${host}/api/wallet`, { headers });
+		expect((await wallet.json()).balance).toBe(20_000);
+		// A loopback dev page may call a loopback server, as serve-nl allows.
+		const dev = await fetch(`http://${host}/api/session`, {
+			method: 'POST',
+			headers: { ...headers, origin: 'http://localhost:5173' }
+		});
+		expect(dev.status).toBe(200);
+		const evil = await fetch(`http://${host}/api/session`, {
+			method: 'POST',
+			headers: { origin: 'https://evil.example' }
+		});
+		expect(evil.status).toBe(403);
+		expect(await (await fetch(`http://${host}/`)).text()).toBe('page /');
+	});
+
+	it('sees the public scheme, and refuses bodies that are too large', async () => {
+		const { host } = await start(null, {
+			api: createApi(site()),
+			origin: new URL('https://rivermindpoker.com')
+		});
+		const made = await fetch(`http://${host}/api/session`, { method: 'POST' });
+		expect(made.headers.getSetCookie()[0]).toMatch(/; Secure$/);
+		const big = await fetch(`http://${host}/api/session`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ legacy_token: 'x'.repeat(MAX_BODY_BYTES) })
+		});
+		expect(big.status).toBe(413);
+	});
+
+	it('forwards to the legacy server instead when there is one', async () => {
+		const legacy = await legacyServer();
+		const { host } = await start(legacy.host, { api: createApi(site()) });
+		const response = await fetch(`http://${host}/api/session`, { method: 'POST' });
+		expect(response.status).toBe(201);
+		expect(legacy.seen).toHaveLength(1);
 	});
 });

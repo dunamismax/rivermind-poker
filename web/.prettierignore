@@ -17,3 +17,6 @@ bun.lockb
 
 # Generated from the Python engine's rule hands (test/engine/export_fixtures.py)
 /src/lib/server/engine/rules.json
+
+# Recorded from serve-nl (test/server/export_http_contract.py)
+/src/lib/server/api/contract.json

@@ -1,13 +1,15 @@
 // The RiverMind Poker web server: SvelteKit's Node handler and the /ws
 // WebSocket on one HTTP server (D-2). Until the P4B.7 cutover the tables live
 // in the Python server, so with a legacy target /api/* and /ws are forwarded
-// there (legacy.ts); without one /ws accepts sockets and closes them, because
-// no table is served here yet.
+// there (legacy.ts). Without one, /api/* is answered by the TypeScript API
+// (api.ts, P4B.5a) and /ws accepts sockets and closes them, because no table
+// is served here yet.
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Socket } from 'node:net';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer } from 'ws';
+import { serveApi, type ApiHandler } from './api.ts';
 import { forwardRequest, forwardUpgrade, isLegacyPath } from './legacy.ts';
 
 export type Handler = (req: IncomingMessage, res: ServerResponse, next?: () => void) => void;
@@ -19,6 +21,10 @@ export interface Options {
 	legacyApi?: URL | null;
 	/** How long a shutdown waits for open requests before closing them, in milliseconds. */
 	shutdownTimeoutMs?: number;
+	/** Protocol v2's HTTP API (P4B.5a), for /api/* when nothing is forwarded to serve-nl. */
+	api?: ApiHandler | null;
+	/** The site's public origin (adapter-node's ORIGIN), whose scheme the API sees. */
+	origin?: URL | null;
 }
 
 /** Headers every page and asset carries, as serve-nl and Caddy send them. */
@@ -45,7 +51,13 @@ function pathOf(req: IncomingMessage): string {
 	return end === -1 ? url : url.slice(0, end);
 }
 
-export function createApp({ handler, legacyApi = null, shutdownTimeoutMs = 10_000 }: Options): App {
+export function createApp({
+	handler,
+	legacyApi = null,
+	shutdownTimeoutMs = 10_000,
+	api = null,
+	origin = null
+}: Options): App {
 	const sockets = new WebSocketServer({ noServer: true });
 	const forwarded = new Set<Socket>();
 	let closing = false;
@@ -63,6 +75,10 @@ export function createApp({ handler, legacyApi = null, shutdownTimeoutMs = 10_00
 		}
 		if (legacyApi && isLegacyPath(path)) {
 			forwardRequest(legacyApi, req, res);
+			return;
+		}
+		if (api && isLegacyPath(path)) {
+			void serveApi(api, req, res, origin);
 			return;
 		}
 		for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value);
