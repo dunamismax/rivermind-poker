@@ -236,7 +236,7 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 
 `pnpm visual` and `pnpm visual:compare` capture fixed scenes and compare two commits pixel for pixel; run them for any change to styles or markup ([CONTRIBUTING.md](CONTRIBUTING.md#comparing-screenshots-p4b2)).
 
-`pnpm voice:check` runs SFrame's test vectors and a WebRTC call through the encoded-transform worker in all three browsers, on a page it builds and serves itself under the site's CSP (P4C.2). CI runs it; run it before committing a change under `web/src/lib/voice/` or `web/voice/`, on a Mac, because CI's Linux WebKit cannot run the call. It has its own `test-results-voice-check`.
+`pnpm voice:check` runs SFrame's test vectors and a WebRTC call through the encoded-transform worker in all three browsers, on a page it builds and serves itself under the site's CSP (P4C.2). CI runs it; run it before committing a change under `web/src/lib/voice/` or `web/voice/`, on a Mac, because CI's Linux WebKit cannot run the call. It has its own `test-results-voice-check`. `scripts/voice-check-linux.sh` runs the same checks in Playwright's Linux browsers in Docker, as CI will, without a push: use it for a change to the checks themselves or to how audio is judged, since the Linux engines differ ([CONTRIBUTING.md](CONTRIBUTING.md#frame-encryption-p4c2)).
 
 `pnpm voice:proto` runs the voice prototype's checks (P4C.1) against a mediasoup service it starts itself; it is not part of `pnpm e2e` or CI, has its own `test-results-voice`, and is for changes under `web/voice/` ([CONTRIBUTING.md](CONTRIBUTING.md#table-voice)).
 
