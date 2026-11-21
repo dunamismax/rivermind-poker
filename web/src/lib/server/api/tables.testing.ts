@@ -23,9 +23,15 @@ export type TableMessage = p.TableMessage;
 /** Let timers, sockets and every table's loop run. */
 export const tick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
-/** Wait for something the server does on its own, such as closing a table. */
+/**
+ * Wait for something the server does on its own, such as closing a table: for at
+ * least 20,000 turns of the event loop and at least ten seconds. Turns alone are not
+ * enough: a server saving to PostgreSQL spends the wait idle, where a turn takes
+ * microseconds, and 20,000 of them passed in CI before a few dozen saves had.
+ */
 export async function waitFor(condition: () => boolean, describe = ''): Promise<void> {
-	for (let i = 0; i < 20_000; i++) {
+	const deadline = Date.now() + 10_000;
+	for (let i = 0; i < 20_000 || Date.now() < deadline; i++) {
 		if (condition()) return;
 		await tick();
 	}

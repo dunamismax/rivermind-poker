@@ -89,7 +89,9 @@ export default defineConfig({
 					name: 'db',
 					environment: 'node',
 					include: ['src/**/*.db.spec.ts'],
-					fileParallelism: false
+					fileParallelism: false,
+					// Real saves and restores: a few seconds each on a busy machine.
+					testTimeout: 30_000
 				}
 			}
 		]

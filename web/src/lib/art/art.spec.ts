@@ -22,7 +22,10 @@ const WEB = new URL('../../../', import.meta.url);
 const suits: Suit[] = ['spades', 'hearts', 'diamonds', 'clubs'];
 const ranks = Array.from({ length: 13 }, (_, i) => i + 2);
 
-test('the committed art matches its sources', async () => {
+// Rendering every file is a few seconds of CPU, and several times that on a busy machine.
+const RENDER = { timeout: 60_000 };
+
+test('the committed art matches its sources', RENDER, async () => {
 	const { renderAll } = await load<{ renderAll: () => Map<string, Bytes> }>(
 		'../../../scripts/pixel-art/render.js'
 	);
@@ -67,7 +70,7 @@ test('the drawn art is on the palette and the slot is card-sized', async () => {
 	}
 });
 
-test('the deck is 52 faces and the backs, each 71 × 95 with hard edges', async () => {
+test('the deck is 52 faces and the backs, each 71 × 95 with hard edges', RENDER, async () => {
 	const { renderDeck } = await load<{ renderDeck: () => Map<string, Image> }>(
 		'../../../scripts/pixel-art/cards.js'
 	);
