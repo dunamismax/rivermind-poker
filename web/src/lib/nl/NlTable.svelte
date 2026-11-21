@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { tableCardUrls } from '../card-assets.ts';
+	import ConnectionStatus from '../components/ConnectionStatus.svelte';
 	import PlayingCard from '../components/PlayingCard.svelte';
 	import type {
 		BotOption,
@@ -266,15 +267,25 @@
 </script>
 
 <!-- Wide screens: the table on the left; the action dock, the seat tools and the hand log in a
-     column on the right, narrower on a laptop (`lap:`). Upright and narrow screens (`tall:`): one
-     column, the seat tools above the table so they never move, and the dock pinned to the bottom. -->
+     column on the right, narrower on a laptop (`lap:`). Narrow landscape screens (`tall:`): one
+     column, the seat tools above the table so they never move, and the dock pinned to the bottom.
+
+     A phone or a tablet held upright (`phone:`) shows the game on its first screen and the rest
+     below it. What stands above the table (`--above`: the bar and, on a tablet, the site header),
+     the table and a zone as tall as the action panel (`--zone`) add up to the small viewport, the
+     one the browser leaves with its toolbars showing, so nothing is cut off on arriving and the
+     table never changes size. The dock is the last row and sticks to the bottom of the screen:
+     waiting, it is a strip under the seat tools, which sit at the top of the zone; on the viewer's
+     turn the panel rises over the zone and stops at the table's edge. The hand log and the
+     play-money note follow below the first screen. A phone alone (`pocket:`) has no site header
+     and shortens the bar's labels. -->
 <section
-	class="nl-table grid grid-cols-[minmax(0,1fr)_360px] grid-rows-[auto_auto_auto_1fr_auto] items-start gap-x-8 gap-y-6 lap:grid-cols-[minmax(0,1fr)_300px] tall:grid-cols-1 tall:grid-rows-none phone:gap-4"
+	class="nl-table grid grid-cols-[minmax(0,1fr)_360px] grid-rows-[auto_auto_auto_1fr_auto] items-start gap-x-8 gap-y-6 lap:grid-cols-[minmax(0,1fr)_300px] tall:grid-cols-1 tall:grid-rows-none phone:gap-4 phone:[--above:132px] phone:[--zone:calc(176px_+_env(safe-area-inset-bottom))] pocket:[--above:calc(max(4px,env(safe-area-inset-top))_+_56px)] pocket:[--zone:calc(172px_+_env(safe-area-inset-bottom))]"
 	class:my-turn={myTurn}
 	aria-label="Table"
 >
 	<div
-		class="bar col-span-full row-1 flex min-h-24 flex-wrap items-center gap-6 phone:min-h-20 phone:gap-4"
+		class="bar col-span-full row-1 flex min-h-24 flex-wrap items-center gap-6 phone:relative phone:z-6 phone:min-h-20 phone:gap-4 pocket:gap-3"
 	>
 		{#if me}
 			<button
@@ -282,7 +293,8 @@
 				class="px-btn small leave phone:px-1"
 				onclick={() => connection.leave()}
 			>
-				<span aria-hidden="true">←</span> Leave table
+				<span aria-hidden="true">←</span>
+				<span>Leave<span class="pocket:sr-only">&#32;table</span></span>
 			</button>
 		{:else}
 			<button
@@ -311,8 +323,11 @@
 				Practice
 			</span>
 		{/if}
-		<div class="meta flex-1 text-center text-mist capitalize text-shadow-ink phone:text-s">
-			{#if hand}Hand #{hand.hand_no} · {hand.street}{:else}Waiting for players{/if}
+		<div
+			class="meta flex-1 text-center text-mist capitalize text-shadow-ink phone:text-s pocket:min-w-0 pocket:truncate"
+		>
+			{#if hand}<span class="pocket:sr-only">Hand&#32;</span>#{hand.hand_no} · {hand.street}{:else}Waiting
+				for players{/if}
 		</div>
 		<div
 			class="stakes ml-auto flex items-center gap-3 text-paper-shade text-shadow-ink phone:text-s"
@@ -321,9 +336,13 @@
 			<span class="sprite chip chip-red size-7" aria-hidden="true"></span>{view.settings
 				.small_blind}/{view.settings.big_blind}
 		</div>
+		<!-- A phone has no site header at a table, so its connection lamp is here. -->
+		<span class="lamp hidden pocket:inline-flex">
+			<ConnectionStatus status={connection.status} />
+		</span>
 		{#if sharing && inviteLink}
 			<div
-				class="share px-inset flex flex-[1_1_100%] flex-wrap items-center gap-4 p-4"
+				class="share px-inset flex flex-[1_1_100%] flex-wrap items-center gap-4 p-4 phone:absolute phone:inset-x-0 phone:top-[calc(100%+4px)]"
 				role="group"
 				aria-label="Invite link"
 			>
@@ -345,7 +364,7 @@
 		{/if}
 		{#if picked !== null && pickedInfo}
 			<div
-				class="player-menu px-inset grid flex-[1_1_100%] gap-4 p-4 text-mist"
+				class="player-menu px-inset grid flex-[1_1_100%] gap-4 p-4 text-mist phone:absolute phone:inset-x-0 phone:top-[calc(100%+4px)]"
 				role="dialog"
 				aria-label="Player {pickedInfo.name}"
 			>
@@ -402,18 +421,20 @@
 		{/if}
 	</div>
 
-	<!-- The arena leaves room around the felt for the seats on its rail. -->
+	<!-- The arena leaves room around the felt for the seats on its rail. On a phone or an upright
+	     tablet it is what the first screen has left, and never shorter than nine pods and the board
+	     need; its foot holds the viewer's seat, which hangs below the felt. -->
 	<div
 		class="arena col-1 row-[2/5] px-37 pt-32 pb-54 seats-{count} lap:px-33 lap:pt-30 lap:pb-48 {review
-			? 'tall:row-4'
-			: 'tall:row-3'} phone:px-0 phone:pt-0 phone:pb-32"
+			? 'tall:row-4 phone:row-3'
+			: 'tall:row-3 phone:row-2'} phone:h-[calc(100svh_-_var(--above)_-_var(--zone))] phone:max-h-[calc((100vw_-_8px)_*_1.45_+_68px)] phone:min-h-[424px] phone:px-0 phone:pt-0 phone:pb-34 tab:pb-46"
 	>
 		<div
-			class="stage relative mx-auto aspect-[21/10] w-[min(100%,calc((100dvh-340px)*2.1))] min-w-[min(100%,560px)] lap:aspect-[18/10] lap:w-[min(100%,calc((100dvh-330px)*1.8))] lap:min-w-[min(100%,480px)] tall:aspect-[16/10] tall:w-[min(100%,calc((100dvh-520px)*1.6))] tall:min-w-[min(100%,520px)] phone:aspect-[3/4] phone:max-h-[calc(100dvh-380px)] phone:min-h-[420px] phone:w-full phone:min-w-0"
+			class="stage relative mx-auto aspect-[21/10] w-[min(100%,calc((100dvh-340px)*2.1))] min-w-[min(100%,560px)] lap:aspect-[18/10] lap:w-[min(100%,calc((100dvh-330px)*1.8))] lap:min-w-[min(100%,480px)] tall:aspect-[16/10] tall:w-[min(100%,calc((100dvh-520px)*1.6))] tall:min-w-[min(100%,520px)] phone:aspect-auto phone:h-full phone:w-full phone:min-w-0 phone:[--pod-drop:60px] phone:[--pod-lift:-34px] tab:[--pod-drop:78px] tab:[--pod-lift:-44px]"
 		>
 			<div class="felt px-table absolute inset-0 lap:[--table-px:2px]" aria-hidden="true"></div>
 			<div
-				class="centre absolute top-[48%] left-1/2 z-1 grid -translate-1/2 justify-items-center gap-4 text-center [--k:1.4] lap:[--k:1] phone:top-1/2 phone:gap-3 tab:[--k:1.4]"
+				class="centre absolute top-[48%] left-1/2 z-1 grid -translate-1/2 justify-items-center gap-4 text-center [--k:1.4] lap:[--k:1] phone:top-1/2 phone:gap-3 tab:[--k:1.4] pocket:top-[51.5%]"
 			>
 				<div class="pot-line flex min-h-16 items-center gap-5">
 					{#if hand && !result}
@@ -427,7 +448,7 @@
 					{/each}
 				</div>
 				<div
-					class="result min-h-14 text-gold text-shadow-ink phone:max-w-[300px] phone:text-s"
+					class="result min-h-14 text-gold text-shadow-ink phone:max-w-[300px] phone:text-s pocket:max-w-[calc(100vw-208px)]"
 					role="status"
 				>
 					{#each winners as line (line.key)}<div>{line.text}</div>{/each}
@@ -489,7 +510,7 @@
 	     when the action panel opens. -->
 	<div
 		class={[
-			'dock col-2 row-2 grid min-h-98 content-start tall:sticky tall:bottom-0 tall:z-5 tall:col-1 tall:min-h-0 tall:pb-[env(safe-area-inset-bottom)]',
+			'dock col-2 row-2 grid min-h-98 content-start tall:sticky tall:bottom-0 tall:z-5 tall:col-1 tall:min-h-0 tall:pb-[env(safe-area-inset-bottom)] phone:row-6',
 			review ? 'tall:row-5' : 'tall:row-4',
 			myTurn && 'tall:bg-[linear-gradient(to_bottom,transparent,var(--color-night)_12px)]'
 		]}
@@ -655,7 +676,9 @@
 
 	{#if me}
 		<div
-			class="tools col-2 row-3 flex flex-wrap items-center justify-center gap-4 tall:col-1 tall:row-2 tall:justify-start phone:gap-3"
+			class="tools col-2 row-3 flex flex-wrap items-center justify-center gap-4 tall:col-1 tall:row-2 tall:justify-start phone:min-h-(--zone) phone:content-start phone:justify-center phone:gap-3 {review
+				? 'phone:row-4'
+				: 'phone:row-3'}"
 		>
 			{#if view.you.sitting_out || view.you.sitting_out_next}
 				<button type="button" class="px-btn small green" onclick={() => connection.sitIn()}>
@@ -663,7 +686,7 @@
 				</button>
 			{:else}
 				<button type="button" class="px-btn small" onclick={() => connection.sitOut()}>
-					Sit out next hand
+					<span>Sit out<span class="pocket:sr-only">&#32;next hand</span></span>
 				</button>
 			{/if}
 			{#if rebuyRoom > 0 && !me.leaving && !view.practice}
@@ -741,7 +764,7 @@
 			{#if reacting}
 				<div
 					id="reactions"
-					class="reactions flex flex-[1_1_100%] flex-wrap gap-3"
+					class="reactions flex flex-[1_1_100%] flex-wrap gap-3 pocket:flex-nowrap pocket:overflow-x-auto"
 					role="group"
 					aria-label="Reactions"
 				>
@@ -758,11 +781,17 @@
 				</div>
 			{/if}
 		</div>
+	{:else}
+		<!-- The zone is kept for someone watching too: the offer of a seat stands in it. -->
+		<div
+			class="zone hidden phone:block phone:min-h-(--zone) {review ? 'phone:row-4' : 'phone:row-3'}"
+			aria-hidden="true"
+		></div>
 	{/if}
 
 	{#if review}
 		<section
-			class="review px-inset col-2 row-4 grid content-start gap-4 self-start p-4 tall:col-1 tall:row-3"
+			class="review px-inset col-2 row-4 grid content-start gap-4 self-start p-4 tall:col-1 tall:row-3 phone:row-2"
 			aria-label="Hand review"
 			tabindex="-1"
 			bind:this={reviewPanel}
@@ -789,7 +818,7 @@
 		</section>
 	{:else}
 		<section
-			class="log px-inset col-2 row-4 max-h-[440px] min-h-60 self-stretch overflow-auto p-4 lap:max-h-[360px] tall:col-1 tall:row-5 tall:max-h-[220px]"
+			class="log px-inset col-2 row-4 max-h-[440px] min-h-60 self-stretch overflow-auto p-4 lap:max-h-[360px] tall:col-1 tall:row-5 tall:max-h-[220px] phone:row-4 phone:max-h-none"
 			aria-label="Hand log"
 		>
 			<div class="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -812,7 +841,7 @@
 			</ol>
 		</section>
 	{/if}
-	<p class="play-money col-span-full row-5 text-center text-s text-haze tall:row-6">
+	<p class="play-money col-span-full row-5 text-center text-s text-haze tall:row-6 phone:row-5">
 		Play chips only: they can never be bought, sold or cashed out.
 	</p>
 </section>

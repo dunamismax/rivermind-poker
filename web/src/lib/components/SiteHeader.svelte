@@ -2,12 +2,19 @@
 	import { resolve } from '$app/paths';
 	import type { Snippet } from 'svelte';
 
-	/** The site's top bar: the RiverMind mark, and whatever the page adds on the right. */
-	let { children }: { children?: Snippet } = $props();
+	/**
+	 * The site's top bar: the RiverMind mark, and whatever the page adds on the right.
+	 * At a table a phone leaves it out (`atTable`): the screen is the table's, whose own
+	 * bar leads back to the lobby and carries the connection lamp.
+	 */
+	let { children, atTable = false }: { children?: Snippet; atTable?: boolean } = $props();
 </script>
 
 <header
-	class="topbar flex min-h-30 items-center justify-between gap-6 border-b-2 border-deep-slate bg-ink px-8 py-4 [box-shadow:0_2px_0_var(--color-night)] lt-640:min-h-26 lt-640:px-5 lt-640:py-3"
+	class={[
+		'topbar flex min-h-30 items-center justify-between gap-6 border-b-2 border-deep-slate bg-ink px-8 py-4 [box-shadow:0_2px_0_var(--color-night)] lt-640:min-h-26 lt-640:px-5 lt-640:py-3',
+		atTable && 'pocket:hidden'
+	]}
 >
 	<a class="brand flex items-center gap-5 text-inherit no-underline" href={resolve('/')}>
 		<span class="sprite emblem lt-640:h-13 lt-640:w-11" aria-hidden="true"></span>

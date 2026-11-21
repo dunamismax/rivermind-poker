@@ -20,10 +20,11 @@ describe('seat places', () => {
 	});
 
 	// The smallest felt and the largest seat box for each map: a tablet held
-	// sideways and a 360 px wide phone.
+	// sideways, and a 360 px wide phone whose screen leaves the table its least
+	// height (a pod is 84 × 44, with 16 px of tags under it).
 	const FELTS = {
 		wide: { width: 600, height: 375, seat: { width: 150, height: 135 } },
-		tall: { width: 344, height: 420, seat: { width: 84, height: 62 } }
+		tall: { width: 344, height: 356, seat: { width: 84, height: 62 } }
 	} as const;
 
 	for (const shape of ['wide', 'tall'] as const) {
@@ -64,10 +65,50 @@ describe('seat places', () => {
 
 	it('knows which way each place faces', () => {
 		expect(sideOf({ left: 50, top: 100 }, 0)).toBe('bottom');
-		expect(sideOf({ left: 34, top: 9 }, 4)).toBe('top');
-		expect(sideOf({ left: 13, top: 27 }, 3)).toBe('left');
-		expect(sideOf({ left: 87, top: 72 }, 7)).toBe('right');
+		expect(sideOf({ left: 37.5, top: 10 }, 4)).toBe('top');
+		expect(sideOf({ left: 12.5, top: 13 }, 3)).toBe('top');
+		expect(sideOf({ left: 12.5, top: 77 }, 2)).toBe('left');
+		expect(sideOf({ left: 87.5, top: 77 }, 7)).toBe('right');
+		expect(sideOf({ left: 12.5, top: 100 }, 1)).toBe('low-left');
+		expect(sideOf({ left: 87.5, top: 100 }, 8)).toBe('low-right');
 		expect(sideClass(2, 0, 9)).toBe('side-left');
+		expect(sideClass(1, 0, 9)).toBe('side-low-left');
+		expect(sideClass(3, 0, 9)).toBe('side-top');
+	});
+
+	it('keeps the phone table to one row above the board, a seat each side below it and the corners', () => {
+		for (let count = 2; count <= 9; count += 1) {
+			const others = places(count, 'tall').slice(1);
+			const sides = others.map((spot, i) => sideOf(spot, i + 1));
+			// Two rows of pods above the board do not fit a short felt.
+			const top = others.filter((_, i) => sides[i] === 'top');
+			expect(Math.max(...top.map((s) => s.top)) - Math.min(...top.map((s) => s.top))).toBeLessThan(
+				5
+			);
+			for (const side of ['left', 'right', 'low-left', 'low-right'] as const) {
+				expect(
+					sides.filter((s) => s === side).length,
+					`${count} seats, ${side}`
+				).toBeLessThanOrEqual(1);
+			}
+		}
+	});
+
+	it('moves a phone bet by pixels where it must clear its own pod', () => {
+		const spots = places(9, 'tall');
+		expect(betSpot(spots[4], 4, 'tall')).toEqual({ left: 37.5, top: 10, shift: 'var(--pod-drop)' });
+		expect(betSpot(spots[1], 1, 'tall')).toEqual({
+			left: 17.5,
+			top: 100,
+			shift: 'var(--pod-lift)'
+		});
+		expect(betSpot(spots[8], 8, 'tall')).toEqual({
+			left: 82.5,
+			top: 100,
+			shift: 'var(--pod-lift)'
+		});
+		expect(betSpot(spots[2], 2, 'tall')).toEqual({ left: 34, top: 72 });
+		expect(placesCss()).toContain('top: calc(10% + var(--pod-drop));');
 	});
 
 	it('puts each bet between its seat and the pot', () => {

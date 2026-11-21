@@ -39,6 +39,24 @@ export function botLabel(kind: string | null): string {
 	return BOT_LABELS[kind] ?? kind.replace(/_/g, ' ');
 }
 
+/**
+ * A bot's name for a phone's pod, which has room for about eight letters: the part
+ * that tells it from the others. "RiverMind Easy 4" is "Easy 4" there and "Calling
+ * bot 2" is "Calling 2", under the "Bot" tag every bot wears (D-7). Each part says
+ * whether a pod shows it; together they are the whole name.
+ */
+export function podName(name: string): { text: string; pod: boolean }[] {
+	const match = /^(RiverMind )?(.+?)( bot)?( \d+)?$/.exec(name);
+	if (!match) return [{ text: name, pod: true }];
+	const [, house = '', core, bot = '', number = ''] = match;
+	return [
+		{ text: house, pod: false },
+		{ text: core, pod: true },
+		{ text: bot, pod: false },
+		{ text: number, pod: true }
+	].filter((part) => part.text !== '');
+}
+
 /** A stable pick from the six people for a name, so a player keeps a face. */
 export function personAvatar(name: string): number {
 	let hash = 0;

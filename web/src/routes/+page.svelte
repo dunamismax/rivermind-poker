@@ -39,6 +39,13 @@
 		return () => clearInterval(timer);
 	});
 
+	// A table opens at its top, wherever the lobby was scrolled to: on a phone the
+	// table, its seats and the action panel are exactly the first screen.
+	const atTable = $derived(connection.tableId !== null && connection.view !== null);
+	$effect(() => {
+		if (atTable) window.scrollTo(0, 0);
+	});
+
 	const joining = 'joining mt-[12vh] animate-wait text-center text-mist text-shadow-ink';
 
 	onMount(() => {
@@ -55,7 +62,7 @@
 	<title>No-limit hold’em · RiverMind Poker</title>
 </svelte:head>
 
-<SiteHeader>
+<SiteHeader atTable={connection.tableId !== null}>
 	{#if connection.player}
 		<span
 			class="me overflow-hidden text-ellipsis whitespace-nowrap text-paper-shade text-shadow-ink lt-640:max-w-[46vw] lt-640:text-s"
@@ -70,7 +77,7 @@
 	class={[
 		'mx-auto p-8',
 		connection.tableId !== null
-			? 'at-table max-w-[1440px] lt-640:px-2 lt-640:pt-2 lt-640:pb-0'
+			? 'at-table max-w-[1440px] lt-640:px-2 lt-640:pt-[max(4px,env(safe-area-inset-top))] lt-640:pb-0'
 			: 'max-w-[1080px] lt-640:px-4 lt-640:pt-4 lt-640:pb-6'
 	]}
 >

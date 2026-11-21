@@ -23,8 +23,9 @@
 
 /*
  * The layouts' breakpoints, as the max-width queries the pages were drawn to.
- * Later ones win, so the narrowest comes last, and the table's four come after
- * the pages'. `phone` is also a tablet held upright, where `tab` then adjusts it.
+ * Later ones win, so the narrowest comes last, and the table's five come after
+ * the pages'. `phone` is also a tablet held upright, where `tab` then adjusts it,
+ * and `pocket` is a phone alone: the table that fills exactly one screen.
  */
 @custom-variant lt-800 (@media (max-width: 799px));
 @custom-variant lt-640 (@media (max-width: 639px));
@@ -44,6 +45,7 @@
 	}
 }
 @custom-variant tab (@media (min-width: 640px) and (max-width: 1099px) and (orientation: portrait));
+@custom-variant pocket (@media (max-width: 639px));
 
 /* What the generated theme leaves to the pages: title lettering and the stepped animations. */
 @theme {

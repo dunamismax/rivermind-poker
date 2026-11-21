@@ -358,15 +358,15 @@
 	}
 	.bet-2-0 {
 		left: 50%;
-		top: 76%;
+		top: 77%;
 	}
 	.at-2-1 {
 		left: 50%;
-		top: 9%;
+		top: 10%;
 	}
 	.bet-2-1 {
 		left: 50%;
-		top: 22%;
+		top: calc(10% + var(--pod-drop));
 	}
 	.at-3-0 {
 		left: 50%;
@@ -374,23 +374,23 @@
 	}
 	.bet-3-0 {
 		left: 50%;
-		top: 76%;
+		top: 77%;
 	}
 	.at-3-1 {
-		left: 13%;
-		top: 22%;
+		left: 12.5%;
+		top: 13%;
 	}
 	.bet-3-1 {
-		left: 35%;
-		top: 22%;
+		left: 12.5%;
+		top: calc(13% + var(--pod-drop));
 	}
 	.at-3-2 {
-		left: 87%;
-		top: 22%;
+		left: 87.5%;
+		top: 13%;
 	}
 	.bet-3-2 {
-		left: 65%;
-		top: 22%;
+		left: 87.5%;
+		top: calc(13% + var(--pod-drop));
 	}
 	.at-4-0 {
 		left: 50%;
@@ -398,31 +398,31 @@
 	}
 	.bet-4-0 {
 		left: 50%;
-		top: 76%;
+		top: 77%;
 	}
 	.at-4-1 {
-		left: 13%;
-		top: 27%;
+		left: 12.5%;
+		top: 13%;
 	}
 	.bet-4-1 {
-		left: 35%;
-		top: 27%;
+		left: 12.5%;
+		top: calc(13% + var(--pod-drop));
 	}
 	.at-4-2 {
 		left: 50%;
-		top: 9%;
+		top: 10%;
 	}
 	.bet-4-2 {
 		left: 50%;
-		top: 22%;
+		top: calc(10% + var(--pod-drop));
 	}
 	.at-4-3 {
-		left: 87%;
-		top: 27%;
+		left: 87.5%;
+		top: 13%;
 	}
 	.bet-4-3 {
-		left: 65%;
-		top: 27%;
+		left: 87.5%;
+		top: calc(13% + var(--pod-drop));
 	}
 	.at-5-0 {
 		left: 50%;
@@ -430,38 +430,38 @@
 	}
 	.bet-5-0 {
 		left: 50%;
-		top: 76%;
+		top: 77%;
 	}
 	.at-5-1 {
-		left: 13%;
-		top: 72%;
+		left: 12.5%;
+		top: 77%;
 	}
 	.bet-5-1 {
-		left: 35%;
+		left: 34%;
 		top: 72%;
 	}
 	.at-5-2 {
-		left: 13%;
-		top: 27%;
+		left: 12.5%;
+		top: 13%;
 	}
 	.bet-5-2 {
-		left: 35%;
-		top: 27%;
+		left: 12.5%;
+		top: calc(13% + var(--pod-drop));
 	}
 	.at-5-3 {
-		left: 87%;
-		top: 27%;
+		left: 87.5%;
+		top: 13%;
 	}
 	.bet-5-3 {
-		left: 65%;
-		top: 27%;
+		left: 87.5%;
+		top: calc(13% + var(--pod-drop));
 	}
 	.at-5-4 {
-		left: 87%;
-		top: 72%;
+		left: 87.5%;
+		top: 77%;
 	}
 	.bet-5-4 {
-		left: 65%;
+		left: 66%;
 		top: 72%;
 	}
 	.at-6-0 {
@@ -470,46 +470,46 @@
 	}
 	.bet-6-0 {
 		left: 50%;
-		top: 76%;
+		top: 77%;
 	}
 	.at-6-1 {
-		left: 13%;
-		top: 72%;
+		left: 12.5%;
+		top: 77%;
 	}
 	.bet-6-1 {
-		left: 35%;
+		left: 34%;
 		top: 72%;
 	}
 	.at-6-2 {
-		left: 13%;
-		top: 27%;
+		left: 12.5%;
+		top: 13%;
 	}
 	.bet-6-2 {
-		left: 35%;
-		top: 27%;
+		left: 12.5%;
+		top: calc(13% + var(--pod-drop));
 	}
 	.at-6-3 {
 		left: 50%;
-		top: 9%;
+		top: 10%;
 	}
 	.bet-6-3 {
 		left: 50%;
-		top: 22%;
+		top: calc(10% + var(--pod-drop));
 	}
 	.at-6-4 {
-		left: 87%;
-		top: 27%;
+		left: 87.5%;
+		top: 13%;
 	}
 	.bet-6-4 {
-		left: 65%;
-		top: 27%;
+		left: 87.5%;
+		top: calc(13% + var(--pod-drop));
 	}
 	.at-6-5 {
-		left: 87%;
-		top: 72%;
+		left: 87.5%;
+		top: 77%;
 	}
 	.bet-6-5 {
-		left: 65%;
+		left: 66%;
 		top: 72%;
 	}
 	.at-7-0 {
@@ -518,54 +518,54 @@
 	}
 	.bet-7-0 {
 		left: 50%;
-		top: 76%;
+		top: 77%;
 	}
 	.at-7-1 {
-		left: 13%;
-		top: 72%;
+		left: 12.5%;
+		top: 77%;
 	}
 	.bet-7-1 {
-		left: 35%;
+		left: 34%;
 		top: 72%;
 	}
 	.at-7-2 {
-		left: 13%;
-		top: 27%;
+		left: 12.5%;
+		top: 13%;
 	}
 	.bet-7-2 {
-		left: 35%;
-		top: 27%;
+		left: 12.5%;
+		top: calc(13% + var(--pod-drop));
 	}
 	.at-7-3 {
-		left: 34%;
-		top: 9%;
+		left: 37.5%;
+		top: 10%;
 	}
 	.bet-7-3 {
-		left: 34%;
-		top: 22%;
+		left: 37.5%;
+		top: calc(10% + var(--pod-drop));
 	}
 	.at-7-4 {
-		left: 66%;
-		top: 9%;
+		left: 62.5%;
+		top: 10%;
 	}
 	.bet-7-4 {
-		left: 66%;
-		top: 22%;
+		left: 62.5%;
+		top: calc(10% + var(--pod-drop));
 	}
 	.at-7-5 {
-		left: 87%;
-		top: 27%;
+		left: 87.5%;
+		top: 13%;
 	}
 	.bet-7-5 {
-		left: 65%;
-		top: 27%;
+		left: 87.5%;
+		top: calc(13% + var(--pod-drop));
 	}
 	.at-7-6 {
-		left: 87%;
-		top: 72%;
+		left: 87.5%;
+		top: 77%;
 	}
 	.bet-7-6 {
-		left: 65%;
+		left: 66%;
 		top: 72%;
 	}
 	.at-8-0 {
@@ -574,63 +574,63 @@
 	}
 	.bet-8-0 {
 		left: 50%;
-		top: 76%;
+		top: 77%;
 	}
 	.at-8-1 {
-		left: 13%;
-		top: 88%;
+		left: 12.5%;
+		top: 100%;
 	}
 	.bet-8-1 {
-		left: 35%;
-		top: 80%;
+		left: 17.5%;
+		top: calc(100% + var(--pod-lift));
 	}
 	.at-8-2 {
-		left: 13%;
-		top: 72%;
+		left: 12.5%;
+		top: 77%;
 	}
 	.bet-8-2 {
-		left: 35%;
+		left: 34%;
 		top: 72%;
 	}
 	.at-8-3 {
-		left: 13%;
-		top: 27%;
+		left: 12.5%;
+		top: 13%;
 	}
 	.bet-8-3 {
-		left: 35%;
-		top: 27%;
+		left: 12.5%;
+		top: calc(13% + var(--pod-drop));
 	}
 	.at-8-4 {
 		left: 50%;
-		top: 9%;
+		top: 10%;
 	}
 	.bet-8-4 {
 		left: 50%;
-		top: 22%;
+		top: calc(10% + var(--pod-drop));
 	}
 	.at-8-5 {
-		left: 87%;
-		top: 27%;
+		left: 87.5%;
+		top: 13%;
 	}
 	.bet-8-5 {
-		left: 65%;
-		top: 27%;
+		left: 87.5%;
+		top: calc(13% + var(--pod-drop));
 	}
 	.at-8-6 {
-		left: 87%;
-		top: 72%;
+		left: 87.5%;
+		top: 77%;
 	}
 	.bet-8-6 {
-		left: 65%;
+		left: 66%;
 		top: 72%;
 	}
 	.at-8-7 {
-		left: 87%;
-		top: 88%;
+		left: 87.5%;
+		top: 100%;
 	}
 	.bet-8-7 {
-		left: 65%;
-		top: 80%;
+		left: 82.5%;
+		top: calc(100% + var(--pod-lift));
 	}
 	.at-9-0 {
 		left: 50%;
@@ -638,70 +638,70 @@
 	}
 	.bet-9-0 {
 		left: 50%;
-		top: 76%;
+		top: 77%;
 	}
 	.at-9-1 {
-		left: 13%;
-		top: 88%;
+		left: 12.5%;
+		top: 100%;
 	}
 	.bet-9-1 {
-		left: 35%;
-		top: 80%;
+		left: 17.5%;
+		top: calc(100% + var(--pod-lift));
 	}
 	.at-9-2 {
-		left: 13%;
-		top: 72%;
+		left: 12.5%;
+		top: 77%;
 	}
 	.bet-9-2 {
-		left: 35%;
+		left: 34%;
 		top: 72%;
 	}
 	.at-9-3 {
-		left: 13%;
-		top: 27%;
+		left: 12.5%;
+		top: 13%;
 	}
 	.bet-9-3 {
-		left: 35%;
-		top: 27%;
+		left: 12.5%;
+		top: calc(13% + var(--pod-drop));
 	}
 	.at-9-4 {
-		left: 34%;
-		top: 9%;
+		left: 37.5%;
+		top: 10%;
 	}
 	.bet-9-4 {
-		left: 34%;
-		top: 22%;
+		left: 37.5%;
+		top: calc(10% + var(--pod-drop));
 	}
 	.at-9-5 {
-		left: 66%;
-		top: 9%;
+		left: 62.5%;
+		top: 10%;
 	}
 	.bet-9-5 {
-		left: 66%;
-		top: 22%;
+		left: 62.5%;
+		top: calc(10% + var(--pod-drop));
 	}
 	.at-9-6 {
-		left: 87%;
-		top: 27%;
+		left: 87.5%;
+		top: 13%;
 	}
 	.bet-9-6 {
-		left: 65%;
-		top: 27%;
+		left: 87.5%;
+		top: calc(13% + var(--pod-drop));
 	}
 	.at-9-7 {
-		left: 87%;
-		top: 72%;
+		left: 87.5%;
+		top: 77%;
 	}
 	.bet-9-7 {
-		left: 65%;
+		left: 66%;
 		top: 72%;
 	}
 	.at-9-8 {
-		left: 87%;
-		top: 88%;
+		left: 87.5%;
+		top: 100%;
 	}
 	.bet-9-8 {
-		left: 65%;
-		top: 80%;
+		left: 82.5%;
+		top: calc(100% + var(--pod-lift));
 	}
 }

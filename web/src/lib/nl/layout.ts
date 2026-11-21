@@ -98,83 +98,89 @@ const PLACES: Record<Shape, Record<number, [number, number][]>> = {
 			[80, 98]
 		]
 	},
-	// Phones: compact seats in bands above and below the board, which fills
-	// the middle third: a top row, upper and lower sides, and lower corners.
+	// Phones: compact seats in bands above and below the board, which fills the
+	// middle. One row across the top, its ends a little lower; a seat each side
+	// below the board; and, at eight and nine, a seat on each bottom corner of the
+	// rail, beside the viewer. A phone's felt can be as short as 356px (the table
+	// fills what the screen leaves above the action panel), and a pod with its tags
+	// and badge is 82px tall, so two rows above the board would not fit.
 	tall: {
 		2: [
 			[50, 100],
-			[50, 9]
+			[50, 10]
 		],
 		3: [
 			[50, 100],
-			[13, 22],
-			[87, 22]
+			[12.5, 13],
+			[87.5, 13]
 		],
 		4: [
 			[50, 100],
-			[13, 27],
-			[50, 9],
-			[87, 27]
+			[12.5, 13],
+			[50, 10],
+			[87.5, 13]
 		],
 		5: [
 			[50, 100],
-			[13, 72],
-			[13, 27],
-			[87, 27],
-			[87, 72]
+			[12.5, 77],
+			[12.5, 13],
+			[87.5, 13],
+			[87.5, 77]
 		],
 		6: [
 			[50, 100],
-			[13, 72],
-			[13, 27],
-			[50, 9],
-			[87, 27],
-			[87, 72]
+			[12.5, 77],
+			[12.5, 13],
+			[50, 10],
+			[87.5, 13],
+			[87.5, 77]
 		],
 		7: [
 			[50, 100],
-			[13, 72],
-			[13, 27],
-			[34, 9],
-			[66, 9],
-			[87, 27],
-			[87, 72]
+			[12.5, 77],
+			[12.5, 13],
+			[37.5, 10],
+			[62.5, 10],
+			[87.5, 13],
+			[87.5, 77]
 		],
 		8: [
 			[50, 100],
-			[13, 88],
-			[13, 72],
-			[13, 27],
-			[50, 9],
-			[87, 27],
-			[87, 72],
-			[87, 88]
+			[12.5, 100],
+			[12.5, 77],
+			[12.5, 13],
+			[50, 10],
+			[87.5, 13],
+			[87.5, 77],
+			[87.5, 100]
 		],
 		9: [
 			[50, 100],
-			[13, 88],
-			[13, 72],
-			[13, 27],
-			[34, 9],
-			[66, 9],
-			[87, 27],
-			[87, 72],
-			[87, 88]
+			[12.5, 100],
+			[12.5, 77],
+			[12.5, 13],
+			[37.5, 10],
+			[62.5, 10],
+			[87.5, 13],
+			[87.5, 77],
+			[87.5, 100]
 		]
 	}
 };
 
 /**
- * Which way a place faces the middle: the viewer at the bottom, a top row,
- * and the left and right sides. Phones put shown cards on that side.
+ * Which way a place faces the middle: the viewer at the bottom, the row across
+ * the top, the left and right sides, and the bottom corners beside the viewer.
+ * Phones put shown cards and the card-back badge by it.
  */
 export function sideOf(spot: { left: number; top: number }, place: number): Side {
 	if (place === 0) return 'bottom';
-	if (spot.top < 20 && spot.left > 25 && spot.left < 75) return 'top';
-	return spot.left < 50 ? 'left' : 'right';
+	if (spot.top < 40) return 'top';
+	const side = spot.left < 50 ? 'left' : 'right';
+	return spot.top > 90 ? `low-${side}` : side;
 }
 
-export type Side = 'bottom' | 'top' | 'left' | 'right';
+export type Side = 'bottom' | 'top' | 'left' | 'right' | 'low-left' | 'low-right';
 
 export function sideClass(seat: number, anchor: number | null, count: number): string {
 	const place = placeOf(seat, anchor, count);
@@ -191,18 +197,28 @@ export function places(count: number, shape: Shape = 'wide'): { left: number; to
 /**
  * Where a place's bet sits. On the wide table, part of the way from the seat
  * towards the pot; the viewer's bet clears the viewer's larger cards. On the
- * tall one, beside the seat on the side facing the middle, so no bet lands on
- * the board.
+ * tall one no bet lands on the board or on the viewer's cards: under a seat in
+ * the top row, beside a seat at the side, and just above a seat on a bottom
+ * corner, a little towards the middle. Under and above are a `shift` in CSS pixels from the place, the pod's
+ * half height and what hangs from it, which differ between a phone and a tablet
+ * and not with the height of the felt.
  */
-export function betSpot(spot: { left: number; top: number }, place: number, shape: Shape) {
+export function betSpot(
+	spot: { left: number; top: number },
+	place: number,
+	shape: Shape
+): { left: number; top: number; shift?: string } {
 	const round = (v: number) => Math.round(v * 10) / 10;
 	if (shape === 'tall') {
 		const side = sideOf(spot, place);
-		if (side === 'bottom') return { left: 50, top: 76 };
-		if (side === 'top') return { left: spot.left, top: round(spot.top + 13) };
-		// Beside the seat; the lower corners' bets rise clear of the viewer's cards.
-		const lift = spot.top > 80 ? 8 : 0;
-		return { left: round(spot.left + (side === 'left' ? 22 : -22)), top: spot.top - lift };
+		if (side === 'bottom') return { left: 50, top: 77 };
+		if (side === 'top') return { ...spot, shift: 'var(--pod-drop)' };
+		if (side === 'left' || side === 'right') {
+			return { left: round(spot.left + (side === 'left' ? 21.5 : -21.5)), top: spot.top - 5 };
+		}
+		// Clear of the pod's badge on its outer side, and short of the viewer's cards.
+		const inward = side === 'low-left' ? 5 : -5;
+		return { left: spot.left + inward, top: spot.top, shift: 'var(--pod-lift)' };
 	}
 	const toward = place === 0 ? 0.52 : 0.36;
 	return {
@@ -219,8 +235,9 @@ function rules(shape: Shape, indent: string): string[] {
 			out.push(
 				`${indent}.at-${count}-${place} {\n${indent}\tleft: ${spot.left}%;\n${indent}\ttop: ${spot.top}%;\n${indent}}`
 			);
+			const top = bet.shift ? `calc(${bet.top}% + ${bet.shift})` : `${bet.top}%`;
 			out.push(
-				`${indent}.bet-${count}-${place} {\n${indent}\tleft: ${bet.left}%;\n${indent}\ttop: ${bet.top}%;\n${indent}}`
+				`${indent}.bet-${count}-${place} {\n${indent}\tleft: ${bet.left}%;\n${indent}\ttop: ${top};\n${indent}}`
 			);
 		});
 	}

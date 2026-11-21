@@ -28,6 +28,59 @@ for (const seats of [2, 6, 9]) {
 	});
 }
 
+// A phone's first screen is the whole game: the bar, every seat, the board, the viewer's cards
+// and the action panel, with nothing under the panel and nothing to scroll for. The sizes are
+// what an iPhone's browser leaves with its toolbars showing (402 × 677 is Brave on a 17 Pro).
+for (const [seats, width, height] of [
+	[9, 402, 677],
+	[9, 440, 760],
+	[6, 390, 664],
+	[2, 402, 677]
+]) {
+	test(`shows a ${seats}-seat table and the action panel on one ${width} × ${height} screen`, async ({
+		page,
+		cspViolations
+	}, testInfo) => {
+		test.skip(!testInfo.project.name.endsWith('-phone'), 'the phone layout');
+		await page.setViewportSize({ width, height });
+		// The lobby's form is below its first screen, so the page is scrolled when the table opens.
+		await sitDown(page, seats);
+		await expect(page.getByRole('group', { name: 'Your action' })).toBeVisible({ timeout: 15_000 });
+		await expect(page.locator('header.topbar')).toBeHidden();
+		await expect(page.locator('.bar .lamp')).toBeVisible();
+		const misplaced = () =>
+			page.evaluate(() => {
+				const out: string[] = [];
+				if (scrollY !== 0) out.push(`scrolled to ${scrollY}`);
+				const panel = document.querySelector('.panel')!.getBoundingClientRect();
+				if (panel.bottom > innerHeight + 0.5) out.push('the panel is below the screen');
+				const parts =
+					'.bar, .felt, .board, .pot-line, .bet, .seat .plate, .seat .tags > *, .seat .clock, .seat.me .hand img, .seat .mini-cards';
+				for (const part of document.querySelectorAll(parts)) {
+					const box = part.getBoundingClientRect();
+					if (box.width === 0 || box.height === 0) continue;
+					const name = `${part.closest('.seat')?.getAttribute('aria-label') ?? ''} ${part.classList[0]}`;
+					if (box.top < 0 || box.left < 0 || box.right > innerWidth + 0.5) {
+						out.push(`${name} is off the screen`);
+					}
+					if (box.bottom > panel.top + 0.5) {
+						out.push(`${name} is ${Math.round(box.bottom - panel.top)}px under the panel`);
+					}
+				}
+				return out;
+			});
+		// Retried, while the panel slides into place and the bets land.
+		await expect.poll(misplaced).toEqual([]);
+		await noOverflow(page);
+		// The seat tools, the hand log and the play-money note are below, a scroll away.
+		const log = page.getByRole('region', { name: 'Hand log' });
+		await expect(log).not.toBeInViewport();
+		await log.scrollIntoViewIfNeeded();
+		await expect(log).toBeInViewport();
+		expect(cspViolations).toEqual([]);
+	});
+}
+
 test('bets with the presets and the slider', async ({ page, cspViolations }) => {
 	await sitDown(page, 6);
 	const panel = page.getByRole('group', { name: 'Your action' });

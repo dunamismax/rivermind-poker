@@ -1,7 +1,7 @@
 <script lang="ts">
 	import PlayingCard from '../components/PlayingCard.svelte';
 	import type { SeatInfo, Turn } from '../protocol-v2.ts';
-	import { avatarClass, botLabel } from './faces.ts';
+	import { avatarClass, botLabel, podName } from './faces.ts';
 	import { clockLeft } from './layout.ts';
 
 	let {
@@ -61,25 +61,51 @@
 
 	// On phones (`phone:`, which is also a tablet held upright, where `tab:` then
 	// adjusts it) the other players are compact pods centred on their place, with a
-	// small card-back badge; the cards they show sit beside the pod, towards the
-	// middle. The viewer keeps a full seat with large cards.
+	// small card-back badge; the cards they show sit by the pod, towards the
+	// middle. The viewer keeps a full seat with large cards, on a phone (`pocket:`)
+	// as wide as the pods on the bottom corners leave between them.
 	const seat = $derived(
 		me
-			? 'z-2 w-100 [--k:1.4] lap:w-86 lap:[--k:1] phone:w-110 tab:w-120 tab:[--k:1.4]'
+			? 'z-2 w-100 [--k:1.4] lap:w-86 lap:[--k:1] phone:w-110 tab:w-120 tab:[--k:1.4] pocket:w-[min(220px,calc(75%-92px))]'
 			: 'z-1 w-88 [--k:1] lap:w-75 phone:w-42 phone:text-s phone:[--k:0.5] tab:w-75 tab:text-m'
 	);
-	/** Where a pod's shown cards go, by the side of the table it sits on. */
+	/**
+	 * Where a pod's shown cards go, by the side of the table it sits on: under a seat
+	 * in the top row, beside one at the side, and above one on a bottom corner, where
+	 * the viewer's own seat is beside it (a tablet has room next to the pod's top).
+	 */
 	const SHOWN: Record<string, string> = {
 		'side-left': 'phone:top-1/2 phone:left-[calc(100%+2px)] phone:-translate-y-1/2',
 		'side-right': 'phone:top-1/2 phone:right-[calc(100%+2px)] phone:-translate-y-1/2',
-		'side-top': 'phone:top-[calc(100%+20px)] phone:left-1/2 phone:-translate-x-1/2'
+		'side-top': 'phone:top-[calc(100%+20px)] phone:left-1/2 phone:-translate-x-1/2',
+		'side-low-left':
+			'phone:bottom-[calc(100%-4px)] phone:left-0 tab:bottom-1/2 tab:left-[calc(100%+2px)]',
+		'side-low-right':
+			'phone:bottom-[calc(100%-4px)] phone:right-0 tab:bottom-1/2 tab:right-[calc(100%+2px)]'
 	};
-	/** The card-back badge peeks out on the side away from the middle. */
+	/**
+	 * The card-back badge peeks out over a top corner of the pod: the one towards the
+	 * middle, or the outer one on a bottom corner of the table, whose bet sits over the
+	 * inner one.
+	 */
 	const BADGE: Record<string, string> = {
 		'side-left': 'phone:-right-4',
 		'side-top': 'phone:-right-4',
-		'side-right': 'phone:-left-4'
+		'side-right': 'phone:-left-4',
+		'side-low-left': 'phone:-left-4',
+		'side-low-right': 'phone:-right-4'
 	};
+	/** A pod wears the dealer button on a corner the badge and the bet leave free. */
+	const DEALER: Record<string, string> = {
+		'side-left': 'phone:-top-6 phone:right-auto phone:-left-3',
+		'side-top': 'phone:-top-6 phone:right-auto phone:-left-3',
+		'side-right': 'phone:-top-6 phone:-right-3',
+		'side-low-left': 'phone:top-auto phone:right-auto phone:-bottom-4 phone:-left-3',
+		'side-low-right': 'phone:top-auto phone:-right-3 phone:-bottom-4'
+	};
+	// A bot's pod leaves out the words its name shares with the others ("Easy 4"); the
+	// whole name stays in the seat's label and title, and on every wider seat.
+	const parts = $derived(!me && info.kind === 'bot' ? podName(info.name) : null);
 	const tag =
 		'mt-1 bg-ink px-3 text-s leading-10 whitespace-nowrap phone:px-2 phone:text-xs phone:leading-7 tab:text-s tab:leading-10';
 	const lamp = $derived(
@@ -147,7 +173,11 @@
 				</button>
 			{:else}
 				<div class={['name truncate text-shadow-ink', me && 'text-gold']} title={info.name}>
-					{info.name}
+					{#if parts}{#each parts as part, i (i)}{#if part.pod}{part.text}{:else}<span
+									class="phone:hidden"
+								>
+									{part.text}
+								</span>{/if}{/each}{:else}{info.name}{/if}
 				</div>
 			{/if}
 			<div
@@ -168,8 +198,8 @@
 			</div>{/if}
 		{#if button}<span
 				class={[
-					'sprite dealer-button dealer absolute -top-7 -right-5 phone:-top-5 phone:size-9',
-					me ? 'phone:-right-4' : 'phone:right-auto phone:-left-3'
+					'sprite dealer-button dealer absolute -top-7 -right-5 phone:size-9',
+					me ? 'phone:-top-5 phone:-right-4' : DEALER[side]
 				]}
 				title="Dealer button"
 			></span>{/if}
