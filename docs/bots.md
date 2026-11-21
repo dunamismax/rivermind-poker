@@ -254,6 +254,8 @@ uv run --locked rivermind-poker blueprint champions --verify artifacts/models
 
 Commit code changes before evaluating: a report records the commit it ran at and whether `rivermind/` had local changes.
 
+**The first two decisions** (2026-11-21, [docs/models.md](models.md)). `hu-m1-s0-128m` was promoted as the first heads-up champion: its served bundle won +60.74 big blinds per 100 hands (+50.53 to +70.96) against RiverMind Easy and +307.13 against the calling station, against +61.12 and +308.33 for the checkpoint, so rounding to 1/255 moved the results by 0.4 and 1.2, far inside their intervals. `hu-m1-s0-1024m`, the same run at 1.024 billion iterations, then replaced it: +21.38 (+10.71 to +32.05) head to head as checkpoints and +21.14 (+10.45 to +31.84) as bundles. It wins about the same from RiverMind Easy (+59.05) and less from the calling station (+226.66) and the min-bet probe (+267.08, down from +392.41) than the earlier checkpoint did. The gate measures play against these opponents, not exploitability, so the reports do not say why. Each evaluation took about three minutes on this Mac beside the training run. Running the served report of `hu-m1-s0-128m` twice, before and after the commit that added bundle candidates, gave the same JSON apart from the commit and the output directory.
+
 ### Where models are kept
 
 Artifacts never go into Git; the registry names them by SHA-256.
@@ -265,8 +267,8 @@ Artifacts never go into Git; the registry names them by SHA-256.
 Copy a champion to the host and check it there (D-10; `COPYFILE_DISABLE=1` keeps macOS from adding `._*` files):
 
 ```sh
-COPYFILE_DISABLE=1 rsync -a --chmod=D755,F644 artifacts/models/NAME root@ubuntu-vm:/srv/rivermind-poker/models/champions/
-ssh root@ubuntu-vm 'chown -R root:root /srv/rivermind-poker/models/champions/NAME'
+COPYFILE_DISABLE=1 rsync -a artifacts/models/NAME root@ubuntu-vm:/srv/rivermind-poker/models/champions/
+ssh root@ubuntu-vm 'cd /srv/rivermind-poker/models/champions && chown -R root:root NAME && chmod -R u=rwX,go=rX NAME'
 ssh root@ubuntu-vm 'cd /srv/rivermind-poker/models/champions/NAME && sha256sum checkpoint/* bundle/*'   # compare with models.json
 ```
 

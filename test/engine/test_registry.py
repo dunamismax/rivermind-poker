@@ -211,7 +211,7 @@ def test_a_replacement_must_also_beat_the_champion(site: Site, candidates: tuple
     assert decision["evaluations"][1]["checks"][2]["incumbent"] == "first"
     page = site.page.read_text()
     assert "### Heads-up: `second`" in page and "replacing `first`" in page and "### Heads-up: `first`" not in page
-    assert "against the champion `first`" in page
+    assert "against `first`, the champion at the time" in page
     assert reg.verify_kept(decision, site.store / "second") == [] and (site.store / "first").is_dir()
 
 

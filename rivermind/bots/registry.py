@@ -277,7 +277,7 @@ def _bb(value: float) -> str:
 
 def _opponent(check: dict[str, Any]) -> str:
     if check["opponent"] == "incumbent":
-        return f"the champion `{check['incumbent']}`"
+        return f"`{check['incumbent']}`, the champion at the time"
     return OPPONENT_NAMES.get(check["opponent"], check["opponent"])
 
 

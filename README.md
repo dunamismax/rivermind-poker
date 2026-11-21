@@ -21,7 +21,7 @@ The live site has no-limit hold’em at 2 to 9 seats against three labelled bots
 
 **Now:** the live site runs on the TypeScript stack (decision D-14 in [BUILD.md](BUILD.md#settled-decisions)): SvelteKit and Tailwind CSS 4 on Node, with the table server, the engine and the bots in the same Node service and Drizzle on PostgreSQL. The engine, the bots and the table server are checked against their Python originals byte for byte, and open tables, guests and hands carried over at the cutover. The Python table server stays as a rehearsed rollback for a week of live play, then goes (P4B.8). Python keeps the offline work: the reference engine, training and evaluation.
 
-**Next:** the first evaluated heads-up opponent, then replay from the table. The first candidate, `hu-m1-s0` at 128 million training iterations, won +61.1 big blinds per 100 hands against RiverMind Easy (95% interval +50.9 to +71.4) and +308.3 against the calling station, over 20,000 duplicate deals each at 100 big blinds ([report](docs/evaluations/hu-m1-s0-128m.md)). It is not yet promoted or playable on the site.
+**Next:** serving the evaluated heads-up opponent on the site, then replay from the table. The heads-up champion is `hu-m1-s0-1024m`, 1.024 billion training iterations of the `hu-m1` blueprint. Over 20,000 duplicate deals each at 100 big blinds, the strategy the site will serve won +58.8 big blinds per 100 hands against RiverMind Easy (95% interval +50.1 to +67.5), +224.9 against the calling station and +21.1 (+10.5 to +31.8) against the first champion, trained for an eighth as long. [docs/models.md](docs/models.md) is the registry, with every run put to the promotion gate and its reports. The champion is not yet playable on the site.
 
 ## What RiverMind is
 
@@ -145,6 +145,7 @@ The database tests need a disposable PostgreSQL database whose name contains `te
 | Reference engine, hand histories and fuzzing | [rivermind/engine](rivermind/engine/) |
 | Bots, card tables, blueprint training and evaluation | [rivermind/bots](rivermind/bots/) and [docs/bots.md](docs/bots.md) |
 | Published bot evaluations | [docs/evaluations](docs/evaluations/) |
+| Champions and promotion decisions | [docs/models.md](docs/models.md) |
 | Python table server, protocol v2 and safety controls | [rivermind/server](rivermind/server/) |
 | SvelteKit client, Node server and TypeScript ports | [web](web/) |
 | Pixel art and the design kit | [docs/design.md](docs/design.md) and [web/art](web/art/) |
