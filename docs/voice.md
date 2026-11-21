@@ -1,6 +1,6 @@
 # Table voice design
 
-This is the design for live voice at the table (Phase 4C, D-15). It records what voice must do, the threat model, the tools chosen and the ones rejected, how keys are agreed and media is encrypted, and what the host has to provide. [BUILD.md](../BUILD.md#phase-4c--table-voice) holds the steps and their evidence. P4C.1 checked this design with a working prototype, and [what the prototype found](#what-the-prototype-found-p4c1) lists what it confirmed, what it corrected here and what it left for later steps. P4C.2 built the frame encryption, and [frame encryption as built](#frame-encryption-as-built-p4c2) says how it works, what it refuses and what it costs. P4C.3 built the group key, and [the group key as built](#the-group-key-as-built-p4c3) says the same of it.
+This is the design for live voice at the table (Phase 4C, D-15). It records what voice must do, the threat model, the tools chosen and the ones rejected, how keys are agreed and media is encrypted, and what the host has to provide. [BUILD.md](../BUILD.md#phase-4c--table-voice) holds the steps and their evidence. P4C.1 checked this design with a working prototype, and [what the prototype found](#what-the-prototype-found-p4c1) lists what it confirmed, what it corrected here and what it left for later steps. P4C.2 built the frame encryption, and [frame encryption as built](#frame-encryption-as-built-p4c2) says how it works, what it refuses and what it costs. P4C.3 built the group key, and [the group key as built](#the-group-key-as-built-p4c3) says the same of it. P4C.4 built the voice service, and [the voice service as built](#the-voice-service-as-built-p4c4) says what it does, what it refuses and how it runs on the host.
 
 ## What voice is for
 
@@ -37,7 +37,7 @@ browser                                     ubuntu-vm
 table page ── /ws (table protocol v2) ───▶ Caddy ─▶ rivermind-poker-web (Node, 127.0.0.1:4320)
    │                                                      │ issues a short-lived voice token
    │                                                      │ tells the voice service who is seated
-   ├── /voice (voice signalling v1, wss) ─▶ Caddy ─▶ rivermind-poker-voice (Node, 127.0.0.1:4322)
+   ├── /voice (voice signalling v1, wss) ─▶ Caddy ─▶ rivermind-poker-voice (Node, 127.0.0.1:4323)
    │      join, MLS messages, transports                  │ room per table, MLS delivery service
    │                                                      │ mediasoup Router per room
    └── WebRTC audio (DTLS-SRTP over UDP 3478, ─────────▶ mediasoup WebRtcServer (public UDP/TCP 3478)
@@ -48,7 +48,7 @@ table page ── /ws (table protocol v2) ───▶ Caddy ─▶ rivermind-po
 - **The SFU.** [mediasoup](https://mediasoup.org/) 3 (npm `mediasoup`, pinned at 3.32.2, Node 22 or later) is a selective forwarding unit with a TypeScript API and a C++ media worker shipped through npm. Each table’s voice room is one mediasoup Router. One `WebRtcServer` per worker listens on a single UDP and TCP port (ICE-lite), so the host needs one forwarded port, not a range. The browser uses `mediasoup-client` (pinned at 3.26.0).
 - **The worker binary.** mediasoup’s install script downloads the worker built for the platform, the architecture and, on Linux, the kernel’s major version from mediasoup’s GitHub release (`linux-x64-kernel7` for ubuntu-vm, `darwin-arm64` for this Mac), and compiles one only if there is none to download. `web/pnpm-workspace.yaml` lists `mediasoup` under `allowBuilds` for it, as it does `esbuild`. So every `pnpm install --frozen-lockfile`, in CI and in a deploy, now needs github.com or a C++ toolchain. mediasoup’s JavaScript bundles into one file as the site’s server does, and a release carries the binary beside it and names it in `MEDIASOUP_WORKER_BIN` (P4C.4).
 - **Why forwarding, not a mesh.** In a mesh every player connects to every other player, which hands each player everyone else’s IP address, makes a phone upload eight copies of its audio, and leaves the server nothing to stop when you mute someone. The SFU hides addresses from players, each phone uploads once, and a mute stops the audio at the server.
-- **Authorisation.** The table server issues a voice token (HMAC-SHA256 with the site secret: table, player, seat, expiry within 60 seconds). The voice service accepts only valid tokens and asks the table server who is seated whenever seats change. Standing up, being moved, a table closing or a block ends that person’s place in the room.
+- **Authorisation.** The table server issues a voice token (HMAC-SHA256 under a key derived from the site secret: table, player, seat, expiry within 60 seconds). The voice service accepts only valid tokens and asks the table server who is seated whenever seats change. Standing up, being moved, a table closing or a block ends that person’s place in the room.
 
 ## Encryption
 
@@ -256,6 +256,69 @@ ts-mls is the one part of voice’s encryption this project did not write and no
 - **The runners** are [`web/src/lib/voice/mls-vectors/*.spec.ts`](../web/src/lib/voice/mls-vectors/), adapted from ts-mls’s own test suite (MIT, `licenses/ts-mls.txt`) to import the installed package by subpath and to read the working group’s files. ts-mls runs older copies of the same vectors in its own repository; these are the working group’s current ones, against the published build.
 - **The vectors are fetched, not kept.** The working group’s repository states no license, so its files are not copied into this one. [`load.ts`](../web/src/lib/voice/mls-vectors/load.ts) fetches each from GitHub at the pinned commit, checks it against the SHA-256 in [`source.json`](../web/src/lib/voice/mls-vectors/source.json) and keeps it under `node_modules/.cache/mls-vectors/`. In CI a file that cannot be fetched fails the run. Anywhere else its checks are reported as skipped, so a deploy does not wait on GitHub.
 
+## The voice service as built (P4C.4)
+
+`rivermind-poker-voice` is [`web/voice/server.ts`](../web/voice/server.ts) on the parts in [`web/src/lib/server/voice/`](../web/src/lib/server/voice/), and speaks voice signalling v1 ([`signalling.ts`](../web/src/lib/voice/signalling.ts)) with pages. A page's side is [`VoiceRoom`](../web/src/lib/voice/room.ts). No table offers voice yet: P4C.5 issues the tokens and puts `VoiceRoom` at the table, and P4C.9 gives Caddy the `/voice` route.
+
+**Voice signalling v1**
+
+One JSON text frame a message, 32 KiB at most. A page's requests carry an `id`, and each is answered with the same `id`, in the order asked; notices carry none.
+
+| Request | What it does |
+| --- | --- |
+| `hello` | The first message, with `v: 1`, the table and a voice token. The answer has the page's seat and player as the token names them, the service's signature key and the group id for `Member.create` and `Member.join`, the GroupInfo to join from (or none, to create the group), the Router's capabilities without the audio-level extension, and who else is in the room. |
+| `group.create`, `group.commit` | The delivery rules of [`delivery.ts`](../web/src/lib/voice/delivery.ts). A refusal carries the GroupInfo to start again from: none to create the group, else join it. |
+| `transport.create`, `transport.connect` | A send and a receive WebRTC transport, one of each. |
+| `produce`, `producer.pause`, `producer.resume` | The page's one audio track. |
+| `consume`, `consumer.pause`, `consumer.resume` | Another person's track, paused until the page resumes it. |
+
+| Notice | When |
+| --- | --- |
+| `mls` | A commit the service accepted (to everyone but its author), or a removal it proposes (to everyone, the author and a newcomer included). |
+| `producer` | Someone in the room sends audio, with the leaf it is sealed as. |
+| `consumer.closed`, `left` | A stream ended; someone's socket closed. |
+| `media.reset` | The media server started again under a new public address: make the transports again. The group stands. |
+
+**What it lets in**
+
+- **A voice token** for the table the hello names: `v1.<table>.<seat>.<player>.<expires>.<nonce>.<signature>`, the player being the public reference the group's leaves carry, never the player id behind the session cookie. It is signed with HMAC-SHA256 over `voice:` and its fields, and good for 60 seconds. A forged token, one for another table, an expired one, one that claims a longer life, or one already used is refused (`bad-token`) and the socket closed with 4401. A used token's nonce is kept until it would have expired.
+- **The voice key, not the site secret.** Tokens are signed with `HMAC-SHA256(site secret, "rivermind-poker voice token key v1")` ([`tokens.ts`](../web/src/lib/server/voice/tokens.ts)), which the table server can compute and the voice service is given as a file. The voice service is the one process facing the internet on a UDP port, through a C++ media worker running as the same user; holding the site secret, a compromise of it would let anyone forge any guest's session cookie. It cannot.
+- **One socket a seat.** A second hello for a seat closes the first socket (4409) and asks the group to remove its leaf, so a reloaded page takes its own place, and a room holds at most nine.
+- **A page from the site.** The handshake must carry an `Origin` the service is configured with (`VOICE_ORIGINS`); any other is refused with 403 before the socket opens. A socket that sends more than 60 messages at once or 20 a second after, a frame over 32 KiB, a binary frame, or anything before `hello` that is not `hello`, is closed (4429, 4400). A socket that misses a ping, sent every 15 seconds, is let go, so the group removes a phone that lost its signal.
+
+**How a room runs**
+
+- **In one order.** A room's requests, from all its sockets, and its departures run one at a time. The delivery service sees one commit at a time, a commit's author hears it was accepted before the removals that follow it, and every page hears of each change in the order it happened.
+- **The group on the wire.** The service holds the room's `Delivery` and passes on what it accepts. It records the leaf each socket holds, from the GroupInfo after the socket's own create or join, and a member's commit must come from that leaf (`Delivery.submit`'s `fromLeaf`): a reloaded page's old leaf cannot commit through the new socket. When the last socket holding a leaf goes, the group is gone, and the next to join makes a new one.
+- **Audio only from the group.** A page may send only once it holds a leaf, and never with the audio-level extension. Each producer's notice names the leaf it is sealed as, and a listener's transform opens it only as that leaf (`wrong-sender`), so the service cannot route one person's voice into another's seat. Consumers start paused.
+- **Nothing kept.** Rooms live in memory and end when their last socket closes.
+
+**What it logs.** Counts, durations and errors: `room 6 opened`, `room 6: someone joined (3 in voice)`, `room 6 closed after 6 s, at most 3 in voice`, `refused a token: forged`. Rooms are numbered by the process, never named by their table. Every line also passes through a redaction of addresses and of anything shaped like a token, key or public reference ([`log.ts`](../web/src/lib/server/voice/log.ts)), mediasoup's own warnings included. A test runs a session of three people, a refused token and a departure, and finds none of the table, the players' ids, public references or handles, the tokens, their nonces, the sockets' names or an address in the log.
+
+**The public address.** ubuntu-vm is behind the home router, so ICE candidates must name the router's address. The site's own name already points there, kept current by the host's dynamic DNS, so the service resolves `rivermindpoker.com` (`VOICE_ANNOUNCED_HOST`) before it starts, and every minute after ([`address.ts`](../web/src/lib/server/voice/address.ts)). When it changes, the media server starts again under the new address, which closes every transport, and pages are told `media.reset`; rooms and their groups stand. A name that does not resolve at start-up stops the service, and systemd tries again.
+
+**On the host** ([`deploy/rivermind-poker-voice.service`](../deploy/rivermind-poker-voice.service), [`deploy/update.sh`](../deploy/update.sh)):
+
+- A unit of its own, `rivermind-poker-voice`, running `build/voice/voice.js` of the current release on `/opt/node-26/bin/node` as a dynamic user, with the web unit's sandbox and `SocketBindAllow=` for its signalling port (TCP 4323 on loopback) and its media port (UDP and TCP 3478), and `SocketBindDeny=any`: on ubuntu-vm a process under those rules got EPERM binding any other port, TCP or UDP. Memory is the platform's 256 MB high and 512 MB most. The voice key comes as a credential from root-only `/var/lib/rivermind-poker/voice-key`, which `update.sh` derives from the session secret as a dynamic user (`voice.js derive-key`). `Restart=always`: a dead media worker stops the service, and systemd starts it again.
+- `pnpm build` bundles the service into `build/voice/` on its own, with mediasoup's worker binary beside it, sharing nothing with the site's server, so `build/voice/` changes only when voice does. `update.sh` checks every release's voice service as a candidate before the switch (on loopback and free ports in 4400-4499, under the unit's sandbox: `/healthz`, and a socket from another origin refused), and after the switch restarts `rivermind-poker-voice` only if its unit, its key or `build/voice/` changed or it is not running. A deploy that does not touch voice leaves every conversation alone, and keeps the release the voice service runs from when it clears old ones.
+- `ufw` allows UDP and TCP 3478, added by `update.sh` when it installs the unit (Q-9).
+- Port 4322, which the plan named for signalling, belongs to fieldcadence.app on this host; the voice service takes 4323, the next free one in the host's table.
+
+**Measured on ubuntu-vm.** The bundle built on the host ran there under a copy of the unit, on the real port and announcing the router's address, with a key from a test secret and the checks' origin (scratch files, removed afterwards). From this Mac, inside the home network, the room checks ran against it with signalling through an SSH tunnel: Chromium, Firefox and WebKit pages made and joined a group, talked, and took a join and a leave, with no frame refused. Chromium and Firefox reported their media on `udp 71.215.196.157:3478`, the router's public address, looped back by the router; Chromium told to use no UDP connected on `tcp 71.215.196.157:3478`. WebKit does not report addresses, and had no other candidate. After ten rooms the service held 46 MB (48 MB at most), and its journal held only counts, durations and `refused a token: forged`.
+
+**Found on the way**
+
+- **A transport's `id` and the request's.** The first draft spread a transport's description, which has an `id`, over its answer's envelope, and the transport's id replaced the request's: the page never heard back. The answer envelope now goes last, and the protocol names the transport `transport`.
+- **mediasoup in an ES module bundle** looks for its own directory with `__dirname` when there is no `node_modules` to resolve it from, as in a release, and an ES module has none: the bundle failed on the host and ran on this Mac only because `web/node_modules` sat above it. The voice bundle defines `__dirname` and `__filename` from `import.meta` in a banner, and the worker binary is passed to mediasoup by path.
+
+**Left for later steps**
+
+- **From outside the home network.** Checked from inside it only, through the router's loopback; a phone on a mobile network is P4C.9's, or the owner's sooner.
+- **Live.** The unit is installed and `ufw` opened by the first deploy that carries it, an owner gate; until P4C.9 adds the `/voice` route nothing reaches its signalling.
+- **The table server's side** (P4C.5): `POST /api/tables/{id}/voice` issues tokens with `issueToken`, and the table tells the service when seats change.
+- **Recovery** (P4C.7): a restart, a dead worker or a changed address now costs a room its transports or its group, and pages start again by hand; P4C.7 makes it automatic and measures it.
+- **The prototype** keeps its keyless listener at the SFU and its audio-level control until P4C.8 moves them into a test build of this service.
+
 ## Tools considered
 
 | Option | Verdict |
@@ -278,6 +341,7 @@ ts-mls is the one part of voice’s encryption this project did not write and no
   - **WebKit** has a mock microphone once a context is given the `microphone` permission. It finishes gathering ICE candidates only on a page that has captured, so a person who only listens cannot connect there. An `AudioContext` stops rendering about half a second after capture starts, while still saying `running`, so nothing built on Web Audio (volume, the speaking ring, spatial audio) can be checked there. Only one page of a browser captures at a time, so each person needs a browser of their own. Whether Safari itself shares any of these is for a real iPhone and Mac to say (P4C.9). Playwright’s WebKit on Linux, which CI uses, is a different WebRTC build with no `RTCRtpScriptTransform` (`canTransform`): the checks that need a call are skipped there by name, and the macOS build covers them when `pnpm voice:check` is run on a Mac.
   - Firefox’s ICE fails against a media address on loopback alone, which Chromium and WebKit connect to; a test service also listens on the LAN address.
   - Without Web Audio, judge what a page hears by `inbound-rtp` statistics (`totalAudioEnergy`, `concealedSamples`). Chromium counts no energy for a track whose only output is a muted element, so there the analyser is the measure.
+- **The voice service:** Vitest drives it with a real mediasoup worker and real MLS members over the wire (`service.spec.ts`), and `pnpm voice:check` puts people in each engine in a room on it (`room.check.ts`), through the site's own `VoiceRoom`, with media over UDP and, for Chromium told to avoid UDP, TCP.
 - **The encryption itself:** a test listener attached at the SFU, holding no key, receives the forwarded frames and cannot decode them, while members decode the injected tone.
 - **Latency and loss:** mouth-to-ear delay measured with a marked tone, `getStats` jitter-buffer and round-trip figures, and packet loss and jitter added with `tc netem` on Linux.
 

@@ -1,0 +1,89 @@
+# RiverMind Poker table voice (P4C.4, D-15): installed as
+# /etc/systemd/system/rivermind-poker-voice.service by deploy/update.sh.
+# Runs build/voice/voice.js of the current release, with mediasoup's worker
+# binary beside it (web/vite.voice.config.ts), on the host's pinned Node 26.
+# It relays each table's encrypted audio and carries its MLS group, holds no
+# key that could open a frame, and keeps its rooms in memory only
+# (docs/voice.md).
+#
+# It is a unit of its own, apart from rivermind-poker-web, for two reasons.
+# It is the one RiverMind process that listens beyond loopback: media arrive
+# on UDP and TCP 3478 from the internet (Q-9), an exception to the host's web
+# platform contract, which D-15 makes. And conversations outlast site deploys:
+# update.sh restarts this unit only when build/voice/ or this file changed.
+# Signalling listens on loopback only, on 127.0.0.1:4323, where Caddy carries
+# wss://rivermindpoker.com/voice (from P4C.9).
+#
+# update.sh starts a copy of this file as rivermind-poker-voice-candidate
+# before every deploy: it rewrites the release path, PORT, VOICE_MEDIA_PORT and
+# the SocketBindAllow= lines to free candidate ports, and VOICE_LISTEN_IPS to
+# loopback. Keep HOST and PORT on one Environment= line, the media settings on
+# another, and name the release only as /srv/rivermindpoker.com/current.
+[Unit]
+Description=RiverMind Poker table voice (rivermindpoker.com)
+Documentation=https://github.com/dunamismax/rivermind-poker
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/srv/rivermindpoker.com/current/build/voice/voice.js
+StartLimitIntervalSec=300
+StartLimitBurst=20
+
+[Service]
+Type=simple
+DynamicUser=yes
+User=rivermind-poker-voice
+Group=rivermind-poker-voice
+WorkingDirectory=/srv/rivermindpoker.com/current
+ExecStart=/opt/node-26/bin/node /srv/rivermindpoker.com/current/build/voice/voice.js
+Environment=NODE_ENV=production HOST=127.0.0.1 PORT=4323
+Environment=VOICE_ORIGINS=https://rivermindpoker.com
+# Media on every address of the VM, announced as the router's public address,
+# which the site's own name points at (src/lib/server/voice/address.ts looks it
+# up again every minute). The router and the Windows host forward 3478 here (Q-9).
+Environment=VOICE_MEDIA_PORT=3478 VOICE_LISTEN_IPS=0.0.0.0
+Environment=VOICE_ANNOUNCED_HOST=rivermindpoker.com
+# The voice key, derived from the site's secret by update.sh
+# (`voice.js derive-key`): tokens from the web service verify under it, and
+# nothing here can sign a session cookie. Root-only where it is; systemd hands
+# this service a read-only copy.
+LoadCredential=voice-key:/var/lib/rivermind-poker/voice-key
+Environment=VOICE_KEY_FILE=%d/voice-key
+# A dead media worker stops the service (voice.js), and it starts again here.
+Restart=always
+RestartSec=3
+TimeoutStopSec=10
+SyslogIdentifier=rivermind-poker-voice
+
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# No MemoryDenyWriteExecute: V8's JIT needs writable, executable pages.
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+# Binds its signalling port and the media port, and nothing else.
+SocketBindAllow=tcp:4323
+SocketBindAllow=udp:3478
+SocketBindAllow=tcp:3478
+SocketBindDeny=any
+# The platform's defaults. P4C.1 measured 75 to 100 MB for the Node side and
+# 14 MB for a nine-person room in the worker; P4C.7 measures full rooms here.
+MemoryHigh=256M
+MemoryMax=512M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

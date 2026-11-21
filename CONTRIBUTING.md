@@ -271,7 +271,7 @@ pnpm visual:compare ../artifacts/visual/before-1 ../artifacts/visual/before-2 ..
 
 ## Table voice
 
-Table voice is Phase 4C; [docs/voice.md](docs/voice.md) holds the design and what each step found. Nothing a player sees is built yet. What exists is the frame encryption (P4C.2) in [`web/src/lib/voice/`](web/src/lib/voice/), and the prototype (P4C.1) in [`web/voice/prototype/`](web/voice/prototype/), which is not part of the site, the build or `pnpm e2e`.
+Table voice is Phase 4C; [docs/voice.md](docs/voice.md) holds the design and what each step found. Nothing a player sees is built yet. What exists is the frame encryption (P4C.2) and the group key (P4C.3) in [`web/src/lib/voice/`](web/src/lib/voice/), the voice service and its signalling (P4C.4) in [`web/voice/server.ts`](web/voice/server.ts) and [`web/src/lib/server/voice/`](web/src/lib/server/voice/), and the prototype (P4C.1) in [`web/voice/prototype/`](web/voice/prototype/), which is not part of the site, the build or `pnpm e2e`.
 
 ### Frame encryption (P4C.2)
 
@@ -292,7 +292,7 @@ pnpm voice:check --project webkit -g cost
 VOICE_DEBUG=1 pnpm voice:check -g heard  # with the page's console
 ```
 
-`pnpm voice:check` (CI runs it) builds [`web/voice/check/`](web/voice/check/) with Vite, the worker a bundled module of its own, and serves it on `127.0.0.1:4391` with the site's CSP. Its page runs the vectors on the engine's own WebCrypto, then a WebRTC call between two peer connections on the one page, a speaker's and a listener's, each with a worker and key store of its own. The checks are a call that is heard, a listener with another secret, with no key and with the stream taken for another person's, a speaker with no key, a sender with no worker at all, a change of epoch and a retired one, and what SFrame costs a page in a full room. It needs no voice service: what a forwarding server does to frames is the prototype's to show, and P4C.4's.
+`pnpm voice:check` (CI runs it) builds [`web/voice/check/`](web/voice/check/) with Vite, the worker a bundled module of its own, and serves it on `127.0.0.1:4391` with the site's CSP. Its page runs the vectors on the engine's own WebCrypto, then a WebRTC call between two peer connections on the one page, a speaker's and a listener's, each with a worker and key store of its own. The checks are a call that is heard, a listener with another secret, with no key and with the stream taken for another person's, a speaker with no key, a sender with no worker at all, a change of epoch and a retired one, and what SFrame costs a page in a full room. Its second page, `room.html`, is a person in a table's voice room on the real voice service, which the run starts beside it ([below](#the-voice-service-p4c4)).
 
 CI runs the checks in Playwright's Linux browsers, which differ from the macOS ones: Chromium's fake microphone works there, Firefox has no sound device, and WebKit has no `RTCRtpScriptTransform`, so its call checks are skipped. To run them that way before a push, with Docker running:
 
@@ -326,6 +326,30 @@ pnpm voice:check -g "ms behind"   # a join and a leave during a real call, in th
 `pnpm test` also holds the pinned ts-mls to the MLS working group's interoperability test vectors for ciphersuite 0x0001 ([`web/src/lib/voice/mls-vectors/`](web/src/lib/voice/mls-vectors/), 395 cases in 14 spec files). The vectors are not in this repository, because the working group's states no license: [`load.ts`](web/src/lib/voice/mls-vectors/load.ts) fetches them from GitHub at the commit [`source.json`](web/src/lib/voice/mls-vectors/source.json) pins, checks each file's SHA-256 and keeps them in `node_modules/.cache/mls-vectors/`. The first run needs the network. Without it the vector checks are reported as skipped, except in CI, where that is a failure.
 
 To move to a newer commit of the working group's files, change `commit` in `source.json`, then each file's `sha256` (`shasum -a 256`) and `cases` (its cases with `cipher_suite` 1, or all of them where the file has no such field), and run the specs.
+
+### The voice service (P4C.4)
+
+`rivermind-poker-voice` relays each table's encrypted audio through mediasoup and carries its MLS group, behind voice signalling v1 on `127.0.0.1:4323` at `/voice`. [docs/voice.md](docs/voice.md#the-voice-service-as-built-p4c4) says how it works, what it refuses and what it logs.
+
+| File | What it holds |
+| --- | --- |
+| [`signalling.ts`](web/src/lib/voice/signalling.ts) | Voice signalling v1, the one module the page and the service share: every request, answer, notice, error and close code. |
+| [`signalling-client.ts`](web/src/lib/voice/signalling-client.ts), [`room.ts`](web/src/lib/voice/room.ts) | A page's side: `VoiceSocket`, and `VoiceRoom`, which joins the group, takes each epoch's key, commits removals in its turn and carries the audio through mediasoup-client. P4C.5 puts it at the table. |
+| [`server/voice/service.ts`](web/src/lib/server/voice/service.ts) | The rooms: tokens, one socket a seat, the delivery rules on the wire, transports, producers and consumers, limits. |
+| [`server/voice/media.ts`](web/src/lib/server/voice/media.ts) | The mediasoup worker, its one `WebRtcServer` and the Opus settings. |
+| [`server/voice/tokens.ts`](web/src/lib/server/voice/tokens.ts) | Voice tokens and the voice key, derived from the site secret. |
+| [`server/voice/address.ts`](web/src/lib/server/voice/address.ts), [`log.ts`](web/src/lib/server/voice/log.ts) | The announced public address from DNS, and the log's redaction. |
+| [`voice/server.ts`](web/voice/server.ts) | The entry point, bundled by `pnpm build` into `build/voice/voice.js` with mediasoup's worker beside it ([`vite.voice.config.ts`](web/vite.voice.config.ts)). |
+
+```sh
+pnpm test src/lib/server/voice                  # tokens, the service with a real mediasoup worker, the log
+pnpm voice:check --project=chromium room.check  # people in a room on the service, in a browser
+RIVERMIND_SECRET=dev VOICE_ORIGINS=http://127.0.0.1:4391 VOICE_LISTEN_IPS=127.0.0.1 VOICE_MEDIA_PORT=0 \
+  node voice/server.ts                          # the service alone, from the source
+node build/voice/voice.js derive-key < secret   # the voice key for a site secret
+```
+
+The voice service takes its settings from the environment (the comment at the top of `voice/server.ts` lists them). Locally, `RIVERMIND_SECRET` stands in for the live unit's `VOICE_KEY_FILE`. `pnpm voice:check` starts it from the source on `127.0.0.1:4392`, with media on loopback and this machine's first LAN address (for Firefox) and a secret of the checks' own, and its room checks sign their tokens with the same secret. With `VOICE_REMOTE=1` it starts no service and the room checks talk to whatever answers on 4392, such as a service on ubuntu-vm through `ssh -N -L 4392:127.0.0.1:4323 root@ubuntu-vm`, with media over the host's public address (how P4C.4 was checked; docs/voice.md has the host setup).
 
 ### The prototype (P4C.1)
 
@@ -364,15 +388,18 @@ ssh root@ubuntu-vm 'bash /home/sawyer/github/rivermind-poker/deploy/update.sh'
 
 1. stages the release as `/srv/rivermindpoker.com/<UTC time>-<commit12>` (root-owned, read-only to the service) with `REVISION` (the full commit), `.node-version`, `package.json`, `build/`, `deploy/` and `drizzle/`;
 2. dumps the database to `/var/backups/rivermindpoker.com/pre-migrate-<commit>.dump`, runs the release's `build/migrate.js` as the service's user with only `migration.env`, and checks Drizzle's journal has every migration of the release;
-3. starts the release from its own directory under a copy of its unit, `rivermind-poker-web-candidate`, on a free port in 4400-4499 with `RIVERMIND_CANDIDATE=1`: it connects to the real database as the web role, loads the champion and checks every saved table can be restored, but never restores, deals or saves one, so it is safe beside the live server. [`deploy/smoke.sh`](deploy/smoke.sh) checks its `/healthz` (the commit, the database, the tables, the champion), the main pages, a 404 and the headers, and the candidate is stopped;
+3. starts the release from its own directory under a copy of its unit, `rivermind-poker-web-candidate`, on a free port in 4400-4499 with `RIVERMIND_CANDIDATE=1`: it connects to the real database as the web role, loads the champion and checks every saved table can be restored, but never restores, deals or saves one, so it is safe beside the live server. [`deploy/smoke.sh`](deploy/smoke.sh) checks its `/healthz` (the commit, the database, the tables, the champion), the main pages, a 404 and the headers, and the candidate is stopped. Then it derives the voice key from the session secret into root-only `/var/lib/rivermind-poker/voice-key` (as a dynamic user, from the release's `voice.js derive-key`) and checks the voice service the same way: `rivermind-poker-voice-candidate`, on loopback and two free ports in 4400-4499, must answer `/healthz` and refuse a socket from another origin (`update.sh voice-candidate RELEASE` runs this alone, inside `with-deploy-lock`);
 4. installs the unit if it changed, switches `current` atomically and restarts the Node server;
 5. waits for `/healthz` on the live port to report the commit, runs the smoke check there, and checks with `web-live` that the running process is the new release on `/opt/node-v26.13.1-linux-x64/bin/node`;
-6. installs the [Caddy site](deploy/rivermindpoker.com.caddy) with `caddy-apply` if it changed;
-7. logs `rivermindpoker.com <commit> live` and runs the smoke check on https://rivermindpoker.com.
+6. installs the voice unit if it changed, allows UDP and TCP 3478 in `ufw`, and restarts `rivermind-poker-voice` only if its unit, its key or `build/voice/` changed or it is not running, so a deploy that does not touch voice leaves conversations alone; then checks its `/healthz` and `web-live`;
+7. installs the [Caddy site](deploy/rivermindpoker.com.caddy) with `caddy-apply` if it changed;
+8. logs `rivermindpoker.com <commit> live` and runs the smoke check on https://rivermindpoker.com.
 
-Any failure stops the deploy and says which step failed. Before step 4 the previous release is still serving. After it, the new release is live: read `journalctl -u rivermind-poker-web`, fix it in a new commit and deploy again. The five newest releases are kept as evidence. What is live is what `/healthz` and `sudo /home/sawyer/github/ubuntu-vm-backup/bin/web-live rivermind-poker-web.service` report, never the checkout.
+Any failure stops the deploy and says which step failed. Before step 4 the previous release is still serving. After it, the new release is live: read `journalctl -u rivermind-poker-web` (or `rivermind-poker-voice`), fix it in a new commit and deploy again. The five newest releases are kept as evidence, and so is the one the voice service runs from. What is live is what `/healthz` and `sudo /home/sawyer/github/ubuntu-vm-backup/bin/web-live rivermind-poker-web.service` report, never the checkout.
 
 **Deploying a champion** (an owner gate, as every deploy is). A champion reaches the site in three steps. Promote it on the training machine (`blueprint promote`, [docs/bots.md](docs/bots.md#promotion-and-the-registry-p55)), which records it in the registry and in `web/src/lib/champions.json`. Copy `artifacts/models/<name>` to `/srv/rivermind-poker/models/champions/` on ubuntu-vm and compare its hashes ([the commands](docs/bots.md#where-models-are-kept)); that is server setup (D-10) and changes nothing players see. Then, with the owner's approval, push and deploy as usual. `update.sh` runs `rivermind-poker blueprint champions --verify` against that directory and stops before the site changes if a file is missing or differs. The web unit sets `RIVERMIND_MODELS`, and after the restart the script warns if `/api/config` does not offer RiverMind Hard. A table playing the old champion's seat simply meets the new one in its next decision. To withdraw a champion, deploy a release whose registry does not name it; its tables then play on against RiverMind Easy.
+
+The [voice unit](deploy/rivermind-poker-voice.service) runs `build/voice/voice.js` of the current release as another dynamic user, with the web unit's sandbox, `SocketBindAllow=` for exactly its three ports (TCP 4323, UDP and TCP 3478) and the platform's 256 MB and 512 MB limits. It reads the voice key as a credential, never the session secret, and announces the address `rivermindpoker.com` resolves to, looked up again every minute. It is the one RiverMind process that listens beyond loopback (D-15). Caddy carries `/voice` to it from P4C.9.
 
 The web unit runs as a dynamic user with no access to the checkout or to anyone's home, and owns no file on the host. It gets `DATABASE_URL` from `/etc/web-apps/rivermind_poker/web.env` and the session secret as a systemd credential (`LoadCredential=`) from root-only `/var/lib/rivermind-poker/secret`, the file the first table server made, so guests stay signed in. Its limits are 2 GB (`MemoryHigh`) and 3 GB (`MemoryMax`); the champion's bundle takes about 0.55 GB of that.
 
