@@ -5,8 +5,21 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { createApi } from '../src/lib/server/api/api.ts';
 import { UNLIMITED } from '../src/lib/server/api/safety.ts';
 import { Site } from '../src/lib/server/api/site.ts';
+import { createSocketServer } from '../src/lib/server/api/socket.ts';
+import { Tables } from '../src/lib/server/api/tables.ts';
+import { ManualClock } from '../src/lib/server/table/clock.ts';
+import { seededDealer } from '../src/lib/server/table/runner.ts';
+import type * as p from '../src/lib/protocol-v2.ts';
 import { MAX_BODY_BYTES } from './api.ts';
-import { createApp, TRY_AGAIN_LATER, type App, type Handler } from './app.ts';
+import {
+	createApp,
+	MAX_FRAME_BYTES,
+	SERVICE_RESTART,
+	TRY_AGAIN_LATER,
+	UNSUPPORTED_DATA,
+	type App,
+	type Handler
+} from './app.ts';
 import { RESTARTING } from './legacy.ts';
 
 const running: (() => Promise<void>)[] = [];
@@ -256,5 +269,161 @@ describe('the TypeScript API (P4B.5a)', () => {
 		const response = await fetch(`http://${host}/api/session`, { method: 'POST' });
 		expect(response.status).toBe(201);
 		expect(legacy.seen).toHaveLength(1);
+	});
+});
+
+describe('the table server over real sockets (P4B.5b)', () => {
+	async function tableServer() {
+		const quiet = { info: () => {}, warn: () => {}, error: () => {} };
+		const site = new Site({ secret: Buffer.from('s'.repeat(32)), limits: UNLIMITED });
+		let seed = 0;
+		const tables = new Tables(site, {
+			log: quiet,
+			runner: {
+				handPause: 0,
+				botDelay: 0,
+				clock: new ManualClock(),
+				dealer: () => seededDealer(seed++),
+				log: quiet
+			}
+		});
+		const { app, host } = await start(null, {
+			api: createApi(site, { tables }),
+			sockets: createSocketServer(tables)
+		});
+		running.push(() => tables.stop());
+		const visit = await fetch(`http://${host}/api/session`, { method: 'POST' });
+		const cookie = (visit.headers.get('set-cookie') ?? '').split(';')[0];
+		const player = (await visit.json()) as p.SessionResponse;
+		return { app, host, tables, cookie, player };
+	}
+
+	/** A socket whose messages can be awaited one at a time. */
+	function client(host: string, headers: Record<string, string> = {}) {
+		const ws = new WebSocket(`ws://${host}/ws`, { headers });
+		const inbox: Record<string, never>[] = [];
+		let wake: (() => void) | null = null;
+		ws.on('message', (data) => {
+			inbox.push(JSON.parse(String(data)));
+			wake?.();
+		});
+		const next = async (matches: (m: Record<string, never>) => boolean = () => true) => {
+			for (;;) {
+				while (inbox.length) {
+					const message = inbox.shift()!;
+					if (matches(message)) return message;
+				}
+				await new Promise<void>((resolve) => (wake = resolve));
+			}
+		};
+		const send = (message: unknown) => ws.send(JSON.stringify(message));
+		return { ws, next, send };
+	}
+
+	it('plays a hand over a WebSocket, with the cookie from the handshake', async () => {
+		const { host, cookie, player } = await tableServer();
+		const made = await fetch(`http://${host}/api/tables`, {
+			method: 'POST',
+			headers: { cookie, 'content-type': 'application/json', origin: `http://${host}` },
+			body: JSON.stringify({ seats: 2, bots: 'calling_station' })
+		});
+		expect(made.status).toBe(201);
+		const { table_id: tableId } = (await made.json()) as p.NewTableResponse;
+		const { ws, next, send } = client(host, { cookie, origin: `http://${host}` });
+		await opened(ws);
+		send({ type: 'hello', protocol: 2 });
+		expect(await next()).toEqual({
+			type: 'welcome',
+			protocol: 2,
+			player_id: player.player_id,
+			name: player.name
+		});
+		send({ type: 'join_table', table_id: tableId });
+		const turn = (await next(
+			(m) => m.type === 'table' && (m.view as p.TableView).you.legal !== null
+		)) as unknown as p.TableMessage;
+		expect(turn.view.seats[0]).toMatchObject({ name: player.name, kind: 'human' });
+		expect(turn.view.seats[0]!.cards).toHaveLength(2);
+		expect(turn.view.seats[1]!.cards).toBeNull(); // the bot's cards stay hidden
+		// Check or call every turn until the second hand is dealt.
+		let latest = turn;
+		let answered = 0;
+		while (latest.view.hand!.hand_no < 2) {
+			const { view } = latest;
+			if (view.you.legal !== null && view.turn!.seq > answered) {
+				answered = view.turn!.seq;
+				const action = view.you.legal.can_check ? 'check' : 'call';
+				send({ type: 'act', table_id: tableId, seq: view.seq, action });
+			}
+			latest = (await next((m) => m.type === 'table')) as unknown as p.TableMessage;
+		}
+		expect(latest.view.hand!.posts.length).toBe(2); // blinds posted for the new hand
+		send({ type: 'nonsense' });
+		expect(await next((m) => m.type === 'error')).toMatchObject({ code: 'bad_request' });
+		ws.close();
+	});
+
+	it('refuses a handshake from another site, and one without a session', async () => {
+		const { host, cookie } = await tableServer();
+		const foreign = new WebSocket(`ws://${host}/ws`, {
+			headers: { cookie, origin: 'https://evil.example' }
+		});
+		const status = await new Promise<number>((resolve) => {
+			foreign.once('unexpected-response', (_request, response) => {
+				resolve(response.statusCode ?? 0);
+				response.resume();
+			});
+			foreign.once('error', () => {});
+		});
+		expect(status).toBe(403);
+		const anonymous = client(host);
+		await opened(anonymous.ws);
+		anonymous.send({ type: 'hello', protocol: 2 });
+		expect(await anonymous.next()).toMatchObject({ type: 'error', code: 'unauthorized' });
+		expect(await closed(anonymous.ws)).toBe(1008);
+	});
+
+	it('closes a socket that sends binary or oversized frames', async () => {
+		const { host, cookie } = await tableServer();
+		const binary = client(host, { cookie });
+		await opened(binary.ws);
+		binary.ws.send(Buffer.from([1, 2, 3]));
+		expect(await closed(binary.ws)).toBe(UNSUPPORTED_DATA);
+		const big = client(host, { cookie });
+		await opened(big.ws);
+		big.send({ type: 'hello', protocol: 2 });
+		await big.next();
+		big.ws.send(JSON.stringify({ type: 'join_table', table_id: 'x'.repeat(MAX_FRAME_BYTES) }));
+		expect(await closed(big.ws)).toBe(1009);
+	});
+
+	it('marks a player disconnected when their socket drops, and tells sockets of a restart', async () => {
+		const { app, host, cookie, tables, player } = await tableServer();
+		const made = await fetch(`http://${host}/api/tables`, {
+			method: 'POST',
+			headers: { cookie, 'content-type': 'application/json' },
+			body: JSON.stringify({ seats: 2, bots: 'calling_station' })
+		});
+		const { table_id: tableId } = (await made.json()) as p.NewTableResponse;
+		const table = tables.manager.get(tableId)!.table;
+		const first = client(host, { cookie });
+		await opened(first.ws);
+		first.send({ type: 'hello', protocol: 2 });
+		first.send({ type: 'join_table', table_id: tableId });
+		await first.next((m) => m.type === 'table');
+		first.ws.terminate(); // the connection drops without a goodbye
+		for (let i = 0; i < 200 && table.seats[0]!.connected; i++) {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		expect(table.seats[0]).toMatchObject({ playerId: player.player_id, connected: false });
+		const second = client(host, { cookie });
+		await opened(second.ws);
+		second.send({ type: 'hello', protocol: 2 });
+		second.send({ type: 'join_table', table_id: tableId });
+		await second.next((m) => m.type === 'table');
+		expect(table.seats[0]!.connected).toBe(true);
+		const restarted = closed(second.ws);
+		await app.close();
+		expect(await restarted).toBe(SERVICE_RESTART);
 	});
 });

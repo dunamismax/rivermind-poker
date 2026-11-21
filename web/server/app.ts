@@ -1,9 +1,9 @@
 // The RiverMind Poker web server: SvelteKit's Node handler and the /ws
-// WebSocket on one HTTP server (D-2). Until the P4B.7 cutover the tables live
-// in the Python server, so with a legacy target /api/* and /ws are forwarded
-// there (legacy.ts). Without one, /api/* is answered by the TypeScript API
-// (api.ts, P4B.5a) and /ws accepts sockets and closes them, because no table
-// is served here yet.
+// WebSocket on one HTTP server (D-2). Until the P4B.7 cutover the live tables
+// are in the Python server, so with a legacy target /api/* and /ws are
+// forwarded there (legacy.ts). Without one, /api/* is answered by the
+// TypeScript API (api.ts, P4B.5a) and /ws by the TypeScript table server
+// (`sockets`, P4B.5b). With neither, /ws accepts sockets and closes them.
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Socket } from 'node:net';
@@ -25,7 +25,33 @@ export interface Options {
 	api?: ApiHandler | null;
 	/** The site's public origin (adapter-node's ORIGIN), whose scheme the API sees. */
 	origin?: URL | null;
+	/** Protocol v2's sockets (src/lib/server/api/socket.ts, P4B.5b), for /ws. */
+	sockets?: SocketServer | null;
 }
+
+/** One open socket, fed the frames that arrive. */
+export interface SocketSession {
+	receive(text: string): void;
+	closed(): void;
+}
+
+/** The table server's end of /ws, as src/lib/server/api/socket.ts provides it. */
+export interface SocketServer {
+	allowed(origin: string | undefined, host: string | undefined): boolean;
+	open(
+		transport: { send(text: string, sent: () => void): void; close(code: number): void },
+		handshake: {
+			cookie: string | undefined;
+			peer: string | undefined;
+			forwardedFor: string | undefined;
+		}
+	): SocketSession;
+}
+
+/** The largest frame a client may send, as uvicorn's ws_max_size was for serve-nl. */
+export const MAX_FRAME_BYTES = 64 * 1024;
+/** Close code for a frame the server cannot take (a binary one). */
+export const UNSUPPORTED_DATA = 1003;
 
 /** Headers every page and asset carries, as serve-nl and Caddy send them. */
 export const SECURITY_HEADERS: Record<string, string> = {
@@ -56,9 +82,10 @@ export function createApp({
 	legacyApi = null,
 	shutdownTimeoutMs = 10_000,
 	api = null,
-	origin = null
+	origin = null,
+	sockets: tables = null
 }: Options): App {
-	const sockets = new WebSocketServer({ noServer: true });
+	const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
 	const forwarded = new Set<Socket>();
 	let closing = false;
 
@@ -99,8 +126,37 @@ export function createApp({
 			upstream.on('close', () => forwarded.delete(upstream));
 			return;
 		}
+		if (tables === null) {
+			sockets.handleUpgrade(req, socket, head, (ws) => {
+				ws.close(TRY_AGAIN_LATER, 'Tables are not served here yet.');
+			});
+			return;
+		}
+		// Browsers always send Origin on a handshake; refusing before accepting answers 403.
+		if (!tables.allowed(req.headers.origin, req.headers.host)) {
+			socket.end('HTTP/1.1 403 Forbidden\r\nconnection: close\r\ncontent-length: 0\r\n\r\n');
+			return;
+		}
 		sockets.handleUpgrade(req, socket, head, (ws) => {
-			ws.close(TRY_AGAIN_LATER, 'Tables are not served here yet.');
+			const forwardedFor = req.headers['x-forwarded-for'];
+			const session = tables.open(
+				{
+					send: (text, sent) => ws.send(text, () => sent()),
+					close: (code) => ws.close(code)
+				},
+				{
+					cookie: req.headers.cookie,
+					peer: req.socket.remoteAddress,
+					forwardedFor: Array.isArray(forwardedFor) ? forwardedFor.join(', ') : forwardedFor
+				}
+			);
+			ws.on('message', (data, isBinary) => {
+				if (isBinary) ws.close(UNSUPPORTED_DATA);
+				else session.receive(data.toString());
+			});
+			ws.on('close', () => session.closed());
+			// A frame over the limit or a broken connection: ws closes the socket itself.
+			ws.on('error', () => {});
 		});
 	});
 

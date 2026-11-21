@@ -8,6 +8,7 @@
  * they live in memory for as long as the process, as `serve-nl` does.
  */
 import type { Database } from '../db/index.ts';
+import { BOT_LABELS } from '../table/runner.ts';
 import { publicRef, readSession, type Secret } from './auth.ts';
 import { DatabaseHands, MemoryHands, type HandArchive } from './hands.ts';
 import { DatabasePlayers, MemoryPlayers, type PlayerRecord, type PlayerStore } from './players.ts';
@@ -26,11 +27,7 @@ import { wallClock } from './time.ts';
 import { DatabaseWallet, MemoryWallet, type Wallet } from './wallet.ts';
 
 /** The labels of the bots the site offers, by kind, in the order offered. */
-export const BOT_LABELS: Readonly<Record<string, string>> = {
-	random: 'Random bot',
-	calling_station: 'Calling bot',
-	heuristic: 'RiverMind Easy'
-};
+export { BOT_LABELS };
 export const STAKES: readonly (readonly [small: number, big: number])[] = [
 	[25, 50],
 	[50, 100],
@@ -89,7 +86,8 @@ export class Site {
 		this.secret = options.secret;
 		const memoryPlayers = db ? null : new MemoryPlayers();
 		this.players = options.players ?? (db ? new DatabasePlayers(db) : memoryPlayers!);
-		this.wallet = options.wallet ?? (db ? new DatabaseWallet(db) : new MemoryWallet());
+		const clock = options.clock ?? wallClock;
+		this.wallet = options.wallet ?? (db ? new DatabaseWallet(db) : new MemoryWallet(clock));
 		this.safety =
 			options.safety ??
 			(db
@@ -100,7 +98,7 @@ export class Site {
 		this.limiters = new Limiters(options.limits ?? DEFAULT_LIMITS);
 		this.bots = options.bots ?? Object.keys(BOT_LABELS);
 		this.practiceStack = practiceStack;
-		this.clock = options.clock ?? wallClock;
+		this.clock = clock;
 	}
 
 	/** The stored player with this id. */

@@ -30,16 +30,20 @@ jobs:
       - run: uv run --locked rivermind-poker --help
       - run: uv run --locked pytest
 
-  # The SvelteKit client: types, lint, unit tests, the production build and
-  # Playwright in three browsers against the built Node server, which forwards
-  # /api and /ws to the real Python table server until the P4B.7 cutover.
+  # The SvelteKit app and the TypeScript table server: types, lint, unit and
+  # database tests, the parity checks against the Python references, the
+  # production build, and Playwright in three browsers against the built Node
+  # server serving the tables itself (P4B.5b). Until the P4B.7 cutover the live
+  # tables are still serve-nl's, so one browser also runs against the Node
+  # server forwarding /api and /ws there, as the live site does.
   web:
     runs-on: ubuntu-latest
-    # A run takes about 12 minutes, but Playwright's system packages come from
+    # A run takes about 15 minutes, but Playwright's system packages come from
     # Ubuntu's mirror, which has taken half an hour on a slow day.
-    timeout-minutes: 45
+    timeout-minutes: 50
     # PostgreSQL for the Vitest database tests (*.db.spec.ts), which fail
-    # rather than skip in CI.
+    # rather than skip in CI. One of them hands a table between a real serve-nl
+    # and the TypeScript server, so the job needs uv as well.
     services:
       postgres:
         image: postgres:18
@@ -83,11 +87,20 @@ jobs:
       # bots on fuzz deals, 2,000 blueprint decisions and bucket lookups on a
       # synthetic serving bundle (the real trees, random strategies and tables).
       - run: pnpm bots:parity
+      # The TypeScript table against the Python one: 100 fuzzed sequences of
+      # 250 requests each (seating, holds, the waitlist, hands, clocks and
+      # snapshot round trips), every answer, event and snapshot by digest.
+      - run: pnpm table:parity
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium firefox webkit
       - run: pnpm e2e
         env:
           E2E_SKIP_BUILD: '1'
+      # The live arrangement until P4B.7: the same build in front of serve-nl.
+      - run: pnpm e2e --project chromium
+        env:
+          E2E_SKIP_BUILD: '1'
+          E2E_LEGACY: '1'
       - if: failure()
         uses: actions/upload-artifact@v7
         with:

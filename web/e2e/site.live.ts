@@ -152,12 +152,11 @@ test('continues a hand across a service restart', async ({ page }) => {
 	const cards = await myCards(page);
 	const call = await panel.getByRole('button', { name: /^(Check|Call \d+)$/ }).textContent();
 	execSync(restart!, { stdio: 'inherit' });
-	await expect(page.locator('.status')).toHaveAttribute('data-state', 'closed', {
-		timeout: 30_000
-	});
-	await expect(page.locator('.status')).toHaveAttribute('data-state', 'open', {
-		timeout: 120_000
-	});
+	// The connection's own status: a seat has a `.status` label too, and for a moment after
+	// rejoining the player's own seat reads "Away", until the server sees them connected.
+	const status = page.locator('.status[data-state]');
+	await expect(status).toHaveAttribute('data-state', 'closed', { timeout: 30_000 });
+	await expect(status).toHaveAttribute('data-state', 'open', { timeout: 120_000 });
 	// The same hand, the same cards, and still our turn with the same choice.
 	expect(await handNumber(page)).toBe(hand);
 	expect(await myCards(page)).toEqual(cards);

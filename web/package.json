@@ -25,11 +25,12 @@
 		"test:watch": "vitest",
 		"e2e": "playwright test",
 		"e2e:live": "playwright test --config playwright.live.config.ts",
-		"protocol": "cd .. && uv run --locked rivermind-poker protocol-schema --typescript web/src/lib/protocol.ts && uv run --locked rivermind-poker protocol-schema --version 2 --typescript web/src/lib/protocol-v2.ts",
+		"protocol": "cd .. && uv run --locked rivermind-poker protocol-schema --typescript web/src/lib/protocol.ts",
 		"art": "node scripts/generate-pixel-art.js",
 		"engine:parity": "node scripts/engine-parity.ts",
 		"engine:bench": "node scripts/engine-bench.ts",
 		"bots:parity": "node scripts/bots-parity.ts",
+		"table:parity": "node scripts/table-parity.ts",
 		"bots:bench": "node scripts/bots-bench.ts",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "node scripts/db-migrate.ts"

@@ -9,10 +9,10 @@
  * session, per address. Errors are `{"detail": …}` with the Python server's
  * status codes and wording.
  *
- * This step serves the routes that need no running table: the config, the
- * session, the wallet, the hand history and the mute and block list. The
- * lobby, seating, practice, reports and new mutes or blocks (which name a
- * seat at a running table) come with the table runner in P4B.5b.
+ * Without `tables` it serves the routes that need no running table: the
+ * config, the session, the wallet, the hand history and the mute and block
+ * list. With them (P4B.5b) it also serves the lobby, seating, practice,
+ * reports and new mutes or blocks, which name a seat at a running table.
  */
 import type * as p from '../../protocol-v2.ts';
 import {
@@ -26,12 +26,24 @@ import {
 	SESSION_SECONDS,
 	verify
 } from './auth.ts';
+import { HttpError } from './errors.ts';
 import { seatOf } from './hands.ts';
-import { PROTOCOL_VERSION, SessionRequest } from './protocol.ts';
+import {
+	NewTableRequest,
+	PROTOCOL_VERSION,
+	QuickSeatRequest,
+	RelationRequest,
+	ReportRequest,
+	SeatRequest,
+	SessionRequest,
+	WaitlistRequest
+} from './protocol.ts';
 import { clientAddress, REACTIONS } from './safety.ts';
 import { BOT_LABELS, STAKES, type Site } from './site.ts';
+import { parseCookies } from './socket.ts';
+import type { Tables } from './tables.ts';
 import { Invalid, parseJson, type Schema } from './validate.ts';
-import { handDetail, handSummary } from './views.ts';
+import { handDetail, handSummary, tableSummary } from './views.ts';
 import { PLAY_MONEY_NOTICE } from './wallet.ts';
 import type { PlayerRecord } from './players.ts';
 
@@ -52,19 +64,11 @@ export type ApiHandler = (request: Request, info: RequestInfo) => Promise<Respon
 export interface ApiOptions {
 	/** Origins besides the server's own whose pages may use the API, such as `https://example.com`. */
 	allowedOrigins?: Iterable<string>;
+	/** The running tables, for the lobby, seating, practice and safety routes (P4B.5b). */
+	tables?: Tables | null;
 }
 
-/** An error answered as `{"detail": message}`. */
-export class HttpError extends Error {
-	readonly status: number;
-	readonly headers: Record<string, string>;
-
-	constructor(status: number, detail: string, headers: Record<string, string> = {}) {
-		super(detail);
-		this.status = status;
-		this.headers = headers;
-	}
-}
+export { HttpError };
 
 export function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
 	return new Response(JSON.stringify(body), {
@@ -80,14 +84,7 @@ function errorResponse(error: HttpError): Response {
 
 /** The cookies of a request, as Starlette reads them. */
 export function cookies(request: Request): Map<string, string> {
-	const found = new Map<string, string>();
-	for (const chunk of (request.headers.get('cookie') ?? '').split(';')) {
-		const eq = chunk.indexOf('=');
-		const [name, value] = eq === -1 ? ['', chunk] : [chunk.slice(0, eq), chunk.slice(eq + 1)];
-		const key = name.trim();
-		if (key || value.trim()) found.set(key, value.trim());
-	}
-	return found;
+	return parseCookies(request.headers.get('cookie'));
 }
 
 /** Secure everywhere except plain HTTP on this machine, where browsers would drop it. */
@@ -114,6 +111,27 @@ function queryInt(params: URLSearchParams, name: string, fallback: number): numb
 	return Number(trimmed);
 }
 
+/** An optional whole number from a query string. */
+function queryIntOrNull(params: URLSearchParams, name: string): number | null {
+	return params.has(name) ? queryInt(params, name, 0) : null;
+}
+
+const QUERY_TRUE = new Set(['1', 'on', 't', 'true', 'y', 'yes']);
+const QUERY_FALSE = new Set(['0', 'off', 'f', 'false', 'n', 'no']);
+
+/** Pydantic's lax boolean from a query string. */
+function queryBool(params: URLSearchParams, name: string, fallback: boolean): boolean {
+	const text = params.get(name);
+	if (text === null) return fallback;
+	const word = text.toLowerCase();
+	if (QUERY_TRUE.has(word)) return true;
+	if (QUERY_FALSE.has(word)) return false;
+	throw new HttpError(
+		400,
+		`Invalid request body: query.${name}: Input should be a valid boolean, unable to interpret input`
+	);
+}
+
 async function body<T>(request: Request, schema: Schema<T>, optional: true): Promise<T | null>;
 async function body<T>(request: Request, schema: Schema<T>, optional?: false): Promise<T>;
 async function body<T>(request: Request, schema: Schema<T>, optional = false): Promise<T | null> {
@@ -137,6 +155,7 @@ async function body<T>(request: Request, schema: Schema<T>, optional = false): P
 
 type Route = (request: Request, params: string[], info: RequestInfo) => Promise<Response>;
 
+/** A path and its routes by method, in the order `serve-nl` registers them. */
 interface Entry {
 	pattern: RegExp;
 	methods: Partial<Record<string, Route>>;
@@ -145,6 +164,7 @@ interface Entry {
 export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 	const origins = new Set([...(options.allowedOrigins ?? [])].map((o) => o.replace(/\/+$/, '')));
 	const limiters = site.limiters;
+	const tables = options.tables ?? null;
 
 	function address(request: Request, info: RequestInfo): string {
 		return clientAddress(info.peer, request.headers.get('x-forwarded-for'));
@@ -302,6 +322,144 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 		{ pattern: /^\/api\/relations$/, methods: { GET: relations } },
 		{ pattern: /^\/api\/relations\/([^/]+)$/, methods: { DELETE: removeRelation } }
 	];
+	if (tables !== null) addTableRoutes(tables);
+
+	/** The routes that act on a running table (P4B.5b). */
+	function addTableRoutes(tables: Tables): void {
+		const newTable: Route = async (request) => {
+			const asked = await body(request, NewTableRequest);
+			const player = await playerOf(request);
+			const made = await tables.createTable(player, asked);
+			const response: p.NewTableResponse = {
+				table_id: made.tableId,
+				seat: made.seat,
+				invite: made.invite
+			};
+			return json(response, 201);
+		};
+
+		const listTables: Route = async (request) => {
+			const params = new URL(request.url).searchParams;
+			const seats = queryIntOrNull(params, 'seats');
+			const bigBlind = queryIntOrNull(params, 'big_blind');
+			const open = queryBool(params, 'open', false);
+			const player = await playerOf(request);
+			const blocks = await site.safety.blocksInvolving(player.playerId);
+			const response: p.TableListResponse = {
+				tables: tables.listTables(player.playerId, seats, bigBlind, open, blocks)
+			};
+			return json(response);
+		};
+
+		const invite: Route = async (request, [code]) => {
+			const player = await playerOf(request);
+			const runner = tables.findInvite(code);
+			if (runner === null) {
+				throw new HttpError(404, 'That invite has expired: its table has closed.');
+			}
+			return json(tableSummary(runner, player.playerId));
+		};
+
+		const takeSeat: Route = async (request, [tableId]) => {
+			const asked = await body(request, SeatRequest);
+			const player = await playerOf(request);
+			const runner = tables.seatingRunner(tableId, player.playerId, asked.invite);
+			return json(await tables.takeSeat(player, runner, asked.seat, asked.buy_in, asked.hold_only));
+		};
+
+		/** Give up a held seat (not a seat already sat in: leave the table for that). */
+		const giveUpSeat: Route = async (request, [tableId]) => {
+			const player = await playerOf(request);
+			const runner = tables.lobbyRunner(tableId, player.playerId);
+			await runner.cancelReservation(player.playerId);
+			return new Response(null, { status: 204 });
+		};
+
+		const joinWaitlist: Route = async (request, [tableId]) => {
+			const asked = await body(request, WaitlistRequest);
+			const player = await playerOf(request);
+			const runner = tables.seatingRunner(tableId, player.playerId, asked.invite);
+			const position = await tables.joinWaitlist(player, runner);
+			const response: p.WaitlistResponse = { table_id: tableId, position };
+			return json(response);
+		};
+
+		const leaveWaitlist: Route = async (request, [tableId]) => {
+			const player = await playerOf(request);
+			const runner = tables.lobbyRunner(tableId, player.playerId);
+			await runner.leaveWaitlist(player.playerId);
+			return new Response(null, { status: 204 });
+		};
+
+		const quickSeat: Route = async (request) => {
+			const asked = await body(request, QuickSeatRequest);
+			const player = await playerOf(request);
+			return json(await tables.quickSeat(player, asked));
+		};
+
+		/** Start the guest's practice table, or return the one they have (P6.0b). */
+		const practice: Route = async (request) => {
+			const player = await playerOf(request);
+			return json(await tables.startPractice(player));
+		};
+
+		/** Report the person in a seat for review (P4.5). */
+		const report: Route = async (request) => {
+			const asked = await body(request, ReportRequest);
+			const player = await playerOf(request);
+			const runner = tables.lobbyRunner(asked.table_id, player.playerId);
+			const target = tables.personAt(runner, asked.seat, player.playerId);
+			if (!limiters.report.allow(player.playerId)) {
+				throw new HttpError(
+					429,
+					'You have sent several reports; wait a while before sending another.'
+				);
+			}
+			const recorded = await site.safety.report({
+				reporterId: player.playerId,
+				targetId: target.playerId,
+				targetHandle: target.handle,
+				reason: asked.reason,
+				tableId: runner.tableId,
+				handNo: runner.table.handNo || null,
+				at: site.clock()
+			});
+			if (recorded) {
+				console.log(
+					`${player.playerId} reported ${target.playerId} at table ${runner.tableId}: ${asked.reason}`
+				);
+			}
+			const response: p.ReportResponse = { recorded };
+			return json(response, 201);
+		};
+
+		/** Mute or block the person in a seat. */
+		const setRelation: Route = async (request) => {
+			const asked = await body(request, RelationRequest);
+			const player = await playerOf(request);
+			const runner = tables.lobbyRunner(asked.table_id, player.playerId);
+			const target = tables.personAt(runner, asked.seat, player.playerId);
+			await site.setRelation(player.playerId, target, asked.kind);
+			return relationsResponse(player.playerId);
+		};
+
+		routes.find((r) => r.pattern.source === '^\\/api\\/relations$')!.methods.PUT = setRelation;
+		routes.push(
+			{ pattern: /^\/api\/tables$/, methods: { POST: newTable, GET: listTables } },
+			{ pattern: /^\/api\/invites\/([^/]+)$/, methods: { GET: invite } },
+			{
+				pattern: /^\/api\/tables\/([^/]+)\/seat$/,
+				methods: { POST: takeSeat, DELETE: giveUpSeat }
+			},
+			{
+				pattern: /^\/api\/tables\/([^/]+)\/waitlist$/,
+				methods: { POST: joinWaitlist, DELETE: leaveWaitlist }
+			},
+			{ pattern: /^\/api\/quick-seat$/, methods: { POST: quickSeat } },
+			{ pattern: /^\/api\/practice$/, methods: { POST: practice } },
+			{ pattern: /^\/api\/reports$/, methods: { POST: report } }
+		);
+	}
 
 	return async function handle(request, info) {
 		const url = new URL(request.url);
@@ -323,9 +481,8 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 				if (!match) continue;
 				const route = methods[request.method];
 				if (!route) {
-					throw new HttpError(405, 'Method Not Allowed', {
-						allow: Object.keys(methods).join(', ')
-					});
+					// Starlette names only the first route registered for the path.
+					throw new HttpError(405, 'Method Not Allowed', { allow: Object.keys(methods)[0] });
 				}
 				const params = match.slice(1).map((part) => decodeURIComponent(part));
 				return await route(request, params, info);

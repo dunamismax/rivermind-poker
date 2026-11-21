@@ -3,9 +3,8 @@
  * the HTTP request bodies and the socket messages, with the rules of the
  * Pydantic models in `rivermind/server/protocol.py`.
  *
- * Until the Python server is retired, `protocol-v2.ts` is still generated
- * from those models and stays the contract. Each schema here is checked
- * against its generated type at compile time (`pnpm check`), so the two
+ * `protocol-v2.ts` is the protocol's source (P4B.5b). Each schema here is
+ * checked against its type there at compile time (`pnpm check`), so the two
  * cannot drift apart: a field added on one side and not the other fails
  * the type check.
  */

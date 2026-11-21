@@ -19,7 +19,7 @@ RiverMind is also a poker AI project. Its bots are trained offline with Monte Ca
 
 The live site has no-limit hold’em at 2 to 9 seats against three labelled bots: random, calling station and RiverMind Easy, a tight-aggressive rule-based player. Guests keep a play-chip wallet and find each other in a lobby with quick seat, waitlists and private tables with invite links. They can react with presets, mute, block and report, and review their own hand histories. A guest at any balance can start a heads-up practice hand in one click. Tables, mid-hand included, are stored in PostgreSQL and survive restarts. The site is drawn in its own pixel-art style.
 
-**Now:** moving the site and table server from Python to TypeScript on SvelteKit and Node (decision D-14 in [BUILD.md](BUILD.md#settled-decisions)). The pages already run on Node. The TypeScript engine and bots are done and checked against the Python ones byte for byte. Wallets, the lobby and the tables move next, then the live cutover. Players should see no change apart from a brief reconnect.
+**Now:** moving the site and table server from Python to TypeScript on SvelteKit and Node (decision D-14 in [BUILD.md](BUILD.md#settled-decisions)). The pages already run on Node. The TypeScript engine and bots are done and checked against the Python ones byte for byte. The TypeScript table server is built too (wallets, the lobby, tables and sockets), replays a recorded session of the Python server answer for answer, and takes over its tables from the same database. Styling moves to Tailwind next, then the live cutover. Players should see no change apart from a brief reconnect.
 
 **Next:** the first evaluated heads-up opponent, then replay from the table. The first candidate, `hu-m1-s0` at 128 million training iterations, won +61.1 big blinds per 100 hands against RiverMind Easy (95% interval +50.9 to +71.4) and +308.3 against the calling station, over 20,000 duplicate deals each at 100 big blinds ([report](docs/evaluations/hu-m1-s0-128m.md)). It is not yet promoted or playable on the site.
 
@@ -62,7 +62,7 @@ The live site has no-limit hold’em at 2 to 9 seats against three labelled bots
 | --- | --- | --- |
 | Pages and assets | SvelteKit 3, Svelte 5 and strict TypeScript on Node through `adapter-node` | The same, since P4B.1 |
 | Styling | Tailwind CSS 4, with a theme generated from the pixel-art palette | Scoped CSS over a generated palette; Tailwind arrives in P4B.2 |
-| Table server and API | TypeScript in the same Node server, with the `/ws` WebSocket on the same port | The Python `serve-nl` (FastAPI and Uvicorn), until the P4B.7 cutover |
+| Table server and API | TypeScript in the same Node server, with the `/ws` WebSocket on the same port | The Python `serve-nl` (FastAPI and Uvicorn), until the P4B.7 cutover. The TypeScript one is built and passes parity but serves nothing live yet |
 | Game engine | A TypeScript engine kept byte-identical to the Python reference engine by differential tests | The Python engine. The TypeScript port is built and passes parity but serves nothing yet |
 | Bots | Trained and evaluated offline in Python, exported as serving bundles that Node reads | Python bots. The TypeScript bots are built and pass parity but serve nothing yet |
 | Database | PostgreSQL 18 with Drizzle ORM migrations | PostgreSQL 18 migrated by Alembic. A Drizzle baseline builds the identical schema |

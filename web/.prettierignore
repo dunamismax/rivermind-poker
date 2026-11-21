@@ -11,12 +11,17 @@ bun.lockb
 # Written by drizzle-kit (pnpm db:generate)
 /drizzle/
 
-# Generated from the Python protocol models
+# Generated from the short-deck prototype's Python protocol models (pnpm protocol)
 /src/lib/protocol.ts
+# The no-limit protocol's source, kept in the layout the Python models are checked against until P4B.8
 /src/lib/protocol-v2.ts
 
 # Generated from the Python engine's rule hands (test/engine/export_fixtures.py)
 /src/lib/server/engine/rules.json
 
-# Recorded from serve-nl (test/server/export_http_contract.py)
+# Recorded from serve-nl (test/server/export_http_contract.py, export_table_contract.py)
 /src/lib/server/api/contract.json
+/src/lib/server/api/table-contract.json
+
+# Recorded from the Python table (test/server/table_differential.py)
+/src/lib/server/table/parity.json

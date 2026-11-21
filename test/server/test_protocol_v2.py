@@ -233,10 +233,15 @@ def server_runner(client: TestClient, table_id: str) -> TableRunner:
     return runner
 
 
-def test_generated_typescript_is_current() -> None:
-    expected = to_typescript(p.json_schema(), 2)
-    assert GENERATED.read_text() == expected, (
-        "web/src/lib/protocol-v2.ts is stale. Regenerate it with `pnpm protocol` in web/."
+def test_the_python_models_match_the_typescript_protocol() -> None:
+    """``web/src/lib/protocol-v2.ts`` is the protocol's source since P4B.5b; these models follow it."""
+
+    def types(text: str) -> str:
+        return text.split("\n\n", 1)[1]  # everything after the file's opening comment
+
+    assert types(GENERATED.read_text()) == types(to_typescript(p.json_schema(), 2)), (
+        "rivermind/server/protocol.py no longer describes web/src/lib/protocol-v2.ts, the protocol's source. "
+        "Change the Pydantic models to match it."
     )
 
 

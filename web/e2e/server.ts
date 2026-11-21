@@ -1,8 +1,9 @@
 // Runs the site as the browser tests see it: the built Node server
-// (`node build/start.js`) on one port, forwarding /api/* and /ws to a real
-// `rivermind-poker serve-nl` on another, until the P4B.7 cutover moves the
-// tables into Node. Tables live in memory; their durability is tested in
-// pytest (test/db).
+// (`node build/start.js`) serving the pages, the API and the tables itself
+// (P4B.5b). Until the P4B.7 cutover the live tables are still in Python, so
+// with E2E_LEGACY=1 the Node server instead forwards /api/* and /ws to a real
+// `rivermind-poker serve-nl` on another port, as the live site does. Tables
+// live in memory; their durability is tested in Vitest and pytest.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { resolve } from 'node:path';
@@ -69,17 +70,25 @@ class Child {
 	}
 }
 
+/** Whether the tables run in serve-nl behind the Node server, as they do live until P4B.7. */
+export const LEGACY = process.env.E2E_LEGACY === '1';
+
+// Quick bots and hands, so the tests play many of them, and a short practice
+// stack, so a guest who calls every bet runs out within a minute or two.
+const HAND_PAUSE = '0.4';
+const BOT_DELAY = '0.05';
+const PRACTICE_STACK = '300';
+
 export class TableServer {
 	/** The site's origin: the Node server. */
 	readonly url: string;
-	readonly #tables: Child;
+	readonly #tables: Child | null;
 	readonly #web: Child;
 
-	/** `port` is the Node server's; serve-nl listens 100 below it. */
+	/** `port` is the Node server's; with E2E_LEGACY, serve-nl listens 100 below it. */
 	constructor(readonly port: number) {
 		this.url = `http://127.0.0.1:${port}`;
 		const legacy = `http://127.0.0.1:${port - 100}`;
-		// Quick bots and hands, so the tests play many of them.
 		const args = [
 			'run',
 			'--locked',
@@ -88,18 +97,29 @@ export class TableServer {
 			'--port',
 			String(port - 100),
 			'--hand_pause',
-			'0.4',
+			HAND_PAUSE,
 			'--bot_delay',
-			'0.05',
-			// A short practice stack, so a guest who calls every bet runs out within a minute or two.
+			BOT_DELAY,
 			'--practice_stack',
-			'300'
+			PRACTICE_STACK
 		];
 		// Never a developer's database: these tables live in memory.
-		this.#tables = new Child('serve-nl', `${legacy}/api/config`, 'uv', args, REPO, {
-			...process.env,
-			DATABASE_URL: ''
-		});
+		this.#tables = LEGACY
+			? new Child('serve-nl', `${legacy}/api/config`, 'uv', args, REPO, {
+					...process.env,
+					DATABASE_URL: ''
+				})
+			: null;
+		const tables: NodeJS.ProcessEnv = LEGACY
+			? { RIVERMIND_LEGACY_API: legacy }
+			: {
+					RIVERMIND_LEGACY_API: '',
+					RIVERMIND_API: '1',
+					DATABASE_URL: '',
+					RIVERMIND_HAND_PAUSE: HAND_PAUSE,
+					RIVERMIND_BOT_DELAY: BOT_DELAY,
+					RIVERMIND_PRACTICE_STACK: PRACTICE_STACK
+				};
 		this.#web = new Child(
 			'the Node server',
 			`${this.url}/healthz`,
@@ -111,19 +131,19 @@ export class TableServer {
 				HOST: '127.0.0.1',
 				PORT: String(port),
 				ORIGIN: this.url,
-				RIVERMIND_LEGACY_API: legacy
+				...tables
 			}
 		);
 	}
 
 	async start(): Promise<void> {
-		await this.#tables.start();
+		await this.#tables?.start();
 		await this.#web.start();
 	}
 
 	async stop(): Promise<void> {
 		await this.#web.stop();
-		await this.#tables.stop();
+		await this.#tables?.stop();
 	}
 
 	async restart(): Promise<void> {
