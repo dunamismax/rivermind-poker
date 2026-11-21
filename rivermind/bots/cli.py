@@ -430,6 +430,7 @@ def gate_command(report: str, incumbent: str | None) -> None:
 @click.option("--bundle", default=None, help="The evaluated bundle (default: the path the served report names).")
 @click.option("--registry", "registry_path", default="docs/models.json", show_default=True)
 @click.option("--page", default="docs/models.md", show_default=True)
+@click.option("--site", default="web/src/lib/champions.json", show_default=True, help="The extract the site reads; empty to skip it.")
 @click.option("--store", default="artifacts/models", show_default=True, help="Where a promoted run's checkpoint and bundle are kept.")
 @click.option("--date", default=None, help="The decision's date (default: today).")
 @click.option("--note", default=None, help="A sentence recorded with the decision.")
@@ -441,6 +442,7 @@ def promote_command(
     bundle: str | None,
     registry_path: str,
     page: str,
+    site: str,
     store: str,
     date: str | None,
     note: str | None,
@@ -450,8 +452,9 @@ def promote_command(
     The gate is the one `blueprint gate` applies, against the format's champion
     too when there is one, and it must hold for the checkpoint (REPORT) and for
     the serving bundle exported from it (--served). The decision goes into the
-    registry and its page whatever the outcome; a promoted run's checkpoint and
-    bundle are also kept under --store. Exits 1 unless the run was promoted.
+    registry, its page and the site's extract whatever the outcome; a promoted
+    run's checkpoint and bundle are also kept under --store. Exits 1 unless the
+    run was promoted.
     """
     import time
 
@@ -487,7 +490,7 @@ def promote_command(
         if decision["outcome"] == "promoted":
             assert bundle_path is not None
             kept = reg.keep(decision, checkpoint_path, bundle_path, store)
-        reg.write(registry, registry_path, page)
+        reg.write(registry, registry_path, page, site or None)
     except (reg.RegistryError, OSError) as e:
         raise click.ClickException(str(e)) from e
     shown = {

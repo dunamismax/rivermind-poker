@@ -2,8 +2,9 @@
 	import { onMount } from 'svelte';
 	import { tableCardUrls } from '../card-assets.ts';
 	import PlayingCard from '../components/PlayingCard.svelte';
-	import type { RelationKind, ReportReason, TableView } from '../protocol-v2.ts';
+	import type { BotOption, RelationKind, ReportReason, TableView } from '../protocol-v2.ts';
 	import ActionPanel from './ActionPanel.svelte';
+	import { fetchConfig } from './api.ts';
 	import { describeEvent } from './bet.ts';
 	import type { NlConnection } from './connection.svelte.ts';
 	import { chipFor } from './faces.ts';
@@ -55,6 +56,40 @@
 	);
 	const waitingFor = $derived(view.turn && view.turn.seat !== mine ? nameOf(view.turn.seat) : null);
 	const myTurn = $derived(Boolean(view.you.legal && hand && view.turn));
+
+	// At a practice table the guest can change opponents between hands (P5.7a):
+	// RiverMind Easy, or a trained bot the server offers for two seats.
+	let opponents = $state<BotOption[]>([]);
+	onMount(() => {
+		if (!view.practice) return;
+		fetchConfig()
+			.then((config) => {
+				opponents = config.bots.filter(
+					(b) => b.kind === 'heuristic' || (b.champion && (!b.seats || b.seats.includes(2)))
+				);
+			})
+			.catch(() => {
+				// The table plays on without the choice.
+			});
+	});
+	const opponent = $derived(view.seats.find((seat) => seat?.kind === 'bot')?.bot ?? null);
+	let choosing = $state(false);
+	/** The kind asked for that has not sat down yet. */
+	let asked = $state<string | null>(null);
+	const arriving = $derived(
+		asked !== null && asked !== opponent ? opponents.find((b) => b.kind === asked) : undefined
+	);
+	let opponentError = $state('');
+	async function playAgainst(kind: string) {
+		opponentError = '';
+		choosing = false;
+		try {
+			asked = await connection.practice(kind);
+		} catch (e) {
+			asked = null;
+			opponentError = `Could not change the opponent: ${e instanceof Error ? e.message : String(e)}`;
+		}
+	}
 
 	let rebuyAmount = $state(0);
 	const rebuyRoom = $derived(me ? view.settings.max_buy_in - me.stack - view.you.pending_rebuy : 0);
@@ -570,6 +605,43 @@
 			{/if}
 			{#if view.you.pending_rebuy}
 				<span class={note}>+{view.you.pending_rebuy} after this hand</span>
+			{/if}
+			{#if view.practice && opponents.length > 1}
+				<button
+					type="button"
+					class="px-btn small"
+					aria-expanded={choosing}
+					aria-controls="opponents"
+					onclick={() => (choosing = !choosing)}
+				>
+					Opponent
+				</button>
+				{#if arriving}
+					<span class={note} role="status">{arriving.label} sits down after this hand</span>
+				{/if}
+				{#if opponentError}<span class="text-s text-red-light" role="alert">
+						{opponentError}
+					</span>{/if}
+				{#if choosing}
+					<div
+						id="opponents"
+						class="opponents flex flex-[1_1_100%] flex-wrap gap-3"
+						role="group"
+						aria-label="Practice opponent"
+					>
+						{#each opponents as option (option.kind)}
+							<button
+								type="button"
+								class="px-btn small"
+								aria-pressed={option.kind === (asked ?? opponent)}
+								disabled={!connection.connected || option.kind === (asked ?? opponent)}
+								onclick={() => playAgainst(option.kind)}
+							>
+								{option.label}
+							</button>
+						{/each}
+					</div>
+				{/if}
 			{/if}
 			<button
 				type="button"

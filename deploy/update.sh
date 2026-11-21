@@ -14,7 +14,10 @@
 # answers. deploy/rollback-to-serve-nl.sh undoes the cutover.
 # The service needs /etc/rivermind-poker/web.env from deploy/setup-database.sh,
 # since tables live in PostgreSQL, and the session secret serve-nl made in
-# /var/lib/rivermind-poker/secret. Node (the major in web/.node-version) must be
+# /var/lib/rivermind-poker/secret. Each champion in docs/models.json must be in
+# /srv/rivermind-poker/models/champions (docs/bots.md says how to copy one
+# there); the deploy stops before the site changes if a file is missing or
+# differs from the registry. Node (the major in web/.node-version) must be
 # on sawyer's PATH, directly or through mise; pnpm comes from corepack.
 set -euo pipefail
 
@@ -54,6 +57,16 @@ else
     echo "no $DB_ENV/test.env: database tests skipped (run deploy/setup-database.sh)" >&2
     (cd "$REPO" && as_sawyer "$UV" run --locked pytest -q)
 fi
+
+# The champions the new release will serve (P5.7a) must be on this host, file
+# for file as the registry names them. Otherwise the site would start without
+# RiverMind Hard, and tables playing it would carry on against RiverMind Easy.
+MODELS=/srv/rivermind-poker/models/champions
+(cd "$REPO" && as_sawyer "$UV" run --locked rivermind-poker blueprint champions --verify "$MODELS") || {
+    echo "a champion in docs/models.json is not in $MODELS as registered;" >&2
+    echo "copy it there first (docs/bots.md, Where models are kept)" >&2
+    exit 1
+}
 
 # The web suite and the build, as sawyer, in a login shell for Node's PATH.
 # Playwright's browsers are not on this host: CI and `pnpm e2e:live` cover them.
@@ -158,6 +171,12 @@ for _ in $(seq 60); do
     fi
     sleep 1
 done
+# With the champions verified above, the server must have loaded them.
+if [[ -n $ok ]] && ! curl -fsS -H 'Host: rivermindpoker.com' -H 'X-Forwarded-Proto: https' \
+    http://127.0.0.1:4320/api/config | grep -q '"kind":"hard"'; then
+    echo "warning: the Node server is up but does not offer RiverMind Hard;" >&2
+    echo "see journalctl -u rivermind-poker-web for why the champion was not loaded" >&2
+fi
 [[ -n $ok ]] || {
     echo "the Node server is not answering; see journalctl -u rivermind-poker-web" >&2
     echo "to go back to serve-nl: bash $REPO/deploy/rollback-to-serve-nl.sh" >&2

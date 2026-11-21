@@ -216,11 +216,17 @@ export class NlConnection {
 		void this.refreshBalance();
 	}
 
-	/** Practise heads-up against RiverMind Easy, at the player's practice table. */
-	async practice(): Promise<void> {
-		const started = await this.#withSession(() => startPractice(this.#fetch));
+	/**
+	 * Practise heads-up at the player's practice table: against RiverMind Easy,
+	 * or the bot of `bot`'s kind (P5.7a). At a table already running, `bot`
+	 * changes the opponent; resolves to the kind still waiting for the hand in
+	 * progress to end, or null.
+	 */
+	async practice(bot: string | null = null): Promise<string | null> {
+		const started = await this.#withSession(() => startPractice(this.#fetch, bot));
 		this.#autoSit = null;
 		if (this.tableId !== started.table_id || !this.#socket) this.#follow(started.table_id);
+		return started.next_bot ?? null;
 	}
 
 	/** A fresh practice stack, for a player out of chips at a practice table. */

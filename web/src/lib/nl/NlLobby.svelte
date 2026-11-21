@@ -5,7 +5,7 @@
 	import type { ConfigResponse, TableSummary } from '../protocol-v2.ts';
 	import { fetchConfig, fetchInvite } from './api.ts';
 	import type { NlConnection } from './connection.svelte.ts';
-	import { avatarClass } from './faces.ts';
+	import { avatarClass, championLine } from './faces.ts';
 	import LobbyTables from './LobbyTables.svelte';
 
 	let {
@@ -54,12 +54,13 @@
 	let practiceError = $state('');
 
 	// Practice (P6.0b): one click to a heads-up hand against RiverMind Easy,
-	// with practice chips, whatever the wallet holds.
-	async function practice() {
+	// with practice chips, whatever the wallet holds. A trained bot the server
+	// offers is one more click away (P5.7a).
+	async function practice(bot: string | null = null) {
 		practising = true;
 		practiceError = '';
 		try {
-			await connection.practice();
+			await connection.practice(bot);
 		} catch (e) {
 			practiceError = `Could not start practice: ${e instanceof Error ? e.message : String(e)}`;
 		} finally {
@@ -73,9 +74,22 @@
 
 	const BOT_NOTES: Record<string, string> = {
 		heuristic: 'Plays its cards with a plan.',
+		hard: 'Trained by self-play. Two seats only.',
 		calling_station: 'Calls almost anything.',
 		random: 'Does whatever it likes.'
 	};
+	/** The trained bot to practise against: the one that plays two seats. */
+	const trained = $derived(
+		config?.bots.find((b) => b.champion && (!b.seats || b.seats.includes(2))) ?? null
+	);
+	/** The bots that play a table of the chosen size. */
+	const offered = $derived((config?.bots ?? []).filter((b) => !b.seats || b.seats.includes(seats)));
+	// A bot that does not play the chosen size gives way to RiverMind Easy.
+	$effect(() => {
+		if (config && bots !== 'none' && !offered.some((b) => b.kind === bots)) {
+			bots = offered.find((b) => b.kind === 'heuristic')?.kind ?? offered[0]?.kind ?? 'none';
+		}
+	});
 
 	onMount(() => {
 		fetchConfig()
@@ -164,7 +178,7 @@
 				type="button"
 				class="px-btn amber practice-start min-h-32 w-full text-l"
 				disabled={practising}
-				onclick={practice}
+				onclick={() => practice()}
 			>
 				{practising ? 'Dealing…' : 'Practice vs bots'}
 			</button>
@@ -174,6 +188,29 @@
 				).toLocaleString('en-US')} practice chips. Your wallet is not touched, and you get a fresh stack
 				whenever you run out.
 			</p>
+			{#if trained?.champion}
+				<div class="trained px-inset grid gap-4 px-5 py-4" role="group" aria-label={trained.label}>
+					<div class="flex items-start gap-5">
+						<span
+							class="sprite avatar {avatarClass({ kind: 'bot', bot: trained.kind, name: '' })}"
+							aria-hidden="true"
+						></span>
+						<p class="note text-s text-mist">
+							<strong class="text-gold text-shadow-ink">{trained.label}</strong>
+							is a trained bot. {championLine(trained.champion)}
+							<a class="text-gold-light" href={resolve('/bots')}>How it was measured</a>
+						</p>
+					</div>
+					<button
+						type="button"
+						class="px-btn blue practice-trained w-full"
+						disabled={practising}
+						onclick={() => practice(trained.kind)}
+					>
+						Practice vs {trained.label}
+					</button>
+				</div>
+			{/if}
 			{#if practiceError}<p class="error text-red-light" role="alert">{practiceError}</p>{/if}
 		</section>
 		{#if balance !== null}
@@ -191,6 +228,7 @@
 		<nav class="links flex flex-wrap gap-4" aria-label="More">
 			<a class="px-btn small" href={resolve('/hands')}>Your hands</a>
 			<a class="px-btn small" href={resolve('/fairness')}>Rules and fair dealing</a>
+			<a class="px-btn small" href={resolve('/bots')}>The bots</a>
 		</nav>
 		{#if message}<p class="closed px-panel px-5 py-3 text-mist" role="status">{message}</p>{/if}
 		{#if invited}
@@ -248,7 +286,7 @@
 				<fieldset class="min-w-0">
 					<legend class={legend}>Opponents</legend>
 					<div class="choices bots grid gap-4">
-						{#each config?.bots ?? [] as bot (bot.kind)}
+						{#each offered as bot (bot.kind)}
 							<label class="pick bot group relative block">
 								<input type="radio" class={radio} name="bots" value={bot.kind} bind:group={bots} />
 								<span class={opponent}>

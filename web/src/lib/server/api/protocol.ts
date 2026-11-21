@@ -42,6 +42,10 @@ export const NewTableRequest = object({
 	private: optional(bool(), false)
 });
 
+export const PracticeRequest = object({
+	bot: optional(nullable(str({ maxLength: 40 })), null)
+});
+
 export const SeatRequest = object({
 	seat: optional(nullable(int()), null),
 	buy_in: optional(nullable(int()), null),
@@ -103,6 +107,7 @@ type Check<T extends true> = T;
 export type Checks = [
 	Check<Same<Infer<typeof SessionRequest>, Filled<p.SessionRequest>>>,
 	Check<Same<Infer<typeof NewTableRequest>, Filled<p.NewTableRequest>>>,
+	Check<Same<Infer<typeof PracticeRequest>, Filled<p.PracticeRequest>>>,
 	Check<Same<Infer<typeof SeatRequest>, Filled<p.SeatRequest>>>,
 	Check<Same<Infer<typeof WaitlistRequest>, Filled<p.WaitlistRequest>>>,
 	Check<Same<Infer<typeof QuickSeatRequest>, Filled<p.QuickSeatRequest>>>,

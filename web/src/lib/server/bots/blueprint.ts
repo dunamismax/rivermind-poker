@@ -119,6 +119,38 @@ const sameRecord = (a: ActionRecord, b: ActionRecord) =>
 
 export type Stats = Record<string, number>;
 
+interface Indexes {
+	/** Per tree and street, the nodes a street can start at. */
+	starts: number[][][];
+	/** Per tree and node, each action token's place among the node's actions. */
+	tokenIndex: Map<string, number>[][];
+}
+
+const indexes = new WeakMap<Bundle, Indexes>();
+
+/** What a policy looks up in a bundle's trees, worked out once per bundle: a table gets its own policy (P5.7a). */
+function indexesOf(bundle: Bundle): Indexes {
+	let found = indexes.get(bundle);
+	if (found === undefined) {
+		found = {
+			starts: bundle.trees.map((t) =>
+				[0, 1, 2, 3].map((s) => {
+					const out: number[] = [];
+					t.street.forEach((st, v) => {
+						if (st === s && (t.history[v] === '' || t.history[v].endsWith('/'))) out.push(v);
+					});
+					return out;
+				})
+			),
+			tokenIndex: bundle.trees.map((t) =>
+				t.tokens.map((tokens) => new Map(tokens.map((tok, i) => [tok, i])))
+			)
+		};
+		indexes.set(bundle, found);
+	}
+	return found;
+}
+
 /** A Policy that plays a serving bundle heads-up. */
 export class BlueprintPolicy implements Policy {
 	readonly name: string;
@@ -138,18 +170,9 @@ export class BlueprintPolicy implements Policy {
 		this.name = name;
 		this.trees = bundle.trees;
 		this.tables = bundle.tables;
-		this.starts = this.trees.map((t) =>
-			[0, 1, 2, 3].map((s) => {
-				const out: number[] = [];
-				t.street.forEach((st, v) => {
-					if (st === s && (t.history[v] === '' || t.history[v].endsWith('/'))) out.push(v);
-				});
-				return out;
-			})
-		);
-		this.tokenIndex = this.trees.map((t) =>
-			t.tokens.map((tokens) => new Map(tokens.map((tok, i) => [tok, i])))
-		);
+		const { starts, tokenIndex } = indexesOf(bundle);
+		this.starts = starts;
+		this.tokenIndex = tokenIndex;
 	}
 
 	private count(key: string): void {

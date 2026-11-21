@@ -30,7 +30,13 @@
 //
 // A practice table (P6.0b) belongs to one guest, named by `practice`. Its
 // chips never come from or go back to a wallet: `refill` gives a guest who
-// ran out a fresh practice stack.
+// ran out a fresh practice stack, and `switchBot` changes the opponent between
+// hands (P5.7a).
+//
+// A policy that remembers hands gives each table its own copy (`forTable`).
+// A saved table whose bot this server does not run, such as the trained bot
+// after its bundle went missing or after a rollback, plays on against the
+// fallback bot under that bot's label, so nobody's seat or chips are lost.
 
 import { randomBytes, randomInt } from 'node:crypto';
 import { PythonRandom } from '../bots/mt.ts';
@@ -44,13 +50,23 @@ import { Table, TableError, type Departure, type TableConfig, type TableEvent } 
 export const BOT_LABELS: Readonly<Record<string, string>> = {
 	random: 'Random bot',
 	calling_station: 'Calling bot',
-	heuristic: 'RiverMind Easy'
+	heuristic: 'RiverMind Easy',
+	hard: 'RiverMind Hard'
 };
+/** The bot that stands in for one this server does not run. */
+export const FALLBACK_BOT = 'heuristic';
 
 /** A bot as a table runs it. It may answer at once or with a promise. */
 export interface BotPolicy {
 	readonly name: string;
 	act(view: SeatView, rng: BotRandom): Action | Promise<Action>;
+	/** A policy for one table, when the bot keeps a memory of its hands. */
+	forTable?(): BotPolicy;
+}
+
+/** The name a bot of `kind` wears in `seat` (D-7). */
+export function botName(kind: string, seat: number): string {
+	return `${BOT_LABELS[kind] ?? kind} ${seat + 1}`;
 }
 
 /** A table's dealing generator, which also seeds the bots' own. */
@@ -174,7 +190,7 @@ export interface RunnerSettings {
 export class TableRunner {
 	readonly tableId: string;
 	readonly table: Table;
-	readonly name: string;
+	name: string;
 	/** The kind of bot that takes free seats, or null to leave them for people. */
 	readonly fill: string | null;
 	/** Private tables are not listed; people join them with `invite`. */
@@ -197,6 +213,10 @@ export class TableRunner {
 	private task: Promise<void> | null = null;
 	private isClosed = false;
 	private botCount = 0;
+	/** This table's own policies, for bots that keep a memory of their hands. */
+	private readonly policies = new Map<string, BotPolicy>();
+	/** At a practice table: the kind that takes the bot's seat when its hand ends (P5.7a). */
+	private nextBot: string | null = null;
 
 	constructor(
 		tableId: string,
@@ -290,15 +310,69 @@ export class TableRunner {
 	private sitBot(seat: number, kind: string, buyIn: number | null = null): string {
 		this.botCount += 1;
 		const playerId = `bot:${kind}:${this.botCount}`;
-		const label = BOT_LABELS[kind] ?? kind;
-		this.table.sit(
-			seat,
-			playerId,
-			`${label} ${seat + 1}`,
-			buyIn || this.table.config.maxBuyIn,
-			kind
-		);
+		this.table.sit(seat, playerId, botName(kind, seat), buyIn || this.table.config.maxBuyIn, kind);
 		return playerId;
+	}
+
+	/** The seat of this table's first bot, or null. */
+	private botSeat(): number | null {
+		for (const [seat, player] of this.table.players()) if (player.bot !== null) return seat;
+		return null;
+	}
+
+	/**
+	 * At a practice table: play against a bot of `kind` instead (P5.7a). The
+	 * bot changes at once between hands, and otherwise when the hand in progress
+	 * ends. Resolves to the kind still waiting to sit, or null once it has.
+	 */
+	async switchBot(kind: string): Promise<string | null> {
+		if (!Object.hasOwn(this.bots, kind)) {
+			throw new TableError('bad_request', `no bot called '${kind}'`);
+		}
+		return this.change(() => {
+			if (this.practice === null) {
+				throw new TableError('bad_request', 'only practice tables change their bot');
+			}
+			this.refuseIfClosed();
+			const seat = this.botSeat();
+			if (seat === null) throw new TableError('bad_request', 'there is no bot to change');
+			this.nextBot = this.table.seats[seat]?.bot === kind ? null : kind;
+			this.settleBot();
+			return this.nextBot;
+		});
+	}
+
+	/** The kind waiting to take the bot's seat at a practice table, or null. */
+	get pendingBot(): string | null {
+		return this.nextBot;
+	}
+
+	/** Seat the bot a practice table is waiting for, once the bot it replaces is out of the hand. */
+	private settleBot(): void {
+		const kind = this.nextBot;
+		if (kind === null) return;
+		const seat = this.botSeat();
+		const old = seat === null ? null : this.table.seats[seat];
+		if (seat === null || old === null) {
+			this.nextBot = null;
+			return;
+		}
+		if (this.table.inHand(seat)) return;
+		this.nextBot = null;
+		this.table.leave(old.playerId);
+		this.sitBot(seat, kind);
+		this.name = `Practice vs ${BOT_LABELS[kind] ?? kind}`;
+	}
+
+	/** The policy that plays `kind` at this table. */
+	private policyFor(kind: string): BotPolicy {
+		let policy = this.policies.get(kind);
+		if (policy === undefined) {
+			const shared = this.bots[kind];
+			policy = shared.forTable?.() ?? shared;
+			this.policies.set(kind, policy);
+		}
+		return policy;
 	}
 
 	/** Hold a seat (rule 2.4). Resolves to the seat and whether it is free to sit in now. */
@@ -423,6 +497,7 @@ export class TableRunner {
 
 	private async publish(): Promise<void> {
 		const table = this.table;
+		this.settleBot();
 		table.settleSeats();
 		if (this.fill !== null && table.people()) {
 			for (const seat of table.freeSeats()) this.sitBot(seat, this.fill);
@@ -521,7 +596,7 @@ export class TableRunner {
 		const view = table.view(seat);
 		if (state === null || player === null || player.bot === null || view === null) return;
 		const kind = player.bot;
-		const policy = this.bots[kind];
+		const policy = this.policyFor(kind);
 		const turn = table.turn;
 		// Even with no delay, a bot's turn waits its place behind the requests and
 		// sockets already due, as serve-nl's did while its bot thought in a thread:
@@ -640,20 +715,41 @@ export class TableManager {
 		settings: { name?: string; lobby?: Record<string, unknown> | null } = {}
 	): TableRunner {
 		if (this.tables.has(tableId)) throw new RangeError(`table ${tableId} exists`);
-		const missing = new Set<string>();
-		for (const [, player] of table.players()) {
-			if (player.bot !== null && !Object.hasOwn(this.bots, player.bot)) missing.add(player.bot);
-		}
-		if (missing.size) {
-			throw new RangeError(
-				`table ${tableId} has bots this server does not run: ${[...missing].sort().join(', ')}`
-			);
-		}
 		const lobby = settings.lobby ?? {};
 		const text = (value: unknown) => (typeof value === 'string' ? value : null);
+		// A bot this server does not run gives its seat, stack and place in the hand
+		// to the fallback bot, which is then what the seat's label says (D-7).
+		const fallback = Object.hasOwn(this.bots, FALLBACK_BOT) ? FALLBACK_BOT : null;
+		const runs = (kind: string | null) => kind === null || Object.hasOwn(this.bots, kind);
+		const missing = new Set<string>();
+		for (const [seat, player] of table.players()) {
+			if (runs(player.bot)) continue;
+			missing.add(player.bot as string);
+			if (fallback !== null) {
+				player.bot = fallback;
+				player.name = botName(fallback, seat);
+			}
+		}
+		let fill = text(lobby.fill);
+		if (!runs(fill)) {
+			missing.add(fill as string);
+			fill = fallback;
+		}
+		if (missing.size) {
+			const kinds = [...missing].sort().join(', ');
+			if (fallback === null) {
+				throw new RangeError(`table ${tableId} has bots this server does not run: ${kinds}`);
+			}
+			this.options.log.warn(
+				`Table ${tableId} has bots this server does not run (${kinds}); ${BOT_LABELS[fallback]} plays instead`
+			);
+			if (settings.name?.startsWith('Practice vs ')) {
+				settings = { ...settings, name: `Practice vs ${BOT_LABELS[fallback]}` };
+			}
+		}
 		const runner = new TableRunner(tableId, table, this.bots, this.options, {
 			name: settings.name,
-			fill: text(lobby.fill),
+			fill,
 			private: lobby.private === true,
 			invite: text(lobby.invite),
 			practice: text(lobby.practice)

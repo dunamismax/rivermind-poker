@@ -30,7 +30,7 @@ test('serves pages and assets with the site headers', async ({ page, request, cs
 	expect(config.ok()).toBe(true);
 	expect((await config.json()).protocol).toBe(2);
 
-	for (const path of ['/hands', '/fairness', '/style']) {
+	for (const path of ['/hands', '/fairness', '/bots', '/style']) {
 		expect((await request.get(path)).status()).toBe(200);
 	}
 	await page.goto('/');

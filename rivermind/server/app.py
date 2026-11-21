@@ -485,14 +485,20 @@ class Server:
             return None
         return runner
 
-    async def start_practice(self, player: PlayerRecord) -> p.PracticeResponse:
-        """Seat the guest heads-up against RiverMind Easy with practice chips, or return the table they have."""
+    async def start_practice(self, player: PlayerRecord, bot: str | None = None) -> p.PracticeResponse:
+        """Seat the guest heads-up against a bot with practice chips, or return the table they have.
+
+        ``bot`` chooses the opponent (P5.7a): RiverMind Easy at a new table when
+        missing, and at a table already running, a change of bot.
+        """
+        if bot is not None and bot not in self.bots:
+            raise HTTPException(400, f"bot must be one of {sorted(self.bots)} or null")
         player_id = player.player_id
         lock, users = self._practice_locks.get(player_id, (asyncio.Lock(), 0))
         self._practice_locks[player_id] = (lock, users + 1)
         try:
             async with lock:
-                return await self._start_practice(player)
+                return await self._start_practice(player, bot)
         finally:
             lock, users = self._practice_locks[player_id]
             if users == 1:
@@ -500,12 +506,17 @@ class Server:
             else:
                 self._practice_locks[player_id] = (lock, users - 1)
 
-    async def _start_practice(self, player: PlayerRecord) -> p.PracticeResponse:
+    async def _start_practice(self, player: PlayerRecord, asked: str | None) -> p.PracticeResponse:
         player_id = player.player_id
         runner = self.practice_runner(player_id)
         if runner is not None:
             seat = runner.table.seat_of(player_id)
             assert seat is not None
+            waiting = runner.pending_bot
+            if asked is not None:
+                # The table may have closed, or lost its bot, while the request waited: then nothing changes.
+                with contextlib.suppress(TableError):
+                    waiting = await runner.switch_bot(asked)
             bots = [other.bot for _, other in runner.table.players() if other.bot is not None]
             return p.PracticeResponse(
                 table_id=runner.table_id,
@@ -513,8 +524,9 @@ class Server:
                 created=False,
                 bot=bots[0] if bots else PRACTICE_BOT,
                 stack=runner.table.config.max_buy_in,
+                next_bot=waiting,
             )
-        bot = PRACTICE_BOT if PRACTICE_BOT in self.bots else next(iter(self.bots))
+        bot = asked or (PRACTICE_BOT if PRACTICE_BOT in self.bots else next(iter(self.bots)))
         self._evict()
         if len(self.tables.tables) >= self.max_tables:
             raise HTTPException(503, "Every table is in use; try again later.")
@@ -990,7 +1002,7 @@ def create_app(
             raise HTTPException(401, NO_SESSION_MESSAGE)
         return session[0]
 
-    @app.get("/api/config", response_model=p.ConfigResponse)
+    @app.get("/api/config", response_model=p.ConfigResponse, response_model_exclude_none=True)
     async def config() -> p.ConfigResponse:
         return p.ConfigResponse(
             protocol=p.PROTOCOL_VERSION,
@@ -1112,11 +1124,19 @@ def create_app(
         player = await player_of(request)
         return await server.quick_seat(player, body)
 
-    @app.post("/api/practice", response_model=p.PracticeResponse, responses={code: {"model": p.HttpError} for code in (401, 503)})
-    async def practice(request: Request) -> p.PracticeResponse:
-        """Start the guest's practice table, heads-up against RiverMind Easy, or return the one they have (P6.0b)."""
+    @app.post(
+        "/api/practice",
+        response_model=p.PracticeResponse,
+        response_model_exclude_none=True,
+        responses={code: {"model": p.HttpError} for code in (400, 401, 503)},
+    )
+    async def practice(request: Request, body: p.PracticeRequest | None = None) -> p.PracticeResponse:
+        """Start the guest's practice table, heads-up against a labelled bot, or return the one they have (P6.0b).
+
+        A ``bot`` in the body chooses the opponent, and changes it at a table already running (P5.7a).
+        """
         player = await player_of(request)
-        return await server.start_practice(player)
+        return await server.start_practice(player, body.bot if body else None)
 
     @app.get("/api/hands", response_model=p.HandListResponse, responses={401: {"model": p.HttpError}})
     async def hands(request: Request, limit: int = 20, before: str | None = None) -> p.HandListResponse:

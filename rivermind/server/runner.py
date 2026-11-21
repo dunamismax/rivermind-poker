@@ -57,7 +57,24 @@ log = logging.getLogger("rivermind.server")
 Listener = Callable[["TableRunner", Sequence[Event]], Awaitable[None]]
 Sleep = Callable[[float], Awaitable[object]]
 
-BOT_LABELS = {"random": "Random bot", "calling_station": "Calling bot", "heuristic": "RiverMind Easy"}
+BOT_LABELS = {
+    "random": "Random bot",
+    "calling_station": "Calling bot",
+    "heuristic": "RiverMind Easy",
+    "hard": "RiverMind Hard",
+}
+FALLBACK_BOT = "heuristic"
+"""The bot that stands in for one this server does not run.
+
+The Node server plays a trained champion as RiverMind Hard (P5.7a); this
+server, the rollback until P4B.8, does not. A saved table with such a bot plays
+on here against RiverMind Easy, labelled as that, so no seat or chip is lost.
+"""
+
+
+def bot_name(kind: str, seat: int) -> str:
+    """The name a bot of ``kind`` wears in ``seat`` (D-7)."""
+    return f"{BOT_LABELS.get(kind, kind)} {seat + 1}"
 
 
 @dataclass
@@ -97,6 +114,8 @@ class TableRunner:
         self.table_id = table_id
         self.table = table
         self.name = name or table_id
+        self.pending_bot: str | None = None
+        """At a practice table: the kind that takes the bot's seat when its hand ends (P5.7a)."""
         if fill is not None and fill not in bots:
             raise ValueError(f"no bot called {fill!r}")
         self.fill = fill
@@ -190,9 +209,53 @@ class TableRunner:
     def _sit_bot(self, seat: int, kind: str, buy_in: int | None = None) -> str:
         self._bot_count += 1
         player_id = f"bot:{kind}:{self._bot_count}"
-        label = BOT_LABELS.get(kind, kind)
-        self.table.sit(seat, player_id, f"{label} {seat + 1}", buy_in or self.table.config.max_buy_in, bot=kind)
+        self.table.sit(seat, player_id, bot_name(kind, seat), buy_in or self.table.config.max_buy_in, bot=kind)
         return player_id
+
+    def _bot_seat(self) -> int | None:
+        """The seat of this table's first bot."""
+        return next((seat for seat, player in self.table.players() if player.bot is not None), None)
+
+    async def switch_bot(self, kind: str) -> str | None:
+        """At a practice table: play against a bot of ``kind`` instead (P5.7a).
+
+        The bot changes at once between hands, and otherwise when the hand in
+        progress ends. Returns the kind still waiting to sit, or ``None`` once it has.
+        """
+        if kind not in self.bots:
+            raise TableError(ErrorCode.BAD_REQUEST, f"no bot called {kind!r}")
+
+        def apply() -> str | None:
+            if self.practice is None:
+                raise TableError(ErrorCode.BAD_REQUEST, "only practice tables change their bot")
+            self._refuse_if_closed()
+            seat = self._bot_seat()
+            if seat is None:
+                raise TableError(ErrorCode.BAD_REQUEST, "there is no bot to change")
+            player = self.table.seats[seat]
+            assert player is not None
+            self.pending_bot = None if player.bot == kind else kind
+            self._settle_bot()
+            return self.pending_bot
+
+        return await self._change(apply)
+
+    def _settle_bot(self) -> None:
+        """Seat the bot a practice table is waiting for, once the bot it replaces is out of the hand."""
+        kind = self.pending_bot
+        if kind is None:
+            return
+        seat = self._bot_seat()
+        old = None if seat is None else self.table.seats[seat]
+        if seat is None or old is None:
+            self.pending_bot = None
+            return
+        if self.table.in_hand(seat):
+            return
+        self.pending_bot = None
+        self.table.leave(old.player_id)
+        self._sit_bot(seat, kind)
+        self.name = f"Practice vs {BOT_LABELS.get(kind, kind)}"
 
     async def reserve(self, player_id: str, name: str, seat: int | None = None) -> tuple[int, bool]:
         """Hold a seat (rule 2.4). Returns the seat and whether it is free to sit in now."""
@@ -300,6 +363,7 @@ class TableRunner:
 
     async def _changed(self) -> None:
         """Publish the table's new events. Call with the lock held."""
+        self._settle_bot()
         self.table.settle_seats()
         if self.fill is not None and self.table.people():
             for seat in self.table.free_seats():
@@ -466,11 +530,33 @@ class TableManager:
         """
         if table_id in self.tables:
             raise ValueError(f"table {table_id} exists")
-        missing = {p.bot for _, p in table.players() if p.bot is not None and p.bot not in self.bots}
-        if missing:
-            raise ValueError(f"table {table_id} has bots this server does not run: {sorted(missing)}")
         lobby = lobby or {}
         fill, invite, practice = lobby.get("fill"), lobby.get("invite"), lobby.get("practice")
+        # A bot this server does not run gives its seat, stack and place in the hand
+        # to the fallback bot, which is then what the seat's label says (D-7).
+        fallback = FALLBACK_BOT if FALLBACK_BOT in self.bots else None
+        missing: set[str] = set()
+        for seat, player in table.players():
+            if player.bot is None or player.bot in self.bots:
+                continue
+            missing.add(player.bot)
+            if fallback is not None:
+                player.bot = fallback
+                player.name = bot_name(fallback, seat)
+        if isinstance(fill, str) and fill not in self.bots:
+            missing.add(fill)
+            fill = fallback
+        if missing:
+            if fallback is None:
+                raise ValueError(f"table {table_id} has bots this server does not run: {sorted(missing)}")
+            log.warning(
+                "Table %s has bots this server does not run (%s); %s plays instead",
+                table_id,
+                ", ".join(sorted(missing)),
+                BOT_LABELS[fallback],
+            )
+            if name.startswith("Practice vs "):
+                name = f"Practice vs {BOT_LABELS[fallback]}"
         runner = TableRunner(
             table_id,
             table,

@@ -107,11 +107,19 @@ export async function createTable(
 /**
  * The player's practice table (P6.0b): heads-up against a labelled bot with
  * practice chips, whatever the wallet holds. Asking again returns the same table.
+ * `bot` chooses the opponent (P5.7a): RiverMind Easy at a new table when left
+ * out, and at a table already running, a change of bot once its hand ends.
  */
-export async function startPractice(fetcher: typeof fetch = fetch): Promise<PracticeResponse> {
-	const value = await body(
-		await fetcher('/api/practice', { method: 'POST', credentials: 'same-origin' })
-	);
+export async function startPractice(
+	fetcher: typeof fetch = fetch,
+	bot: string | null = null
+): Promise<PracticeResponse> {
+	const init: RequestInit = { method: 'POST', credentials: 'same-origin' };
+	if (bot !== null) {
+		init.headers = { 'content-type': 'application/json' };
+		init.body = JSON.stringify({ bot });
+	}
+	const value = await body(await fetcher('/api/practice', init));
 	if (!isRecord(value) || typeof value.table_id !== 'string' || typeof value.seat !== 'number') {
 		throw new ApiError('Unexpected /api/practice response', 200);
 	}

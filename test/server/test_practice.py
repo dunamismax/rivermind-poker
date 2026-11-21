@@ -16,10 +16,11 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from rivermind.bots import CallingStationPolicy, HeuristicPolicy
-from rivermind.server import RunnerOptions
+from rivermind.server import RunnerOptions, TableManager, default_bots
 from rivermind.server import protocol as p
 from rivermind.server.app import PRACTICE_IDLE_SECONDS, PRACTICE_STACK, create_app
 from rivermind.server.clock import ManualClock
+from rivermind.server.snapshot import table_from_dict, table_to_dict
 from test.server.test_hands import hands_of
 from test.server.test_lobby import advance, lobby, take_seat, waitlist
 from test.server.test_protocol_v2 import SECRET, Player, Socket, make_app, server_runner, wait_for
@@ -27,8 +28,9 @@ from test.server.test_protocol_v2 import SECRET, Player, Socket, make_app, serve
 Message = dict[str, Any]
 
 
-def practice(player: Player, status: int = 200) -> Message:
-    response = player.client.post("/api/practice", headers=player.headers())
+def practice(player: Player, status: int = 200, bot: str | None = None) -> Message:
+    body = None if bot is None else {"bot": bot}
+    response = player.client.post("/api/practice", headers=player.headers(), json=body)
     assert response.status_code == status, response.text
     if status == 200:
         p.PracticeResponse.model_validate(response.json())
@@ -244,3 +246,63 @@ def test_the_practice_stack_is_a_server_setting() -> None:
         except ValueError:
             continue
         raise AssertionError(f"a practice stack of {bad!r} was accepted")
+
+
+def test_a_guest_changes_the_practice_opponent_between_hands() -> None:
+    """P5.7a. This server runs no trained bot, so the change here is between the simple ones."""
+    with TestClient(make_app(seed=9)) as client:
+        alice = Player(client)
+        table_id = practice(alice)["table_id"]
+        assert practice(alice, 400, bot="hard")["detail"] == "bot must be one of ['calling_station', 'heuristic', 'random'] or null"
+        with alice.socket() as a:
+            joined(a, table_id)
+            turn = a.my_turn(table_id)  # mid-hand: the bot keeps its seat until the hand ends
+            during = hand_no(turn)
+            asked = practice(alice, bot="calling_station")
+            assert asked["created"] is False and asked["bot"] == "heuristic" and asked["next_bot"] == "calling_station"
+            assert "next_bot" not in practice(alice, bot="heuristic")  # asking for the bot already there takes it back
+            assert practice(alice, bot="calling_station")["next_bot"] == "calling_station"
+            assert practice(alice)["next_bot"] == "calling_station"
+            a.play(table_id, turn)
+            after = a.play_until(table_id, lambda m: hand_no(m) > during)
+            bot = after["view"]["seats"][1]
+            assert bot["bot"] == "calling_station" and bot["name"] == "Calling bot 2"
+            assert after["view"]["name"] == "Practice vs Calling bot"
+            started = practice(alice)
+            assert started["bot"] == "calling_station" and "next_bot" not in started
+        assert [entry["kind"] for entry in wallet(alice)["entries"]] == ["grant"]
+
+
+def test_a_saved_table_with_a_bot_this_server_does_not_run_plays_on_against_easy() -> None:
+    """After a rollback from the Node server, RiverMind Hard's tables keep their seats and chips."""
+    with TestClient(make_app(seed=6)) as client:
+        alice = Player(client)
+        table_id = practice(alice)["table_id"]
+        with alice.socket() as a:
+            joined(a, table_id)
+            a.my_turn(table_id)
+            runner = server_runner(client, table_id)
+            saved = table_to_dict(runner.table)
+            saved["seats"][1]["bot"] = "hard"  # as the Node server saves its trained bot
+            saved["seats"][1]["name"] = "RiverMind Hard 2"
+
+    async def restore() -> None:
+        manager = TableManager(default_bots(), RunnerOptions(require_person=True))
+        table = table_from_dict(saved)
+        restored = manager.restore(table_id, table, name="Practice vs RiverMind Hard", lobby={"practice": alice.player_id})
+        bot = restored.table.seats[1]
+        assert bot is not None and bot.bot == "heuristic" and bot.name == "RiverMind Easy 2"
+        assert restored.name == "Practice vs RiverMind Easy" and restored.practice == alice.player_id
+        assert restored.table.hand_in_progress and restored.table.stack_of(0) == table.stack_of(0)
+        filled = manager.restore("filled", table_from_dict(saved), lobby={"fill": "hard"})
+        assert filled.fill == "heuristic"
+        await manager.shutdown()
+        bare = TableManager({"random": default_bots()["random"]}, RunnerOptions())
+        try:
+            bare.restore(table_id, table_from_dict(saved))
+        except ValueError as e:
+            assert "does not run: ['hard']" in str(e)
+        else:
+            raise AssertionError("a table with no bot to stand in was restored")
+
+    asyncio.run(restore())

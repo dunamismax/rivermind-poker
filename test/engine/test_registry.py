@@ -61,6 +61,7 @@ class Site:
         self.root = root
         self.registry = root / "docs" / "models.json"
         self.page = root / "docs" / "models.md"
+        self.site = root / "web" / "champions.json"
         self.store = root / "models"
         self.reports = root / "docs" / "evaluations"
         self.reports.mkdir(parents=True)
@@ -69,13 +70,15 @@ class Site:
     def report(self, candidate: str, results: dict[str, tuple[float, float]], *, seats: int = 2) -> Path:
         """Write a report for ``candidate`` (a policy spec) with a 95% interval for each opponent at 100 big blinds."""
         rows = [
-            {"opponent": o, "stack_bb": 100, "bb_per_100": round((lo + hi) / 2, 2), "ci95_bb_per_100": [lo, hi]} for o, (lo, hi) in results.items()
+            {"opponent": o, "stack_bb": 100, "hands": 2000, "bb_per_100": round((lo + hi) / 2, 2), "ci95_bb_per_100": [lo, hi]}
+            for o, (lo, hi) in results.items()
         ]
         self.count += 1
         report = {
             "format": 1,
             "kind": "rivermind-evaluation",
-            "game": {"seats": seats},
+            "game": {"seats": seats, "blinds": [50, 100]},
+            "software": {"commit": "0" * 40, "dirty": False},
             "seed": self.count,
             "deals_per_matchup": 1_000,
             "candidate": describe_policy(candidate),
@@ -88,6 +91,7 @@ class Site:
 
     def promote(self, report: Path, *args: str) -> Any:
         base = ["blueprint", "promote", str(report), "--registry", str(self.registry), "--page", str(self.page), "--store", str(self.store)]
+        base += ["--site", str(self.site)]
         return CliRunner().invoke(cli, [*base, "--date", "2026-11-21", *args])
 
     def promote_both(self, c: Candidate, results: dict[str, tuple[float, float]], served: dict[str, tuple[float, float]] | None = None) -> Any:
@@ -214,6 +218,22 @@ def test_a_replacement_must_also_beat_the_champion(site: Site, candidates: tuple
     assert "against `first`, the champion at the time" in page
     assert reg.verify_kept(decision, site.store / "second") == [] and (site.store / "first").is_dir()
 
+    # The site's extract: the champion alone, its bundle's hashes, and the served results first.
+    extract = json.loads(site.site.read_text())
+    assert extract["kind"] == "rivermind-site-champions"
+    (model,) = extract["champions"]
+    assert (model["format"], model["seats"], model["name"], model["replaced"]) == ("heads-up", 2, "second", "first")
+    assert model["bundle"]["files"] == decision["bundle"]["files"] and model["bundle"]["table_set"] == decision["bundle"]["table_set"]
+    assert [e["candidate"] for e in model["evaluations"]] == ["bundle", "checkpoint"]
+    served = model["evaluations"][0]
+    assert served["report"] == "evaluations/report-10" and served["deals"] == 1000
+    assert [(r["opponent"], r["name"], r["gate"]) for r in served["results"]] == [
+        ("heuristic", None, True),
+        ("calling_station", None, True),
+        ("champion", "first", True),
+    ]
+    assert served["results"][2]["ci95"] == [1.0, 11.0] and served["results"][0]["hands"] == 2000
+
 
 def test_it_refuses_inputs_that_do_not_belong_together(site: Site, candidates: tuple[Candidate, Candidate], tmp_path: Path) -> None:
     first, second = candidates
@@ -281,6 +301,13 @@ def test_a_bundle_can_be_evaluated_and_be_an_opponent(candidates: tuple[Candidat
 
 
 # The published registry
+
+
+def test_the_site_extract_is_the_registry() -> None:
+    registry = reg.load(ROOT / reg.REGISTRY)
+    assert (ROOT / reg.SITE).read_text() == reg.dumps(reg.site_data(registry, ROOT / "docs")), (
+        "web/src/lib/champions.json is stale: it is written by `rivermind-poker blueprint promote`"
+    )
 
 
 def test_the_published_page_is_the_registry_rendered() -> None:

@@ -15,6 +15,17 @@
  *   RIVERMIND_HAND_PAUSE       seconds between hands (3).
  *   RIVERMIND_BOT_DELAY        seconds a bot waits before acting (0.6).
  *   RIVERMIND_MAX_TABLES       the most tables open at once (200).
+ *   RIVERMIND_MODELS           the directory of promoted models, each in
+ *                              `<name>/bundle` as `rivermind-poker blueprint promote`
+ *                              keeps them (/srv/rivermind-poker/models/champions on
+ *                              the live server). With it, the heads-up champion of
+ *                              the registry plays as RiverMind Hard, once its bundle
+ *                              has been checked against the registry (P5.7a).
+ *                              Without it, or if the check fails, the site runs
+ *                              without that bot.
+ *   RIVERMIND_CHAMPIONS        a registry extract to check bundles against instead of
+ *                              the one this build was made with; for tests that serve
+ *                              a synthetic bundle.
  *
  * With `RIVERMIND_API=1`, `server/index.ts` makes one at start-up, restores
  * the saved tables and serves the API ahead of SvelteKit's handler and the
@@ -23,12 +34,29 @@
 import { randomBytes } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
+import {
+	championFor,
+	ChampionPolicy,
+	HARD,
+	loadChampion,
+	readRegistry,
+	REGISTRY,
+	type Champion
+} from '../bots/champions.ts';
+import { defaultBots } from '../bots/policies.ts';
+import type * as p from '../../protocol-v2.ts';
 import { createDatabase, createPool } from '../db/index.ts';
-import type { RunnerOptions } from '../table/runner.ts';
+import {
+	BOT_LABELS,
+	consoleLog,
+	type BotPolicy,
+	type Log,
+	type RunnerOptions
+} from '../table/runner.ts';
 import { TableStore } from '../table/store.ts';
 import { createApi, type ApiHandler } from './api.ts';
 import type { Secret } from './auth.ts';
-import { Site } from './site.ts';
+import { Site, type TrainedBot } from './site.ts';
 import { createSocketServer, type SocketServer } from './socket.ts';
 import { Tables } from './tables.ts';
 
@@ -78,6 +106,70 @@ function numberFrom(env: Env, name: string, least: number): number | undefined {
 	return value;
 }
 
+/** A champion as `GET /api/config` describes it: the gate's matchups for the strategy the site serves. */
+export function describeChampion(champion: Champion): p.BotChampion {
+	const served =
+		champion.evaluations.find((e) => e.candidate === 'bundle') ?? champion.evaluations[0];
+	const gate = (served?.results ?? []).filter((r) => r.gate);
+	return {
+		name: champion.name,
+		promoted: champion.promoted,
+		iterations: champion.iterations,
+		stack_bb: gate[0]?.stack_bb ?? 100,
+		results: gate.map((r) => ({
+			opponent: r.opponent,
+			label:
+				r.opponent === 'champion'
+					? 'the champion before it'
+					: (BOT_LABELS[r.opponent] ?? r.opponent),
+			hands: r.hands,
+			bb_per_100: r.bb_per_100,
+			ci95: [...r.ci95]
+		}))
+	};
+}
+
+export interface Trained {
+	/** The trained bots' policies, by kind, to add to the simple bots. */
+	bots: Record<string, BotPolicy>;
+	trained: Record<string, TrainedBot>;
+}
+
+/**
+ * The trained bots this server can run (P5.7a): the registry's heads-up
+ * champion as RiverMind Hard, when `RIVERMIND_MODELS` holds its bundle and
+ * every file is the registered one. A bundle that is missing or fails the
+ * check is reported and left out, so the site still starts.
+ */
+export function loadTrained(env: Env = process.env, log: Log = consoleLog): Trained {
+	const found: Trained = { bots: {}, trained: {} };
+	const models = env.RIVERMIND_MODELS;
+	if (!models) return found;
+	try {
+		const registry = env.RIVERMIND_CHAMPIONS ? readRegistry(env.RIVERMIND_CHAMPIONS) : REGISTRY;
+		const champion = championFor(registry, 2);
+		if (champion === null) {
+			log.warn('RIVERMIND_MODELS is set, but the registry has no heads-up champion');
+			return found;
+		}
+		const started = performance.now();
+		const bundle = loadChampion(models, champion);
+		found.bots[HARD] = new ChampionPolicy(champion, bundle);
+		found.trained[HARD] = { seats: [champion.seats], champion: describeChampion(champion) };
+		const seconds = ((performance.now() - started) / 1000).toFixed(1);
+		log.info(
+			`${BOT_LABELS[HARD]} plays ${champion.name}: bundle ${bundle.path} checked against the registry in ${seconds} s ` +
+				`(strategy.u8 ${champion.bundle.files['strategy.u8']}, table set ${champion.bundle.table_set})`
+		);
+	} catch (error) {
+		log.error(
+			`Could not load the champion from ${models}; ${BOT_LABELS[HARD]} is not offered`,
+			error
+		);
+	}
+	return found;
+}
+
 export function createRuntime(env: Env = process.env): Runtime {
 	let secret = loadSecret(env);
 	if (!secret) {
@@ -89,9 +181,11 @@ export function createRuntime(env: Env = process.env): Runtime {
 	if (!pool)
 		console.warn('No DATABASE_URL: players, wallets and tables will not survive a restart');
 	const db = pool ? createDatabase(pool) : null;
+	const { bots: trainedBots, trained } = loadTrained(env);
 	const site = new Site({
 		secret,
 		db,
+		trained,
 		practiceStack: numberFrom(env, 'RIVERMIND_PRACTICE_STACK', 1)
 	});
 	const runner: Partial<RunnerOptions> = {};
@@ -100,6 +194,7 @@ export function createRuntime(env: Env = process.env): Runtime {
 	if (handPause !== undefined) runner.handPause = handPause;
 	if (botDelay !== undefined) runner.botDelay = botDelay;
 	const tables = new Tables(site, {
+		bots: { ...defaultBots(), ...trainedBots },
 		runner,
 		maxTables: numberFrom(env, 'RIVERMIND_MAX_TABLES', 1),
 		store: db ? new TableStore(db) : null

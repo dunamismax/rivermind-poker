@@ -31,6 +31,7 @@ import { seatOf } from './hands.ts';
 import {
 	NewTableRequest,
 	PROTOCOL_VERSION,
+	PracticeRequest,
 	QuickSeatRequest,
 	RelationRequest,
 	ReportRequest,
@@ -39,7 +40,7 @@ import {
 	WaitlistRequest
 } from './protocol.ts';
 import { clientAddress, REACTIONS } from './safety.ts';
-import { BOT_LABELS, STAKES, type Site } from './site.ts';
+import { STAKES, type Site } from './site.ts';
 import { parseCookies } from './socket.ts';
 import type { Tables } from './tables.ts';
 import { Invalid, parseJson, type Schema } from './validate.ts';
@@ -207,7 +208,7 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 	const config: Route = async () => {
 		const response: p.ConfigResponse = {
 			protocol: PROTOCOL_VERSION,
-			bots: site.bots.map((kind) => ({ kind, label: BOT_LABELS[kind] ?? kind })),
+			bots: site.botOptions(),
 			seat_counts: [2, 3, 4, 5, 6, 7, 8, 9],
 			stakes: STAKES.map(([small, big]) => ({ small_blind: small, big_blind: big })),
 			reactions: Object.entries(REACTIONS).map(([kind, text]) => ({
@@ -399,8 +400,9 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 
 		/** Start the guest's practice table, or return the one they have (P6.0b). */
 		const practice: Route = async (request) => {
+			const asked = await body(request, PracticeRequest, true);
 			const player = await playerOf(request);
-			return json(await tables.startPractice(player));
+			return json(await tables.startPractice(player, asked?.bot ?? null));
 		};
 
 		/** Report the person in a seat for review (P4.5). */

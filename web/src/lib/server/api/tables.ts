@@ -448,6 +448,13 @@ export class Tables {
 		if (request.bots !== null && !Object.hasOwn(this.bots, request.bots)) {
 			throw new HttpError(400, `bots must be one of ${pythonList([...kinds].sort())} or null`);
 		}
+		if (request.bots !== null && !this.site.botPlays(request.bots, request.seats)) {
+			const sizes = this.site.trained[request.bots]?.seats.join(' or ');
+			throw new HttpError(
+				400,
+				`${BOT_LABELS[request.bots] ?? request.bots} plays only at tables of ${sizes} seats`
+			);
+		}
 		const stakes = STAKES.find(([, big]) => big === request.big_blind);
 		if (stakes === undefined) {
 			const bigs = STAKES.map(([, big]) => big).sort((a, b) => a - b);
@@ -505,14 +512,22 @@ export class Tables {
 		return player === null || player.leaving ? null : runner;
 	}
 
-	/** Seat the guest heads-up against RiverMind Easy with practice chips, or return the table they have. */
-	startPractice(player: PlayerRecord): Promise<p.PracticeResponse> {
+	/**
+	 * Seat the guest heads-up against a bot with practice chips, or return the
+	 * table they have. `bot` chooses the opponent (P5.7a): RiverMind Easy at a
+	 * new table when null, and at a table already running, a change of bot.
+	 */
+	startPractice(player: PlayerRecord, bot: string | null = null): Promise<p.PracticeResponse> {
+		if (bot !== null && !(Object.hasOwn(this.bots, bot) && this.site.botPlays(bot, 2))) {
+			const kinds = Object.keys(this.bots).filter((kind) => this.site.botPlays(kind, 2));
+			throw new HttpError(400, `bot must be one of ${pythonList(kinds.sort())} or null`);
+		}
 		// One start at a time per guest, so two quick clicks make one table.
 		const playerId = player.playerId;
 		const before = this.practiceStarts.get(playerId) ?? Promise.resolve();
 		const mine = before.then(
-			() => this.startPracticeNow(player),
-			() => this.startPracticeNow(player)
+			() => this.startPracticeNow(player, bot),
+			() => this.startPracticeNow(player, bot)
 		);
 		this.practiceStarts.set(playerId, mine);
 		const forget = () => {
@@ -522,20 +537,35 @@ export class Tables {
 		return mine;
 	}
 
-	private async startPracticeNow(player: PlayerRecord): Promise<p.PracticeResponse> {
+	private async startPracticeNow(
+		player: PlayerRecord,
+		asked: string | null
+	): Promise<p.PracticeResponse> {
 		const playerId = player.playerId;
 		const existing = this.practiceRunner(playerId);
 		if (existing !== null) {
+			let waiting: string | null = existing.pendingBot;
+			if (asked !== null) {
+				try {
+					waiting = await existing.switchBot(asked);
+				} catch (error) {
+					// The table closed, or lost its bot, while the request waited: nothing changed.
+					if (!(error instanceof TableError)) throw error;
+				}
+			}
 			const bots = existing.table.players().flatMap(([, other]) => other.bot ?? []);
-			return {
+			const response: p.PracticeResponse = {
 				table_id: existing.tableId,
 				seat: existing.table.seatOf(playerId) as number,
 				created: false,
 				bot: bots[0] ?? PRACTICE_BOT,
 				stack: existing.table.config.maxBuyIn
 			};
+			if (waiting !== null) response.next_bot = waiting;
+			return response;
 		}
-		const bot = Object.hasOwn(this.bots, PRACTICE_BOT) ? PRACTICE_BOT : Object.keys(this.bots)[0];
+		const bot =
+			asked ?? (Object.hasOwn(this.bots, PRACTICE_BOT) ? PRACTICE_BOT : Object.keys(this.bots)[0]);
 		this.evict();
 		if (this.manager.tables.size >= this.maxTables) {
 			throw new HttpError(503, 'Every table is in use; try again later.');

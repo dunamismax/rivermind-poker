@@ -342,9 +342,31 @@ class TableView(_Model):
 # HTTP
 
 
+class BotResult(_Model):
+    """One matchup of a trained bot's published evaluation."""
+
+    opponent: str = Field(description="A bot kind, or `champion` for the champion this one replaced.")
+    label: str
+    hands: int
+    bb_per_100: float = Field(description="Big blinds won per 100 hands.")
+    ci95: list[float] = Field(description="The two bounds of the 95% interval.")
+
+
+class BotChampion(_Model):
+    """The promoted model a trained bot plays, with the evaluation its label links to (D-7)."""
+
+    name: str = Field(description="Its name in the model registry (docs/models.md).")
+    promoted: str = Field(description="The date it was promoted.")
+    iterations: int = Field(description="Training iterations.")
+    stack_bb: int = Field(description="The stacks the results were played at, in big blinds.")
+    results: list[BotResult] = Field(description="The promotion gate's matchups, for the strategy the site serves.")
+
+
 class BotOption(_Model):
     kind: str
     label: str
+    seats: list[int] | None = Field(default=None, description="The table sizes this bot plays; every size when missing.")
+    champion: BotChampion | None = Field(default=None, description="For a trained bot: the model it plays.")
 
 
 class Stakes(_Model):
@@ -438,11 +460,21 @@ class NewTableResponse(_Model):
     invite: str | None = Field(default=None, description="A private table's invite code.")
 
 
+class PracticeRequest(_Model):
+    """`POST /api/practice`, with an optional body."""
+
+    bot: str | None = Field(
+        default=None,
+        description="The bot to practise against, one that plays two seats. Missing: the table's bot, or RiverMind Easy at a new table.",
+    )
+
+
 class PracticeResponse(_Model):
     """`POST /api/practice`: the guest's practice table, heads-up against a labelled bot (P6.0b).
 
     The guest sits with a practice stack that never comes from or goes back to the wallet.
-    Asking again while seated there returns the same table.
+    Asking again while seated there returns the same table. Asking for another bot
+    changes the opponent, at once between hands and otherwise when the hand ends (P5.7a).
     """
 
     table_id: str
@@ -450,6 +482,7 @@ class PracticeResponse(_Model):
     created: bool = Field(description="False when the guest's practice table was already running.")
     bot: str = Field(description="The kind of bot in the other seat.")
     stack: int = Field(description="The practice stack, given again whenever the guest runs out.")
+    next_bot: str | None = Field(default=None, description="The kind that takes the bot's seat when the hand in progress ends.")
 
 
 class TableSummary(_Model):
@@ -773,6 +806,7 @@ MODELS: list[type[BaseModel]] = [
     WalletResponse,
     NewTableRequest,
     NewTableResponse,
+    PracticeRequest,
     PracticeResponse,
     TableListResponse,
     TableSummary,

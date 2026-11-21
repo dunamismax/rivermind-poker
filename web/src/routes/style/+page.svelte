@@ -31,6 +31,7 @@
 		'avatar-heuristic',
 		'avatar-random',
 		'avatar-calling-station',
+		'avatar-hard',
 		'avatar-bot'
 	];
 	let range = $state(40);

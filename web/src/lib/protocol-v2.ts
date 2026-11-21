@@ -30,9 +30,39 @@ export interface ActionRecord {
 	all_in: boolean;
 }
 
+/** The promoted model a trained bot plays, with the evaluation its label links to (D-7). */
+export interface BotChampion {
+	/** Its name in the model registry (docs/models.md). */
+	name: string;
+	/** The date it was promoted. */
+	promoted: string;
+	/** Training iterations. */
+	iterations: number;
+	/** The stacks the results were played at, in big blinds. */
+	stack_bb: number;
+	/** The promotion gate's matchups, for the strategy the site serves. */
+	results: BotResult[];
+}
+
 export interface BotOption {
 	kind: string;
 	label: string;
+	/** The table sizes this bot plays; every size when missing. */
+	seats?: number[] | null;
+	/** For a trained bot: the model it plays. */
+	champion?: BotChampion | null;
+}
+
+/** One matchup of a trained bot's published evaluation. */
+export interface BotResult {
+	/** A bot kind, or `champion` for the champion this one replaced. */
+	opponent: string;
+	label: string;
+	hands: number;
+	/** Big blinds won per 100 hands. */
+	bb_per_100: number;
+	/** The two bounds of the 95% interval. */
+	ci95: number[];
 }
 
 export interface Card {
@@ -253,11 +283,18 @@ export interface PotResult {
 	shares: number[];
 }
 
+/** `POST /api/practice`, with an optional body. */
+export interface PracticeRequest {
+	/** The bot to practise against, one that plays two seats. Missing: the table's bot, or RiverMind Easy at a new table. */
+	bot?: string | null;
+}
+
 /**
  * `POST /api/practice`: the guest's practice table, heads-up against a labelled bot (P6.0b).
  *
  * The guest sits with a practice stack that never comes from or goes back to the wallet.
- * Asking again while seated there returns the same table.
+ * Asking again while seated there returns the same table. Asking for another bot
+ * changes the opponent, at once between hands and otherwise when the hand ends (P5.7a).
  */
 export interface PracticeResponse {
 	table_id: string;
@@ -268,6 +305,8 @@ export interface PracticeResponse {
 	bot: string;
 	/** The practice stack, given again whenever the guest runs out. */
 	stack: number;
+	/** The kind that takes the bot's seat when the hand in progress ends. */
+	next_bot?: string | null;
 }
 
 /** `POST /api/quick-seat`: a seat at the busiest matching public table, or a new table with bots. */

@@ -34,6 +34,12 @@ Environment=SHUTDOWN_TIMEOUT=10
 # The TypeScript API and table server (P4B.5a, P4B.5b). Hand pause, bot delay
 # and the table limit keep their defaults (3 s, 0.6 s, 200), as serve-nl ran.
 Environment=RIVERMIND_API=1
+# The promoted models (P5.7a, docs/models.md). The heads-up champion plays as
+# RiverMind Hard once every file of its bundle here matches the registry this
+# release was built with; deploy/update.sh checks that before the site changes.
+# The files are root-owned and world-readable, and ProtectSystem=strict keeps
+# them read-only to this service. The bundle is held in memory, about 450 MB.
+Environment=RIVERMIND_MODELS=/srv/rivermind-poker/models/champions
 # DATABASE_URL for the rivermind_poker_web role, from deploy/setup-database.sh.
 EnvironmentFile=/etc/rivermind-poker/web.env
 # The secret that signs session cookies: the one serve-nl made, so every guest

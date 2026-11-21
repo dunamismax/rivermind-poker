@@ -17,6 +17,7 @@ import {
 	runnerOptions,
 	seededDealer,
 	TableManager,
+	TableRunner,
 	type BotPolicy,
 	type Log
 } from './runner.ts';
@@ -247,9 +248,14 @@ describe('table runners', () => {
 		await expect(runner.refill('alice')).rejects.toMatchObject({ code: 'bad_request' });
 		await manager.close(runner.tableId);
 		expect(manager.get(runner.tableId)).toBeNull();
-		expect(() => manager.restore('t', new Table(heads), { lobby: { fill: 'nobody' } })).toThrow(
+		// A table that filled its seats with a bot this server does not run fills them with RiverMind Easy.
+		expect(manager.restore('t', new Table(heads), { lobby: { fill: 'nobody' } }).fill).toBe(
+			'heuristic'
+		);
+		expect(() => new TableRunner('u', new Table(heads), {}, options(), { fill: 'nobody' })).toThrow(
 			RangeError
 		);
+		await manager.shutdown();
 	});
 
 	it('uses the injected sleep for its pauses', async () => {
@@ -293,9 +299,15 @@ describe('table runners', () => {
 		});
 		expect(await runner.seatBot(2, 'random')).toBe('bot:random:8');
 		expect(() => manager.restore('restored', new Table(heads))).toThrow(/exists/);
+		// A bot this server does not run plays on as RiverMind Easy; with none to stand in, the table cannot run.
 		const stranger = new Table(heads);
 		stranger.sit(0, 'bot:deep:1', 'Deep bot 1', 10_000, 'deep');
-		expect(() => manager.restore('other', stranger)).toThrow(/does not run: deep/);
+		const adopted = manager.restore('other', stranger);
+		expect(adopted.table.seats[0]).toMatchObject({ bot: 'heuristic', name: 'RiverMind Easy 1' });
+		const bare = new TableManager({ random: defaultBots().random }, options());
+		const lost = new Table(heads);
+		lost.sit(0, 'bot:deep:1', 'Deep bot 1', 10_000, 'deep');
+		expect(() => bare.restore('other', lost)).toThrow(/does not run: deep/);
 		await manager.shutdown();
 	});
 });

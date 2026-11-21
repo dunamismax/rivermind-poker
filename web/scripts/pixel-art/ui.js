@@ -123,6 +123,7 @@ const BOTS = {
 	},
 	random: { metal: 'violet light', 'metal-dark': 'violet', 'metal-light': 'mist', eye: 'gold' },
 	calling_station: { metal: 'haze', 'metal-dark': 'dusk', 'metal-light': 'mist', eye: 'red light' },
+	hard: { metal: 'red', 'metal-dark': 'red dark', 'metal-light': 'red light', eye: 'gold light' },
 	bot: {
 		metal: 'amber',
 		'metal-dark': 'amber dark',

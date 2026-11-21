@@ -34,6 +34,9 @@ FORMAT = 1
 KIND = "rivermind-model-registry"
 REGISTRY = "docs/models.json"
 PAGE = "docs/models.md"
+SITE = "web/src/lib/champions.json"
+"""What the site needs of the registry: each champion, its bundle's hashes and its evaluations' results (P5.7a)."""
+SITE_KIND = "rivermind-site-champions"
 STORE = "artifacts/models"
 START = "<!-- registry:start · generated from models.json by `rivermind-poker blueprint promote`; do not edit by hand -->"
 END = "<!-- registry:end -->"
@@ -386,11 +389,92 @@ def page_text(page: str, registry: dict[str, Any]) -> str:
     return f"{head}{START}\n\n{render(registry)}\n{END}{tail}"
 
 
-def write(registry: dict[str, Any], registry_path: str | Path = REGISTRY, page_path: str | Path = PAGE) -> None:
-    """Write the registry and its page, each through a temporary file."""
+def _model_name(registry: dict[str, Any], described: dict[str, Any]) -> str | None:
+    """The registry's name for a blueprint or bundle a report describes, found by its files."""
+    for decision in registry["decisions"]:
+        bundle = decision.get("bundle") or {}
+        if described.get("files") in (decision["checkpoint"]["files"], bundle.get("files")):
+            return str(decision["name"])
+    return None
+
+
+def site_data(registry: dict[str, Any], docs: str | Path) -> dict[str, Any]:
+    """The champions as the site reads them (``web/src/lib/champions.json``, P5.7a).
+
+    For each format's champion: what the Node server checks a bundle against
+    before it serves it (every file's SHA-256 and the card table set), and
+    every result of its evaluations, the served bundle's first, for the page
+    that a bot's label links to (D-7). ``docs`` is the registry's directory,
+    where its reports are.
+    """
+    docs = Path(docs)
+    seats = {fmt: n for n, fmt in FORMATS.items()}
+    found = []
+    for fmt, d in champions(registry).items():
+        evaluations = []
+        for e in sorted(d["evaluations"], key=lambda e: e["candidate"] != "bundle"):
+            report = _read_report(docs / e["report"])
+            gate_opponents = {(c["opponent"], c["stack_bb"]) for c in e["checks"]}
+            rows = []
+            for r in report["results"]:
+                described = report["opponents"][r["opponent"]]
+                model = described["spec"] in ("blueprint", "bundle")
+                name = _model_name(registry, described) if model else None
+                opponent = "champion" if model else r["opponent"]
+                gated = ("incumbent" if name == d["incumbent"] and model else r["opponent"], r["stack_bb"]) in gate_opponents
+                rows.append(
+                    {
+                        "opponent": opponent,
+                        "name": name,
+                        "stack_bb": r["stack_bb"],
+                        "hands": r["hands"],
+                        "bb_per_100": r["bb_per_100"],
+                        "ci95": r["ci95_bb_per_100"],
+                        "gate": gated,
+                    }
+                )
+            evaluations.append(
+                {
+                    "candidate": e["candidate"],
+                    "report": e["report"].removesuffix(".json"),
+                    "deals": report["deals_per_matchup"],
+                    "seed": report["seed"],
+                    "blinds": report["game"]["blinds"],
+                    "evaluated_at": report["software"]["commit"],
+                    "results": rows,
+                }
+            )
+        c, b = d["checkpoint"], d["bundle"]
+        found.append(
+            {
+                "format": fmt,
+                "seats": seats[fmt],
+                "name": d["name"],
+                "abstraction": c["abstraction"],
+                "iterations": c["iteration"],
+                "promoted": d["date"],
+                "replaced": d["incumbent"],
+                "checkpoint": {"manifest_sha256": c["manifest_sha256"], "files": c["files"]},
+                "bundle": {"levels": b["levels"], "table_set": b["table_set"], "files": b["files"]},
+                "evaluations": evaluations,
+            }
+        )
+    return {"format": FORMAT, "kind": SITE_KIND, "champions": found}
+
+
+def write(
+    registry: dict[str, Any],
+    registry_path: str | Path = REGISTRY,
+    page_path: str | Path = PAGE,
+    site_path: str | Path | None = None,
+) -> None:
+    """Write the registry, its page and, given ``site_path``, the site's extract, each through a temporary file."""
     registry_path, page_path = Path(registry_path), Path(page_path)
     page = page_path.read_text() if page_path.exists() else f"# Models\n\n{START}\n{END}\n"
-    for path, text in ((page_path, page_text(page, registry)), (registry_path, dumps(registry))):
+    texts = [(page_path, page_text(page, registry)), (registry_path, dumps(registry))]
+    if site_path is not None:
+        texts.append((Path(site_path), dumps(site_data(registry, registry_path.parent))))
+    for path, text in texts:
         path.parent.mkdir(parents=True, exist_ok=True)
         partial = path.with_name(path.name + ".partial")
         partial.write_text(text)
@@ -462,6 +546,7 @@ __all__ = [
     "FORMATS",
     "PAGE",
     "REGISTRY",
+    "SITE",
     "START",
     "STORE",
     "RegistryError",
@@ -476,6 +561,7 @@ __all__ = [
     "load",
     "page_text",
     "render",
+    "site_data",
     "verify_kept",
     "write",
 ]

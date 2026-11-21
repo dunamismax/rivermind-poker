@@ -25,3 +25,6 @@ bun.lockb
 
 # Recorded from the Python table (test/server/table_differential.py)
 /src/lib/server/table/parity.json
+
+# The site's extract of the model registry (rivermind-poker blueprint promote)
+/src/lib/champions.json

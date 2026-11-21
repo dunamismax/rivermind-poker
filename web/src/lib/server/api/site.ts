@@ -8,6 +8,7 @@
  * they live in memory for as long as the process, as `serve-nl` does.
  */
 import type { Database } from '../db/index.ts';
+import type * as p from '../../protocol-v2.ts';
 import { BOT_LABELS } from '../table/runner.ts';
 import { publicRef, readSession, type Secret } from './auth.ts';
 import { DatabaseHands, MemoryHands, type HandArchive } from './hands.ts';
@@ -26,8 +27,16 @@ import {
 import { wallClock } from './time.ts';
 import { DatabaseWallet, MemoryWallet, type Wallet } from './wallet.ts';
 
-/** The labels of the bots the site offers, by kind, in the order offered. */
+/** The labels of the bots the site can offer, by kind. */
 export { BOT_LABELS };
+/** The bots every server runs, in the order offered. */
+export const SIMPLE_BOTS: readonly string[] = ['random', 'calling_station', 'heuristic'];
+
+/** A trained bot this server has loaded: the table sizes it plays and the model behind it (P5.7a). */
+export interface TrainedBot {
+	seats: readonly number[];
+	champion: p.BotChampion;
+}
 export const STAKES: readonly (readonly [small: number, big: number])[] = [
 	[25, 50],
 	[50, 100],
@@ -49,8 +58,10 @@ export interface SiteOptions {
 	hands?: HandArchive;
 	/** The app's rate limits; {@link DEFAULT_LIMITS} unless tests turn them off with `UNLIMITED`. */
 	limits?: Readonly<Limits>;
-	/** The bot kinds offered, in order. */
+	/** The bot kinds offered, in order; the simple bots, then the trained ones, by default. */
 	bots?: readonly string[];
+	/** The trained bots among them, by kind. */
+	trained?: Readonly<Record<string, TrainedBot>>;
 	practiceStack?: number;
 	/** The wall clock in seconds since the epoch. */
 	clock?: () => number;
@@ -66,6 +77,7 @@ export class Site {
 	readonly memoryHands: MemoryHands | null;
 	readonly limiters: Limiters;
 	readonly bots: readonly string[];
+	readonly trained: Readonly<Record<string, TrainedBot>>;
 	readonly practiceStack: number;
 	readonly clock: () => number;
 	/** Player id -> a keyed hash of the address they last came from (P4.5). */
@@ -96,9 +108,27 @@ export class Site {
 		this.memoryHands = options.hands || db ? null : new MemoryHands();
 		this.hands = options.hands ?? (db ? new DatabaseHands(db) : this.memoryHands!);
 		this.limiters = new Limiters(options.limits ?? DEFAULT_LIMITS);
-		this.bots = options.bots ?? Object.keys(BOT_LABELS);
+		this.trained = options.trained ?? {};
+		this.bots = options.bots ?? [...SIMPLE_BOTS, ...Object.keys(this.trained)];
 		this.practiceStack = practiceStack;
 		this.clock = clock;
+	}
+
+	/** Whether a bot of `kind` plays tables of `seats`: a trained bot plays only its format's size. */
+	botPlays(kind: string, seats: number): boolean {
+		return !Object.hasOwn(this.trained, kind) || this.trained[kind].seats.includes(seats);
+	}
+
+	/** The bots offered, as `GET /api/config` lists them. */
+	botOptions(): p.BotOption[] {
+		return this.bots.map((kind) => {
+			const option: p.BotOption = { kind, label: BOT_LABELS[kind] ?? kind };
+			if (Object.hasOwn(this.trained, kind)) {
+				option.seats = [...this.trained[kind].seats];
+				option.champion = this.trained[kind].champion;
+			}
+			return option;
+		});
 	}
 
 	/** The stored player with this id. */

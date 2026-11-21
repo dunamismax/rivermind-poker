@@ -114,11 +114,13 @@ The stack is SvelteKit 3 · Svelte 5 · TypeScript · Tailwind CSS 4 · PostgreS
 
 ```text
 web/                             SvelteKit app (Node from web/.node-version, pnpm through corepack)
-  src/routes/                    pages: the lobby and table (/), /hands, /fairness, /style
+  src/routes/                    pages: the lobby and table (/), /hands, /fairness, /bots, /style
   src/lib/nl/                    no-limit lobby and table UI; connection.svelte.ts owns the socket
   src/lib/engine/                browser-safe cards and evaluator
   src/lib/server/engine/         TypeScript engine (P4B.4); rules.json is generated from Python fixtures
-  src/lib/server/bots/           TypeScript bots and BlueprintPolicy (P4B.6), with PythonRandom
+  src/lib/server/bots/           TypeScript bots and BlueprintPolicy (P4B.6), with PythonRandom;
+                                 champions.ts loads a registered champion's bundle (P5.7a)
+  src/lib/champions.json         the site's extract of the model registry, written by blueprint promote
   src/lib/server/db/             Drizzle schema, pool, migrator and test-database guard (P4B.3)
   src/lib/server/table/          table, clock, snapshot, runner and Drizzle table store (P4B.5b)
   src/lib/server/api/            sessions, players, wallets, safety, hands, the HTTP API (P4B.5a),
@@ -287,6 +289,14 @@ pnpm e2e:live   # against https://rivermindpoker.com (or LIVE_URL)
 - Record sessions only at settled points. The recorder and the replay both wait until every socket is idle and every table waits on a person or the clock; a request sent while bots are still acting lands in a different batch of events in each server.
 - JavaScript writes `20` where Python writes `20.0`. Clients do not care, and either server reads the other's snapshots, but compare recorded socket messages as parsed JSON or by canonical digest, never as text. HTTP bodies stay byte-identical because their only floats are times with a fraction.
 
+### Serving a champion
+
+- The Node server plays only a bundle whose every file matches `web/src/lib/champions.json` (`loadChampion`). Never loosen that check, and never point a live server at `RIVERMIND_CHAMPIONS`: it replaces the registry and is for tests.
+- A trained bot keeps a memory of each hand's mapping, so the runner asks a policy for its own copy per table (`forTable`). Give a new stateful bot one too.
+- A trained bot plays its format's table size only (`Site.botPlays`). Check it wherever a bot kind is accepted: table creation and practice do.
+- A saved table whose bot the server does not run plays on against `FALLBACK_BOT` under that bot's name, in both servers. Keep that: closing such a table at start-up would lose its seats' chips.
+- The practice opponent changes through `TableRunner.switchBot`, which seats the new bot inside a change once the old one is out of the hand, so no hand is dealt in between.
+
 ### The TypeScript API
 
 - `web/src/lib/server/api/contract.json` is `serve-nl`'s answers to a fixed script of requests, and Vitest expects the TypeScript API to give the same bytes. After changing either side's HTTP behaviour, re-record it (pytest fails while it is stale) and make both agree. Prettier must not touch it.
@@ -350,6 +360,7 @@ The site runs on the owner’s ubuntu-vm. [CONTRIBUTING.md](CONTRIBUTING.md#depl
 
 - **Deploy** (an owner gate): after the approved push, run `ssh root@ubuntu-vm 'bash /home/sawyer/github/rivermind-poker/deploy/update.sh'`. It fast-forwards the checkout and runs the Python suite and the web suite (check, lint, Vitest and `pnpm table:parity`) against the test database, then builds, and stops before the live site changes if anything fails. It then runs the Drizzle migrations, publishes a release under `/srv/rivermindpoker.com/`, switches `current` atomically and restarts the Node server, which restores the open tables before it listens. Three releases are kept for rollback.
 - **Check it live** with `pnpm e2e:live` from `web/`. With `LIVE_RESTART_COMMAND="ssh root@ubuntu-vm systemctl restart rivermind-poker-web"` it also restarts the server mid-hand. Record the revision, the release and the results in BUILD.md.
+- **Models:** `/srv/rivermind-poker/models/champions/<name>/{checkpoint,bundle}` and `/srv/rivermind-poker/models/tables/hu-m1`, root-owned and world-readable. The web unit reads the champions through `RIVERMIND_MODELS`, and `update.sh` verifies them against the registry before the site changes. Copy a newly promoted champion there before deploying ([docs/bots.md](docs/bots.md#where-models-are-kept)).
 - **Services:** `rivermind-poker-web` (Node, 127.0.0.1:4320) behind [the Caddy site](deploy/rivermindpoker.com.caddy). `rivermind-poker` (`serve-nl`, 127.0.0.1:4316) is installed but stopped and disabled; `deploy/rollback-to-serve-nl.sh` gives it the tables back. Never run both with the tables: each would restore and deal them. The web unit's `Conflicts=` makes systemd stop one when the other starts.
 - **Database:** `rivermind_poker` with its tables in the `app` schema, set up by [`deploy/setup-database.sh`](deploy/setup-database.sh), which is safe to rerun. Credentials for the web, migration and test roles are in root-only `/etc/rivermind-poker/{web,migration,test}.env`.
 - **Session secret:** `/var/lib/rivermind-poker/secret`, root-only; the web unit reads it as a systemd credential. Replacing it signs every guest out for good.

@@ -6,7 +6,8 @@
 // live in memory; their durability is tested in Vitest and pytest.
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 const WEB = resolve(import.meta.dirname, '..');
 const REPO = resolve(WEB, '..');
@@ -73,6 +74,15 @@ class Child {
 /** Whether the tables run in serve-nl behind the Node server, as they would after a rollback. */
 export const LEGACY = process.env.E2E_LEGACY === '1';
 
+/**
+ * The models directory global-setup fills with a small test champion, which the
+ * Node server offers as RiverMind Hard (P5.7a). serve-nl runs no trained bot.
+ */
+export const MODELS = join(
+	tmpdir(),
+	`rivermind-e2e-models-${process.env.E2E_MODELS_TAG ?? 'default'}`
+);
+
 // Quick bots and hands, so the tests play many of them, and a short practice
 // stack, so a guest who calls every bet runs out within a minute or two.
 const HAND_PAUSE = '0.4';
@@ -118,7 +128,9 @@ export class TableServer {
 					DATABASE_URL: '',
 					RIVERMIND_HAND_PAUSE: HAND_PAUSE,
 					RIVERMIND_BOT_DELAY: BOT_DELAY,
-					RIVERMIND_PRACTICE_STACK: PRACTICE_STACK
+					RIVERMIND_PRACTICE_STACK: PRACTICE_STACK,
+					RIVERMIND_MODELS: MODELS,
+					RIVERMIND_CHAMPIONS: join(MODELS, 'champions.json')
 				};
 		this.#web = new Child(
 			'the Node server',

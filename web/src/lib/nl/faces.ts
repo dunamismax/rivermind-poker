@@ -1,18 +1,38 @@
 // Who sits where: each seat's avatar and the label every bot wears (D-7).
 
+import type { BotChampion } from '../protocol-v2.ts';
+
 const BOT_LABELS: Record<string, string> = {
 	heuristic: 'RiverMind Easy',
+	hard: 'RiverMind Hard',
 	random: 'Random',
 	calling_station: 'Calling'
 };
 
 const BOT_AVATARS: Record<string, string> = {
 	heuristic: 'avatar-heuristic',
+	hard: 'avatar-hard',
 	random: 'avatar-random',
 	calling_station: 'avatar-calling-station'
 };
 
 export const PERSON_AVATARS = 6;
+
+/** A win rate in big blinds per 100 hands, signed. */
+export function winRate(value: number): string {
+	return `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(1)}`;
+}
+
+/** One sentence on a trained bot's published evaluation: its result against RiverMind Easy (D-7). */
+export function championLine(champion: BotChampion): string {
+	const easy = champion.results.find((r) => r.opponent === 'heuristic') ?? champion.results[0];
+	if (!easy) return '';
+	const [low, high] = easy.ci95;
+	return (
+		`Over ${easy.hands.toLocaleString('en-US')} hands it won ${winRate(easy.bb_per_100)} big blinds ` +
+		`per 100 hands against ${easy.label} (95% interval ${winRate(low)} to ${winRate(high)}).`
+	);
+}
 
 export function botLabel(kind: string | null): string {
 	if (!kind) return 'Bot';
