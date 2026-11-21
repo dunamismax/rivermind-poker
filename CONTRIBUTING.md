@@ -301,7 +301,7 @@ scripts/voice-check-linux.sh              # every check, as CI runs them
 scripts/voice-check-linux.sh -g "behind"  # arguments go to playwright test
 ```
 
-It copies the working tree into Playwright's image for the pinned version (about 2.5 GB, which stays until `docker rmi` removes it), installs Node and pnpm at the repository's versions and runs `pnpm voice:check` with `CI` set.
+It copies the working tree into Playwright's image for the pinned version (3.6 GB, which stays until `docker rmi` removes it), installs Node and pnpm at the repository's versions and runs `pnpm voice:check` with `CI` set.
 
 A frame that is not opened is never passed to the decoder, and a frame that cannot be sealed is never sent. Each is counted in its transform's tally under the reason: `malformed`, `unknown-key`, `stale-epoch`, `wrong-sender`, `tampered` or `replayed` on the way in, `unsent` on the way out.
 
