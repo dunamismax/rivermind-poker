@@ -1,16 +1,13 @@
 // Runs the site as the browser tests see it: the built Node server
 // (`node build/start.js`) serving the pages, the API and the tables itself
-// (P4B.5b), as the live site does since the P4B.7 cutover. With E2E_LEGACY=1
-// the Node server instead forwards /api/* and /ws to a real `rivermind-poker
-// serve-nl` on another port, the rollback kept until P4B.8. Tables
-// live in memory; their durability is tested in Vitest and pytest.
+// (P4B.5b), as the live site does. Tables live in memory; their durability is
+// tested in Vitest against PostgreSQL.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const WEB = resolve(import.meta.dirname, '..');
-const REPO = resolve(WEB, '..');
 
 /** One child process, started in its own group so a kill reaches everything under it. */
 class Child {
@@ -71,12 +68,9 @@ class Child {
 	}
 }
 
-/** Whether the tables run in serve-nl behind the Node server, as they would after a rollback. */
-export const LEGACY = process.env.E2E_LEGACY === '1';
-
 /**
  * The models directory global-setup fills with a small test champion, which the
- * Node server offers as RiverMind Hard (P5.7a). serve-nl runs no trained bot.
+ * Node server offers as RiverMind Hard (P5.7a).
  */
 export const MODELS = join(
 	tmpdir(),
@@ -92,46 +86,20 @@ const PRACTICE_STACK = '300';
 export class TableServer {
 	/** The site's origin: the Node server. */
 	readonly url: string;
-	readonly #tables: Child | null;
 	readonly #web: Child;
 
-	/** `port` is the Node server's; with E2E_LEGACY, serve-nl listens 100 below it. */
 	constructor(readonly port: number) {
 		this.url = `http://127.0.0.1:${port}`;
-		const legacy = `http://127.0.0.1:${port - 100}`;
-		const args = [
-			'run',
-			'--locked',
-			'rivermind-poker',
-			'serve-nl',
-			'--port',
-			String(port - 100),
-			'--hand_pause',
-			HAND_PAUSE,
-			'--bot_delay',
-			BOT_DELAY,
-			'--practice_stack',
-			PRACTICE_STACK
-		];
 		// Never a developer's database: these tables live in memory.
-		this.#tables = LEGACY
-			? new Child('serve-nl', `${legacy}/api/config`, 'uv', args, REPO, {
-					...process.env,
-					DATABASE_URL: ''
-				})
-			: null;
-		const tables: NodeJS.ProcessEnv = LEGACY
-			? { RIVERMIND_LEGACY_API: legacy }
-			: {
-					RIVERMIND_LEGACY_API: '',
-					RIVERMIND_API: '1',
-					DATABASE_URL: '',
-					RIVERMIND_HAND_PAUSE: HAND_PAUSE,
-					RIVERMIND_BOT_DELAY: BOT_DELAY,
-					RIVERMIND_PRACTICE_STACK: PRACTICE_STACK,
-					RIVERMIND_MODELS: MODELS,
-					RIVERMIND_CHAMPIONS: join(MODELS, 'champions.json')
-				};
+		const tables: NodeJS.ProcessEnv = {
+			RIVERMIND_API: '1',
+			DATABASE_URL: '',
+			RIVERMIND_HAND_PAUSE: HAND_PAUSE,
+			RIVERMIND_BOT_DELAY: BOT_DELAY,
+			RIVERMIND_PRACTICE_STACK: PRACTICE_STACK,
+			RIVERMIND_MODELS: MODELS,
+			RIVERMIND_CHAMPIONS: join(MODELS, 'champions.json')
+		};
 		this.#web = new Child(
 			'the Node server',
 			`${this.url}/healthz`,
@@ -149,13 +117,11 @@ export class TableServer {
 	}
 
 	async start(): Promise<void> {
-		await this.#tables?.start();
 		await this.#web.start();
 	}
 
 	async stop(): Promise<void> {
 		await this.#web.stop();
-		await this.#tables?.stop();
 	}
 
 	async restart(): Promise<void> {

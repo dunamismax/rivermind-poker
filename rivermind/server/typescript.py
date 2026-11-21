@@ -1,7 +1,7 @@
 """Write TypeScript types from a protocol's JSON Schema.
 
 Handles the subset of JSON Schema that the protocol modules
-(`poker_ai.web.protocol` and `rivermind.server.protocol`) produce:
+(`poker_ai.web.protocol`) produce:
 objects, string enums, consts, arrays, maps, `anyOf`/`oneOf` unions and
 `$ref`s into `$defs`. Anything else raises, so a new kind of field cannot
 silently become `unknown`. The output follows the web app's Prettier style.

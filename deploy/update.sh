@@ -1,45 +1,77 @@
 #!/usr/bin/env bash
-# Deploy or update rivermindpoker.com on ubuntu-vm. Run as root:
+# Deploy rivermindpoker.com on ubuntu-vm, fix-forward, as docs/web-platform.md
+# in ubuntu-vm-backup sets out. Run as root:
+#
 #   bash /home/sawyer/github/rivermind-poker/deploy/update.sh
-# Pulls main as sawyer, then checks everything before the live site changes:
-# the Python suite for the offline tools and, until P4B.8, the Python table
-# server (on Python 3.12 from /opt/uv-python, with the database tests on the
-# test database), and the web suite from the frozen lockfile (check, lint,
-# Vitest on the same test database, the table parity run against the Python
-# table, and the build). If any of that fails it stops there.
-# Then it runs the Drizzle migrations, installs the systemd units and the Caddy
-# site, stops the Python table server if it is still running (the P4B.7
-# cutover), publishes the build as a release under /srv/rivermindpoker.com,
-# restarts the Node server on it, which restores the open tables, and checks it
-# answers. deploy/rollback-to-serve-nl.sh undoes the cutover.
-# The service needs /etc/rivermind-poker/web.env from deploy/setup-database.sh,
-# since tables live in PostgreSQL, and the session secret serve-nl made in
-# /var/lib/rivermind-poker/secret. Each champion in docs/models.json must be in
-# /srv/rivermind-poker/models/champions (docs/bots.md says how to copy one
-# there); the deploy stops before the site changes if a file is missing or
-# differs from the registry. Node (the major in web/.node-version) must be
-# on sawyer's PATH, directly or through mise; pnpm comes from corepack.
-set -euo pipefail
+#
+# It deploys origin/main. Every step stops the deploy at its first failure and
+# says which step; until the switch (step 5) the release already serving is
+# untouched and keeps serving. A release that fails after the switch is fixed
+# by a new commit and a new deploy, never by pointing `current` back.
+#
+# Outside the lock, as sawyer:
+#   1. build   git archive the commit into /home/sawyer/web-work/rivermindpoker.com-<commit>,
+#              then the Python suite (uv.lock, Python from .python-version), the
+#              champions on this host against the registry, and the web suite
+#              (frozen pnpm-lock.yaml on the pinned Node 26 and pnpm: check, lint,
+#              Vitest with the database tests on the test database, the engine,
+#              bot and table parity checks against the Python references) and
+#              the build. Playwright's browsers are not on this host: CI runs them.
+# Inside one with-deploy-lock process, as root:
+#   2. stage      the release under /srv/rivermindpoker.com/<UTC time>-<commit12>,
+#                 root-owned, with REVISION, .node-version, package.json, build/
+#                 (start.js, the server; migrate.js, the migrator), deploy/ and drizzle/
+#   3. migrate    dump the database to /var/backups/rivermindpoker.com, then run
+#                 the release's migrator as the service's user with migration.env
+#                 only, and check Drizzle's journal against the release's
+#   4. candidate  start the release from its own directory under a copy of its
+#                 unit (rivermind-poker-web-candidate, port 4400-4499) with
+#                 RIVERMIND_CANDIDATE=1, which checks the database, the saved
+#                 tables and the champion but never restores or deals a table;
+#                 then deploy/smoke.sh against it, and stop it
+#   5. switch     install the unit if it changed, point `current` at the release
+#                 and restart rivermind-poker-web, which saves nothing on the way
+#                 down that it had not saved already and restores every open
+#                 table, hands in progress included, before it listens
+#   6. verify     /healthz reports the commit, deploy/smoke.sh passes on the live
+#                 port, and the running process is the release on /opt/node-26
+#   7. caddy      caddy-apply the site's fragment, only if it changed
+#   8. record     log "rivermindpoker.com <commit> live" and smoke the public site
+#
+# The release name keeps the <time>-<commit12> form the host backup expects
+# (config/applications.json in ubuntu-vm-backup); REVISION holds the full commit.
+# The five newest releases are kept as evidence for debugging, as
+# server-disk-cleanup keeps them for /srv/www sites.
+#
+# Needs, from deploy/setup-database.sh: /etc/web-apps/rivermind_poker/web.env
+# (the service), migration.env (step 3) and test.env (the database tests); the
+# session secret in /var/lib/rivermind-poker/secret; and every champion in
+# docs/models.json in /srv/rivermind-poker/models/champions (docs/bots.md says
+# how to copy one there).
+set -Eeuo pipefail
 
+SITE=rivermindpoker.com
+UNIT=rivermind-poker-web
+PORT=4320
+DB=rivermind_poker
 REPO=/home/sawyer/github/rivermind-poker
+RELEASES=/srv/$SITE
+ENV_DIR=/etc/web-apps/$DB
+MODELS=/srv/rivermind-poker/models/champions
+SECRET=/var/lib/rivermind-poker/secret
+NODE=/opt/node-26/bin/node
+NODE_REAL=/opt/node-v26.13.1-linux-x64/bin/node
 UV=/home/sawyer/.local/bin/uv
-export UV_PYTHON_INSTALL_DIR=/opt/uv-python
-as_sawyer() { sudo -u sawyer --preserve-env=UV_PYTHON_INSTALL_DIR "$@"; }
+WEB_LIVE=/home/sawyer/github/ubuntu-vm-backup/bin/web-live
+# Python 3.12 from .python-version lives here, readable by sawyer; never downloaded.
+export UV_PYTHON_INSTALL_DIR=/opt/uv-python UV_PYTHON_DOWNLOADS=never
 
-[[ $EUID -eq 0 ]] || { echo "run as root" >&2; exit 1; }
+step() { printf '\n== %s: %s\n' "$SITE" "$*"; }
+die() { printf '%s deploy stopped: %s\n' "$SITE" "$*" >&2; exit 1; }
 
-if [[ "${1:-}" != --pulled ]]; then
-    as_sawyer git -C "$REPO" pull --ff-only origin main
-    # Bash keeps reading the file it started with; run the pulled version.
-    exec bash "$REPO/deploy/update.sh" --pulled
-fi
-"$UV" python install 3.12  # shared, world-readable interpreter for the service user
-chmod -R a+rX "$UV_PYTHON_INSTALL_DIR"
-(cd "$REPO" && as_sawyer "$UV" sync --locked --python 3.12)
-# Database credentials from deploy/setup-database.sh, root-only. Each file's
-# variables are passed to one command through the environment, never argv.
-DB_ENV=/etc/rivermind-poker
-with_db_env() {
+# Run a command as sawyer with one env file's variables in its environment,
+# never on a command line.
+with_env_as_sawyer() {
     local file=$1; shift
     (
         set -a
@@ -47,143 +79,208 @@ with_db_env() {
         . "$file"
         set +a
         vars=$(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$file" | paste -sd, -)
-        sudo -u sawyer --preserve-env="UV_PYTHON_INSTALL_DIR,$vars" "$@"
+        sudo -u sawyer --preserve-env="UV_PYTHON_INSTALL_DIR,UV_PYTHON_DOWNLOADS,$vars" "$@"
     )
 }
-# With test.env the run includes the database tests on a separate test database.
-if [[ -f $DB_ENV/test.env ]]; then
-    (cd "$REPO" && with_db_env "$DB_ENV/test.env" "$UV" run --locked pytest -q)
-else
-    echo "no $DB_ENV/test.env: database tests skipped (run deploy/setup-database.sh)" >&2
-    (cd "$REPO" && as_sawyer "$UV" run --locked pytest -q)
-fi
 
-# The champions the new release will serve (P5.7a) must be on this host, file
-# for file as the registry names them. Otherwise the site would start without
-# RiverMind Hard, and tables playing it would carry on against RiverMind Easy.
-MODELS=/srv/rivermind-poker/models/champions
-(cd "$REPO" && as_sawyer "$UV" run --locked rivermind-poker blueprint champions --verify "$MODELS") || {
-    echo "a champion in docs/models.json is not in $MODELS as registered;" >&2
-    echo "copy it there first (docs/bots.md, Where models are kept)" >&2
-    exit 1
-}
+mode=${1:-start}
+case $mode in
+start)
+    # Fetch, take origin/main and archive it; then run the archived script, so
+    # every later step is the commit's own.
+    [[ $EUID -eq 0 ]] || die "run as root"
+    sudo -u sawyer git -C "$REPO" fetch --quiet origin main
+    commit=$(sudo -u sawyer git -C "$REPO" rev-parse origin/main)
+    work=/home/sawyer/web-work/$SITE-$commit
+    step "1. build $commit in $work"
+    sudo -u sawyer bash -c 'set -e; rm -rf "$1"; mkdir -p "$1"; git -C "$2" archive "$3" | tar -x -C "$1"' \
+        _ "$work" "$REPO" "$commit"
+    exec bash "$work/deploy/update.sh" archived "$commit"
+    ;;
 
-# The web suite and the build, as sawyer, in a login shell for Node's PATH.
-# Playwright's browsers are not on this host: CI and `pnpm e2e:live` cover them.
-NODE_MAJOR=$(tr -d '[:space:]' < "$REPO/web/.node-version")
-NODE_MAJOR=${NODE_MAJOR%%.*}
-# shellcheck disable=SC2016  # expanded by the inner shell
-WEB_SUITE='set -euo pipefail
-    export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
-    have=$(node --version 2>/dev/null || echo none)
-    [[ $have == "v$NODE_MAJOR".* ]] || {
-        echo "web build needs Node $NODE_MAJOR, found $have" >&2; exit 1; }
-    cd "$WEB"
-    corepack pnpm install --frozen-lockfile
-    corepack pnpm check
-    corepack pnpm lint
-    corepack pnpm test
-    corepack pnpm table:parity
-    corepack pnpm build'
-if [[ -f $DB_ENV/test.env ]]; then
-    with_db_env "$DB_ENV/test.env" env NODE_MAJOR="$NODE_MAJOR" WEB="$REPO/web" \
-        COREPACK_ENABLE_DOWNLOAD_PROMPT=0 bash -lc "$WEB_SUITE"
-else
-    echo "no $DB_ENV/test.env: web database tests skipped (run deploy/setup-database.sh)" >&2
-    as_sawyer env NODE_MAJOR="$NODE_MAJOR" WEB="$REPO/web" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
-        bash -lc "$WEB_SUITE"
-fi
-for built in start.js handler.js client; do
-    [[ -e "$REPO/web/build/$built" ]] || { echo "web build has no $built" >&2; exit 1; }
-done
+archived)
+    commit=$2
+    work=/home/sawyer/web-work/$SITE-$commit
+    [[ -f $ENV_DIR/test.env ]] || die "no $ENV_DIR/test.env for the database tests"
+    with_env_as_sawyer "$ENV_DIR/test.env" bash "$work/deploy/update.sh" build "$commit"
+    exec /usr/local/sbin/with-deploy-lock bash "$work/deploy/update.sh" activate "$commit"
+    ;;
 
-[[ -f $DB_ENV/web.env ]] || { echo "no $DB_ENV/web.env: run deploy/setup-database.sh" >&2; exit 1; }
-SECRET=/var/lib/rivermind-poker/secret
-[[ -s $SECRET ]] || { echo "no session secret at $SECRET: every guest would be signed out" >&2; exit 1; }
-# The Python table server's user and its access to the checkout, for a rollback.
-id rivermind-poker >/dev/null 2>&1 || useradd --system --no-create-home \
-    --home-dir /nonexistent --shell /usr/sbin/nologin rivermind-poker
-setfacl -m u:rivermind-poker:--x /home/sawyer
-chmod -R a+rX "$REPO/.venv"
+build)
+    # As sawyer, in the work directory, with RIVERMIND_TEST_DATABASE_URL set.
+    commit=$2
+    work=/home/sawyer/web-work/$SITE-$commit
+    cd "$work"
+    [[ $(id -un) == sawyer ]] || die "the build runs as sawyer"
+    [[ -n ${RIVERMIND_TEST_DATABASE_URL:-} ]] || die "no test database for the web suite"
+    # The pinned toolchain first, and uv for the parity checks' Python side.
+    pnpm() { /usr/local/bin/node-26 env PATH="/opt/node-26/bin:/opt/pnpm:${UV%/*}:/usr/bin:/bin" pnpm "$@"; }
+    [[ $(/usr/local/bin/node-26 node --version) == "v$(cat web/.node-version)" ]] || die "Node is not web/.node-version"
+    "$UV" sync --locked
+    "$UV" run --locked python --version
+    "$UV" run --locked pytest -q
+    "$UV" run --locked rivermind-poker blueprint champions --verify "$MODELS" ||
+        die "a champion in docs/models.json is not in $MODELS as registered; copy it there first (docs/bots.md)"
+    cd web
+    pnpm install --frozen-lockfile
+    pnpm run check
+    pnpm run lint
+    pnpm run test
+    pnpm run engine:parity
+    pnpm run bots:parity
+    pnpm run table:parity
+    pnpm run build
+    for built in start.js migrate.js handler.js client; do
+        [[ -e build/$built ]] || die "the build has no $built"
+    done
+    # Every dependency is bundled into build/, so the release needs no node_modules.
+    printf '%s\n' "$commit" > REVISION
+    ;;
 
-# Migrate the site database before the new code starts (Drizzle, P4B.3; until
-# P4B.8 its migrations build exactly the schema Alembic's do, so serve-nl can
-# still run on it).
-if [[ -f $DB_ENV/migration.env ]]; then
-    # shellcheck disable=SC2016
-    with_db_env "$DB_ENV/migration.env" env WEB="$REPO/web" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
-        bash -lc 'set -euo pipefail
-            export PATH="$HOME/.local/share/mise/shims:$PATH"
-            cd "$WEB" && corepack pnpm db:migrate'
-else
-    echo "no $DB_ENV/migration.env: database not migrated (run deploy/setup-database.sh)" >&2
-fi
+activate)
+    # Root, inside with-deploy-lock.
+    commit=$2
+    work=/home/sawyer/web-work/$SITE-$commit
+    [[ $EUID -eq 0 ]] || die "run as root"
+    [[ $(head -n 1 "$work/web/REVISION") == "$commit" ]] || die "the build in $work is not $commit"
+    for file in "$ENV_DIR/web.env" "$ENV_DIR/migration.env"; do
+        [[ -f $file ]] || die "no $file: run deploy/setup-database.sh"
+    done
+    [[ -s $SECRET ]] || die "no session secret at $SECRET: every guest would be signed out"
+    candidate_unit=$UNIT-candidate
+    candidate_file=/run/systemd/system/$candidate_unit.service
+    stop_candidate() {
+        if [[ -e $candidate_file ]]; then
+            systemctl stop "$candidate_unit.service" 2>/dev/null || true
+            rm -f "$candidate_file"
+            systemctl daemon-reload
+        fi
+    }
+    trap stop_candidate EXIT
 
-install -m 0644 "$REPO/deploy/rollback/rivermind-poker.service" /etc/systemd/system/rivermind-poker.service
-install -m 0644 "$REPO/deploy/rivermind-poker-web.service" /etc/systemd/system/rivermind-poker-web.service
-install -m 0644 "$REPO/deploy/rivermindpoker.com.caddy" /etc/caddy/sites/rivermindpoker.com.caddy
-# The host's Caddy reload preflight requires every access log to be declared
-# in its tmpfiles config, which also creates the file with caddy ownership.
-LOGS=/etc/tmpfiles.d/caddy-access-logs.conf
-grep -q rivermindpoker-access.log "$LOGS" || printf '%-50s %s\n' \
-    "f /var/log/caddy/rivermindpoker-access.log" "0600 caddy caddy -" >> "$LOGS"
-systemd-tmpfiles --create "$LOGS"
-chown caddy:caddy /var/log/caddy/rivermindpoker-access.log
-systemctl daemon-reload
-# The tables belong to the Node server (P4B.7). Stop the Python one first, so it
-# saves its last change and lets go of every table before they are restored;
-# the web unit's Conflicts= would stop it too. It stays installed, stopped and
-# disabled, for deploy/rollback-to-serve-nl.sh.
-if systemctl is-active --quiet rivermind-poker.service; then
-    echo "Stopping the Python table server: the Node server takes the tables over"
-fi
-systemctl disable --now rivermind-poker.service
+    step "2. stage the release"
+    release_name=$(date -u +%Y%m%dT%H%M%SZ)-${commit:0:12}
+    release=$RELEASES/$release_name
+    staging=$release.staging
+    install -d -m 0755 "$RELEASES"
+    rm -rf "$staging"
+    install -d -m 0755 "$staging"
+    cp -R "$work/web/build" "$staging/build"
+    cp -R "$work/web/drizzle" "$staging/drizzle"
+    cp -R "$work/deploy" "$staging/deploy"
+    cp "$work/web/REVISION" "$work/web/.node-version" "$work/web/package.json" "$staging/"
+    chown -R root:root "$staging"
+    chmod -R u=rwX,go=rX "$staging"
+    mv -T "$staging" "$release"
+    echo "staged $release"
 
-# Publish the web build as a new root-owned release (its build/ directory and a
-# package.json marking it as ES modules), switch current to it atomically and
-# restart the Node web server there. The three newest releases are kept for a
-# quick rollback to an older build: point current at one with
-# `ln -sfn <release> current.new && mv -T ...` and restart rivermind-poker-web.
-RELEASES=/srv/rivermindpoker.com
-RELEASE=$(date -u +%Y%m%dT%H%M%SZ)-$(as_sawyer git -C "$REPO" rev-parse --short=12 HEAD)
-install -d -m 0755 "$RELEASES"
-install -d -m 0755 "$RELEASES/$RELEASE.tmp"
-cp -R "$REPO/web/build" "$RELEASES/$RELEASE.tmp/build"
-printf '{ "private": true, "type": "module" }\n' > "$RELEASES/$RELEASE.tmp/package.json"
-chown -R root:root "$RELEASES/$RELEASE.tmp"
-chmod -R u=rwX,go=rX "$RELEASES/$RELEASE.tmp"
-mv -T "$RELEASES/$RELEASE.tmp" "$RELEASES/$RELEASE"
-ln -sfn "$RELEASE" "$RELEASES/current.new"
-mv -T "$RELEASES/current.new" "$RELEASES/current"
-find "$RELEASES" -mindepth 1 -maxdepth 1 -type d -name '20*Z-*' -printf '%f\n' |
-    sort -r | tail -n +4 | while read -r old; do rm -rf "${RELEASES:?}/$old"; done
-systemctl enable rivermind-poker-web.service
-systemctl restart rivermind-poker-web.service
-# The server restores the open tables before it listens, so wait for it, and for
-# the API and the database behind it, before Caddy sends /api and /ws its way.
-ok=
-for _ in $(seq 60); do
-    if curl -fsS http://127.0.0.1:4320/healthz >/dev/null 2>&1 &&
-        curl -fsS -H 'Host: rivermindpoker.com' -H 'X-Forwarded-Proto: https' \
-            http://127.0.0.1:4320/api/config >/dev/null 2>&1; then
-        ok=1
+    step "3. migrate the database"
+    install -d -m 0700 "/var/backups/$SITE"
+    dump=/var/backups/$SITE/pre-migrate-$commit.dump
+    (umask 077 && runuser -u postgres -- pg_dump --format=custom "$DB" > "$dump")
+    echo "dumped $DB to $dump ($(stat -c %s "$dump") bytes)"
+    systemd-run --wait --collect --pipe --quiet --unit="$UNIT-migrate" \
+        -p DynamicUser=yes -p User="$UNIT" -p Group="$UNIT" \
+        -p EnvironmentFile="$ENV_DIR/migration.env" -p WorkingDirectory="$release" \
+        -p NoNewPrivileges=true -p ProtectSystem=strict -p ProtectHome=true -p PrivateTmp=true \
+        "$NODE" "$release/build/migrate.js" || die "the migration failed; the previous release is still serving"
+    applied=$(runuser -u postgres -- psql -d "$DB" -Atc 'SELECT count(*) FROM drizzle.__drizzle_migrations')
+    expected=$(python3 -c 'import json, sys; print(len(json.load(open(sys.argv[1]))["entries"]))' \
+        "$release/drizzle/meta/_journal.json")
+    [[ $applied == "$expected" ]] || die "the database records $applied migrations, the release has $expected"
+    echo "migrations: $applied of $expected applied"
+
+    step "4. check the release as a candidate"
+    used=$(ss -ltnH | awk '{print $4}' | sed 's/.*://' | sort -u)
+    candidate_port=
+    for port in $(seq 4400 4499); do
+        grep -qx "$port" <<<"$used" && continue
+        grep -rqs "127.0.0.1:$port\b" /etc/caddy/sites && continue
+        candidate_port=$port
         break
+    done
+    [[ -n $candidate_port ]] || die "no free candidate port in 4400-4499"
+    sed -e "s|/srv/$SITE/current|$release|g" \
+        -e "s|\bPORT=$PORT\b|PORT=$candidate_port|" \
+        -e "s|^Environment=RIVERMIND_API=1$|Environment=RIVERMIND_API=1 RIVERMIND_CANDIDATE=1|" \
+        -e "s|^SyslogIdentifier=.*|SyslogIdentifier=$candidate_unit|" \
+        -e "s|^Restart=.*|Restart=no|" \
+        "$release/deploy/$UNIT.service" > "$candidate_file"
+    grep -q "PORT=$candidate_port" "$candidate_file" && grep -q 'RIVERMIND_CANDIDATE=1' "$candidate_file" &&
+        ! grep -q "/srv/$SITE/current\|PORT=$PORT\b" "$candidate_file" ||
+        die "could not make the candidate unit from $release/deploy/$UNIT.service"
+    systemctl daemon-reload
+    systemctl start "$candidate_unit.service"
+    healthy=
+    for _ in $(seq 180); do
+        if curl -fsS --max-time 5 "http://127.0.0.1:$candidate_port/healthz" 2>/dev/null | grep -q '"status":"ok"'; then
+            healthy=1
+            break
+        fi
+        systemctl is-active --quiet "$candidate_unit.service" || break
+        sleep 1
+    done
+    if [[ -z $healthy ]] || ! bash "$release/deploy/smoke.sh" --candidate --revision "$commit" \
+        "http://127.0.0.1:$candidate_port"; then
+        curl -sS --max-time 5 "http://127.0.0.1:$candidate_port/healthz" >&2 || true
+        journalctl -u "$candidate_unit.service" -n 40 --no-pager >&2 || true
+        die "the candidate failed its checks; the previous release is still serving"
     fi
-    sleep 1
-done
-# With the champions verified above, the server must have loaded them.
-if [[ -n $ok ]] && ! curl -fsS -H 'Host: rivermindpoker.com' -H 'X-Forwarded-Proto: https' \
-    http://127.0.0.1:4320/api/config | grep -q '"kind":"hard"'; then
-    echo "warning: the Node server is up but does not offer RiverMind Hard;" >&2
-    echo "see journalctl -u rivermind-poker-web for why the champion was not loaded" >&2
-fi
-[[ -n $ok ]] || {
-    echo "the Node server is not answering; see journalctl -u rivermind-poker-web" >&2
-    echo "to go back to serve-nl: bash $REPO/deploy/rollback-to-serve-nl.sh" >&2
-    systemctl --no-pager --lines=30 status rivermind-poker-web.service || true
-    exit 1
-}
-# The reload runs the host preflight, which validates the whole config as the
-# caddy user. (Validating as root would create log files caddy cannot write.)
-systemctl reload caddy
-systemctl --no-pager --lines=8 status rivermind-poker-web.service
+    stop_candidate
+    echo "candidate on port $candidate_port passed"
+
+    step "5. switch to the release and restart"
+    unit_file=/etc/systemd/system/$UNIT.service
+    if ! cmp -s "$release/deploy/$UNIT.service" "$unit_file"; then
+        systemd-analyze verify "$release/deploy/$UNIT.service"
+        install -m 0644 "$release/deploy/$UNIT.service" "$unit_file"
+        systemctl daemon-reload
+        echo "installed $unit_file"
+    fi
+    ln -sfn "$release" "$RELEASES/current.next"
+    mv -Tf "$RELEASES/current.next" "$RELEASES/current"
+    systemctl enable --quiet "$UNIT.service"
+    systemctl restart "$UNIT.service"
+
+    step "6. verify what is live"
+    live=
+    for _ in $(seq 180); do
+        if curl -fsS --max-time 5 "http://127.0.0.1:$PORT/healthz" 2>/dev/null | grep -q "\"revision\":\"$commit\""; then
+            live=1
+            break
+        fi
+        sleep 1
+    done
+    if [[ -z $live ]]; then
+        journalctl -u "$UNIT.service" -n 40 --no-pager >&2 || true
+        die "$release is live and not answering with $commit: fix it in a new commit"
+    fi
+    bash "$release/deploy/smoke.sh" --revision "$commit" "http://127.0.0.1:$PORT" ||
+        die "$release is live and fails the smoke check: fix it in a new commit"
+    IFS=$'\t' read -r _ exe cwd revision _ < <("$WEB_LIVE" "$UNIT.service")
+    [[ $exe == "$NODE_REAL" && $cwd == "$release" && $revision == "$commit" ]] ||
+        die "the running process is $exe in $cwd at $revision, not $release on Node 26"
+    echo "live: $exe in $cwd at $revision"
+
+    step "7. Caddy"
+    fragment=$release/deploy/$SITE.caddy
+    if cmp -s "$fragment" "/etc/caddy/sites/$SITE.caddy"; then
+        echo "the site's fragment is unchanged"
+    else
+        /usr/local/sbin/caddy-apply "$SITE" "$fragment"
+    fi
+
+    step "8. record"
+    logger -t web-deploy "$SITE $commit live"
+    bash "$release/deploy/smoke.sh" --revision "$commit" "https://$SITE"
+    find "$RELEASES" -mindepth 1 -maxdepth 1 -type d -name '20*Z-*' -printf '%f\n' | sort -r | tail -n +6 |
+        while read -r old; do
+            [[ $RELEASES/$old == "$release" ]] || rm -rf "${RELEASES:?}/$old"
+        done
+    systemctl --no-pager --lines=5 status "$UNIT.service" || true
+    ;;
+
+*)
+    die "usage: update.sh"
+    ;;
+esac

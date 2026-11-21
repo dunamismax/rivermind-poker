@@ -8,14 +8,12 @@ import {
 	seated,
 	test
 } from './fixtures.ts';
-import { LEGACY } from './server.ts';
 
 // The evaluated heads-up opponent (P5.7a): a guest can practise against
 // RiverMind Hard, the trained bot, as well as RiverMind Easy, change between
 // them at the practice table, and choose it for a two-seat table. Its label
 // links to the published evaluation. The test server serves a small champion
-// written by global-setup; serve-nl, the rollback, runs no trained bot.
-test.skip(LEGACY, 'serve-nl runs no trained bot');
+// written by global-setup.
 
 const bot = (page: Page) => page.locator('.seat[data-seat="1"]');
 

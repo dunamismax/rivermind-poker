@@ -1,8 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 // Browser tests drive the production build (built once in global-setup)
-// served by the Node server in front of a real `rivermind-poker serve-nl` per
-// worker; see e2e/server.ts.
+// served by the Node server, one per worker; see e2e/server.ts.
 const desktop = { viewport: { width: 1440, height: 900 } };
 const phone = { viewport: { width: 375, height: 812 }, hasTouch: true };
 

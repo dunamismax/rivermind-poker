@@ -3,26 +3,12 @@ on: [push, pull_request]
 permissions:
   contents: read
 jobs:
+  # The offline Python: the reference engine, bots, card tables, training,
+  # evaluation, the table model the parity check compares with, and the
+  # short-deck prototype. Python 3.12 from .python-version, packages from uv.lock.
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # PostgreSQL for the database tests, which fail rather than skip in CI.
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_USER: rivermind
-          POSTGRES_PASSWORD: rivermind
-          POSTGRES_DB: rivermind_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U rivermind -d rivermind_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      RIVERMIND_TEST_DATABASE_URL: postgresql://rivermind:rivermind@localhost:5432/rivermind_test
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
@@ -33,17 +19,15 @@ jobs:
   # The SvelteKit app and the TypeScript table server: types, lint, unit and
   # database tests, the parity checks against the Python references, the
   # production build, and Playwright in three browsers against the built Node
-  # server serving the tables itself (P4B.5b). Until the P4B.7 cutover the live
-  # tables are still serve-nl's, so one browser also runs against the Node
-  # server forwarding /api and /ws there, as the live site does.
+  # server serving the tables itself, as the live site does.
   web:
     runs-on: ubuntu-latest
     # A run takes about 15 minutes, but Playwright's system packages come from
     # Ubuntu's mirror, which has taken half an hour on a slow day.
     timeout-minutes: 50
     # PostgreSQL for the Vitest database tests (*.db.spec.ts), which fail
-    # rather than skip in CI. One of them hands a table between a real serve-nl
-    # and the TypeScript server, so the job needs uv as well.
+    # rather than skip in CI. The parity checks run the Python references, so
+    # the job needs uv as well.
     services:
       postgres:
         image: postgres:18
@@ -96,11 +80,6 @@ jobs:
       - run: pnpm e2e
         env:
           E2E_SKIP_BUILD: '1'
-      # The live arrangement until P4B.7: the same build in front of serve-nl.
-      - run: pnpm e2e --project chromium
-        env:
-          E2E_SKIP_BUILD: '1'
-          E2E_LEGACY: '1'
       - if: failure()
         uses: actions/upload-artifact@v7
         with:

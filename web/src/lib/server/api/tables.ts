@@ -276,6 +276,26 @@ export class Tables {
 		await this.site.wallet.credit(playerId, amount, 'refund', tableId);
 	}
 
+	/**
+	 * Whether every open table saved in the database could be restored by this
+	 * build, without restoring, running or changing any: a release candidate's
+	 * check while the live server still owns the tables. True without a store.
+	 */
+	async restorable(): Promise<boolean> {
+		if (this.store === null) return true;
+		let ok = true;
+		for (const saved of await this.store.loadOpen()) {
+			try {
+				tableFromDict(saved.state, () => this.options.clock.now());
+			} catch (error) {
+				if (!(error instanceof FormatError || error instanceof RangeError)) throw error;
+				this.log.error(`Table ${saved.tableId} could not be restored by this build`, error);
+				ok = false;
+			}
+		}
+		return ok;
+	}
+
 	/** Run every open table saved in the database again. */
 	private async restore(store: TableStorage): Promise<void> {
 		let restored = 0;

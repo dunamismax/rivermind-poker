@@ -1,7 +1,7 @@
-import { createServer, type IncomingMessage, type Server } from 'node:http';
+import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { WebSocket, WebSocketServer } from 'ws';
+import { WebSocket } from 'ws';
 import { createApi } from '../src/lib/server/api/api.ts';
 import { UNLIMITED } from '../src/lib/server/api/safety.ts';
 import { Site } from '../src/lib/server/api/site.ts';
@@ -20,7 +20,6 @@ import {
 	type App,
 	type Handler
 } from './app.ts';
-import { RESTARTING } from './legacy.ts';
 
 const running: (() => Promise<void>)[] = [];
 
@@ -40,47 +39,16 @@ const pages: Handler = (req, res) => {
 };
 
 async function start(
-	legacy: string | null = null,
 	extra: Partial<Parameters<typeof createApp>[0]> = {}
 ): Promise<{ app: App; host: string }> {
 	const app = createApp({
 		handler: pages,
-		legacyApi: legacy ? new URL(`http://${legacy}`) : null,
 		shutdownTimeoutMs: 500,
 		...extra
 	});
 	const host = await listen(app.server);
 	running.push(() => app.close());
 	return { app, host };
-}
-
-/** A stand-in for serve-nl: echoes requests as JSON and socket messages back. */
-async function legacyServer(): Promise<{ host: string; seen: IncomingMessage[] }> {
-	const seen: IncomingMessage[] = [];
-	const server = createServer((req, res) => {
-		seen.push(req);
-		let body = '';
-		req.on('data', (chunk) => (body += chunk));
-		req.on('end', () => {
-			res.writeHead(201, {
-				'content-type': 'application/json',
-				'set-cookie': ['a=1; Path=/', 'b=2; Path=/']
-			});
-			res.end(JSON.stringify({ path: req.url, method: req.method, body, headers: req.headers }));
-		});
-	});
-	const sockets = new WebSocketServer({ server });
-	sockets.on('connection', (ws, req) => {
-		seen.push(req);
-		ws.on('message', (data) => ws.send(`echo ${data}`));
-	});
-	const host = await listen(server);
-	running.push(async () => {
-		for (const ws of sockets.clients) ws.terminate();
-		server.closeAllConnections();
-		await new Promise((resolve) => server.close(resolve));
-	});
-	return { host, seen };
 }
 
 function opened(ws: WebSocket): Promise<void> {
@@ -95,12 +63,27 @@ function closed(ws: WebSocket): Promise<number> {
 }
 
 describe('the web server', () => {
-	it('answers /healthz', async () => {
+	it('answers /healthz with the revision and each check', async () => {
 		const { host } = await start();
 		const response = await fetch(`http://${host}/healthz`);
 		expect(response.status).toBe(200);
-		expect(await response.text()).toBe('ok\n');
+		expect(await response.json()).toEqual({ status: 'ok', revision: null });
 		expect(response.headers.get('cache-control')).toBe('no-store');
+
+		const revision = 'a'.repeat(40);
+		let database = true;
+		const checked = await start({ revision, checks: { database: async () => database } });
+		const ok = await fetch(`http://${checked.host}/healthz`);
+		expect(ok.status).toBe(200);
+		expect(await ok.json()).toEqual({ status: 'ok', revision, database: 'ok' });
+		database = false;
+		const down = await fetch(`http://${checked.host}/healthz`);
+		expect(down.status).toBe(503);
+		expect(await down.json()).toEqual({ status: 'error', revision, database: 'error' });
+		const failing = await start({
+			checks: { database: () => Promise.reject(new Error('no connection')) }
+		});
+		expect((await fetch(`http://${failing.host}/healthz`)).status).toBe(503);
 	});
 
 	it('serves pages through the handler with the site headers', async () => {
@@ -115,7 +98,7 @@ describe('the web server', () => {
 		expect(asset.headers.get('cache-control')).toBeNull();
 	});
 
-	it('without a legacy server, gives /api to the handler and turns sockets away', async () => {
+	it('without the API, gives /api to the handler and turns sockets away', async () => {
 		const { host } = await start();
 		expect(await (await fetch(`http://${host}/api/config`)).text()).toBe('page /api/config');
 		const ws = new WebSocket(`ws://${host}/ws`);
@@ -130,69 +113,6 @@ describe('the web server', () => {
 	});
 });
 
-describe('forwarding to the legacy server', () => {
-	it('passes /api requests through with their host, origin, body and cookies', async () => {
-		const legacy = await legacyServer();
-		const { host } = await start(legacy.host);
-		const response = await fetch(`http://${host}/api/tables?seats=2`, {
-			method: 'POST',
-			headers: { origin: `http://${host}`, 'content-type': 'application/json' },
-			body: '{"seats":2}'
-		});
-		expect(response.status).toBe(201);
-		expect(response.headers.getSetCookie()).toEqual(['a=1; Path=/', 'b=2; Path=/']);
-		const echoed = await response.json();
-		expect(echoed).toMatchObject({
-			path: '/api/tables?seats=2',
-			method: 'POST',
-			body: '{"seats":2}'
-		});
-		expect(echoed.headers.host).toBe(host);
-		expect(echoed.headers.origin).toBe(`http://${host}`);
-		expect(echoed.headers['x-forwarded-for']).toBe('127.0.0.1');
-		// Pages are still the handler's, without the forwarding.
-		expect(await (await fetch(`http://${host}/apiary`)).text()).toBe('page /apiary');
-	});
-
-	it('keeps a loopback proxy’s X-Forwarded-For, as Caddy sends it', async () => {
-		const legacy = await legacyServer();
-		const { host } = await start(legacy.host);
-		const response = await fetch(`http://${host}/api/config`, {
-			headers: { 'x-forwarded-for': '203.0.113.7' }
-		});
-		expect((await response.json()).headers['x-forwarded-for']).toBe('203.0.113.7');
-	});
-
-	it('answers 503 while the legacy server is down', async () => {
-		const probe = createServer();
-		const address = await listen(probe);
-		await new Promise((resolve) => probe.close(resolve));
-		const { host } = await start(address);
-		const response = await fetch(`http://${host}/api/config`);
-		expect(response.status).toBe(503);
-		expect(await response.text()).toBe(RESTARTING);
-		const ws = new WebSocket(`ws://${host}/ws`);
-		const failed = new Promise<Error>((resolve) => ws.once('error', resolve));
-		expect((await failed).message).toMatch(/503/);
-	});
-
-	it('splices the /ws socket through with the browser’s origin', async () => {
-		const legacy = await legacyServer();
-		const { host } = await start(legacy.host);
-		const ws = new WebSocket(`ws://${host}/ws?table=t1`, { origin: `http://${host}` });
-		await opened(ws);
-		const reply = new Promise((resolve) => ws.once('message', (data) => resolve(String(data))));
-		ws.send('hello');
-		expect(await reply).toBe('echo hello');
-		const handshake = legacy.seen.at(-1)!;
-		expect(handshake.url).toBe('/ws?table=t1');
-		expect(handshake.headers.host).toBe(host);
-		expect(handshake.headers.origin).toBe(`http://${host}`);
-		expect(handshake.headers['x-forwarded-for']).toBe('127.0.0.1');
-		ws.close();
-	});
-});
-
 describe('shutting down', () => {
 	it('lets an open request finish, then stops listening', async () => {
 		const slow: Handler = (req, res) => setTimeout(() => res.end(`late ${req.url}`), 200);
@@ -203,29 +123,13 @@ describe('shutting down', () => {
 		await Promise.all([app.close(), expect((await pending).text()).resolves.toBe('late /hands')]);
 		await expect(fetch(`http://${host}/healthz`)).rejects.toThrow();
 	});
-
-	it('cuts forwarded sockets so the browser reconnects', async () => {
-		const legacy = await legacyServer();
-		const app = createApp({
-			handler: pages,
-			legacyApi: new URL(`http://${legacy.host}`),
-			shutdownTimeoutMs: 500
-		});
-		const host = await listen(app.server);
-		const ws = new WebSocket(`ws://${host}/ws`);
-		await opened(ws);
-		const code = closed(ws);
-		await app.close();
-		expect(await code).not.toBe(1000);
-		await expect(fetch(`http://${host}/healthz`)).rejects.toThrow();
-	});
 });
 
 describe('the TypeScript API (P4B.5a)', () => {
 	const site = () => new Site({ secret: Buffer.from('test-secret'), limits: UNLIMITED });
 
 	it('answers /api/* ahead of the handler, without SvelteKit refusing Origin-less requests', async () => {
-		const { host } = await start(null, { api: createApi(site()) });
+		const { host } = await start({ api: createApi(site()) });
 		const made = await fetch(`http://${host}/api/session`, { method: 'POST' });
 		expect(made.status).toBe(200);
 		const cookie = made.headers.getSetCookie();
@@ -249,7 +153,7 @@ describe('the TypeScript API (P4B.5a)', () => {
 	});
 
 	it('sees the public scheme, and refuses bodies that are too large', async () => {
-		const { host } = await start(null, {
+		const { host } = await start({
 			api: createApi(site()),
 			origin: new URL('https://rivermindpoker.com')
 		});
@@ -261,14 +165,6 @@ describe('the TypeScript API (P4B.5a)', () => {
 			body: JSON.stringify({ legacy_token: 'x'.repeat(MAX_BODY_BYTES) })
 		});
 		expect(big.status).toBe(413);
-	});
-
-	it('forwards to the legacy server instead when there is one', async () => {
-		const legacy = await legacyServer();
-		const { host } = await start(legacy.host, { api: createApi(site()) });
-		const response = await fetch(`http://${host}/api/session`, { method: 'POST' });
-		expect(response.status).toBe(201);
-		expect(legacy.seen).toHaveLength(1);
 	});
 });
 
@@ -287,7 +183,7 @@ describe('the table server over real sockets (P4B.5b)', () => {
 				log: quiet
 			}
 		});
-		const { app, host } = await start(null, {
+		const { app, host } = await start({
 			api: createApi(site, { tables }),
 			sockets: createSocketServer(tables)
 		});

@@ -2,7 +2,7 @@
  * The {@link Site}, the tables, the API handler and the socket server of a
  * running Node server, made from its environment (P4B.5a, P4B.5b).
  *
- * Environment, as `serve-nl` reads its options:
+ * Environment, named as `serve-nl` named its options:
  *   RIVERMIND_SECRET           the secret that signs session cookies, or
  *   RIVERMIND_SECRET_FILE      a file holding it, made (0600) if missing. The
  *                              live server's is /var/lib/rivermind-poker/secret;
@@ -29,7 +29,8 @@
  *
  * With `RIVERMIND_API=1`, `server/index.ts` makes one at start-up, restores
  * the saved tables and serves the API ahead of SvelteKit's handler and the
- * sockets on `/ws`.
+ * sockets on `/ws`. A release candidate (`RIVERMIND_CANDIDATE=1`) makes one
+ * too but never starts it: it only answers `candidateChecks` on /healthz.
  */
 import { randomBytes } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeSync } from 'node:fs';
@@ -93,6 +94,14 @@ export interface Runtime {
 	start(): Promise<void>;
 	/** Stop the tables, letting changes in flight finish, and close the database pool, if any. */
 	close(): Promise<void>;
+	/** /healthz's checks for the live server: `database`, a query through the pool, when there is one. */
+	checks: Record<string, () => Promise<boolean>>;
+	/**
+	 * A release candidate's checks (RIVERMIND_CANDIDATE=1): `database`, `tables`
+	 * (every saved open table can be restored, {@link Tables.restorable}) and,
+	 * with RIVERMIND_MODELS, `champions` (the heads-up champion was loaded).
+	 */
+	candidateChecks: Record<string, () => Promise<boolean>>;
 }
 
 /** A setting that must be a number no smaller than `least`, or missing. */
@@ -199,6 +208,13 @@ export function createRuntime(env: Env = process.env): Runtime {
 		maxTables: numberFrom(env, 'RIVERMIND_MAX_TABLES', 1),
 		store: db ? new TableStore(db) : null
 	});
+	const checks: Record<string, () => Promise<boolean>> = {};
+	if (pool) checks.database = async () => (await pool.query('select 1 as ok')).rows[0]?.ok === 1;
+	const candidateChecks: Record<string, () => Promise<boolean>> = {
+		...checks,
+		tables: () => tables.restorable()
+	};
+	if (env.RIVERMIND_MODELS) candidateChecks.champions = async () => HARD in trainedBots;
 	const allowedOrigins = (env.RIVERMIND_ALLOWED_ORIGINS ?? '')
 		.split(',')
 		.map((origin) => origin.trim())
@@ -208,6 +224,8 @@ export function createRuntime(env: Env = process.env): Runtime {
 		tables,
 		api: createApi(site, { allowedOrigins, tables }),
 		sockets: createSocketServer(tables, { allowedOrigins }),
+		checks,
+		candidateChecks,
 		start: () => tables.start(),
 		close: async () => {
 			await tables.stop();

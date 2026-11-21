@@ -8,7 +8,7 @@ RiverMind Poker 1.0 is a free, self-hosted poker website at rivermindpoker.com, 
 
 ## Target architecture
 
-The stack is SvelteKit 3 · Svelte 5 · TypeScript · Tailwind CSS 4 · PostgreSQL 18 + Drizzle ORM · Node (`adapter-node`) · Caddy (D-14). Phase 4B moves the live site onto it. Until that cutover the table server is the Python `serve-nl`.
+The stack is SvelteKit 3 · Svelte 5 · TypeScript · Tailwind CSS 4 · PostgreSQL 18 + Drizzle ORM · Node (`adapter-node`) · Caddy (D-14). Phase 4B moved the live site onto it: the Node server took the tables over at P4B.7, and the Python table server was retired at P4B.8.
 
 | Layer | Choice | Why |
 | --- | --- | --- |

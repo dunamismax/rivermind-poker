@@ -3,12 +3,10 @@ import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 
-// In development a table server on another port (port 8000 by default)
-// owns /api and /ws. In development and preview, Vite forwards both so the
-// client stays same-origin; the built Node server does the same with
-// RIVERMIND_LEGACY_API (server/legacy.ts).
-const backend =
-	process.env.RIVERMIND_LEGACY_API ?? process.env.RIVERMIND_BACKEND ?? 'http://127.0.0.1:8000';
+// In development the Node server (`RIVERMIND_API=1 PORT=8000 node server/index.ts`
+// after a build) on another port owns /api and /ws. In development and preview,
+// Vite forwards both so the client stays same-origin.
+const backend = process.env.RIVERMIND_BACKEND ?? 'http://127.0.0.1:8000';
 const proxy = {
 	'/api': { target: backend, changeOrigin: true },
 	'/ws': { target: backend, ws: true, changeOrigin: true }

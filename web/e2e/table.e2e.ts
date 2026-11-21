@@ -9,7 +9,7 @@ import {
 	test
 } from './fixtures.ts';
 
-// The no-limit table (P3.6) against a real `serve-nl`, at 2, 6 and 9 seats.
+// The no-limit table (P3.6) against the Node table server, at 2, 6 and 9 seats.
 
 for (const seats of [2, 6, 9]) {
 	test(`plays hands at ${seats} seats`, async ({ page, cspViolations }) => {

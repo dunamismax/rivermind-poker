@@ -19,7 +19,7 @@ RiverMind is also a poker AI project. Its bots are trained offline with Monte Ca
 
 The live site has no-limit hold’em at 2 to 9 seats against labelled bots: random, calling station, RiverMind Easy, a tight-aggressive rule-based player, and RiverMind Hard, a trained heads-up bot with a [published evaluation](https://rivermindpoker.com/bots). Guests keep a play-chip wallet and find each other in a lobby with quick seat, waitlists and private tables with invite links. They can react with presets, mute, block and report, and review their own hand histories. A guest at any balance can start a heads-up practice hand in one click. Tables, mid-hand included, are stored in PostgreSQL and survive restarts. The site is drawn in its own pixel-art style.
 
-**Now:** the live site runs on the TypeScript stack (decision D-14 in [BUILD.md](BUILD.md#settled-decisions)): SvelteKit and Tailwind CSS 4 on Node, with the table server, the engine and the bots in the same Node service and Drizzle on PostgreSQL. The engine, the bots and the table server are checked against their Python originals byte for byte, and open tables, guests and hands carried over at the cutover. The Python table server stays as a rehearsed rollback for a week of live play, then goes (P4B.8). Python keeps the offline work: the reference engine, training and evaluation.
+**Now:** the live site runs on the TypeScript stack (decision D-14 in [BUILD.md](BUILD.md#settled-decisions)): SvelteKit and Tailwind CSS 4 on Node, with the table server, the engine and the bots in the same Node service and Drizzle on PostgreSQL. The engine, the bots and the table server are checked against their Python originals byte for byte, and open tables, guests and hands carried over at the cutover. The Python table server was retired at P4B.8; deploys fix forward, each release checked as a candidate before it takes traffic. Python keeps the offline work: the reference engine, training and evaluation.
 
 **Next:** replay from the table. RiverMind Hard plays the heads-up champion `hu-m1-s0-1024m`, 1.024 billion training iterations of the `hu-m1` blueprint, at two-seat tables and in practice. Over 20,000 duplicate deals each at 100 big blinds, the strategy the site serves won +58.8 big blinds per 100 hands against RiverMind Easy (95% interval +50.1 to +67.5), +224.9 against the calling station and +21.1 (+10.5 to +31.8) against the first champion, trained for an eighth as long. The server plays the model only after checking every file against [the registry](docs/models.md), which lists every run put to the promotion gate with its reports.
 
@@ -62,17 +62,17 @@ The live site has no-limit hold’em at 2 to 9 seats against labelled bots: rand
 | --- | --- | --- |
 | Pages and assets | SvelteKit 3, Svelte 5 and strict TypeScript on Node through `adapter-node` | The same, since P4B.1 |
 | Styling | Tailwind CSS 4, with a theme generated from the pixel-art palette | The same, since P4B.2 |
-| Table server and API | TypeScript in the same Node server, with the `/ws` WebSocket on the same port | The same, since the P4B.7 cutover. The Python `serve-nl` is kept as the rollback until P4B.8 |
+| Table server and API | TypeScript in the same Node server, with the `/ws` WebSocket on the same port | The same, since the P4B.7 cutover. The Python `serve-nl` was retired at P4B.8 |
 | Game engine | A TypeScript engine kept byte-identical to the Python reference engine by differential tests | The same, since P4B.7 |
 | Bots | Trained and evaluated offline in Python, exported as serving bundles that Node reads | The TypeScript ports of the three rule-based bots, since P4B.7; no trained bot is on the site yet |
-| Database | PostgreSQL 18 with Drizzle ORM migrations | The same, since P4B.7. Alembic's migrations build the identical schema until P4B.8 |
+| Database | PostgreSQL 18 with Drizzle ORM migrations | The same, since P4B.7. Alembic was retired at P4B.8 |
 | Hosting | The owner’s server, with Caddy for HTTPS and systemd services | The same |
 
 Hands follow the written [no-limit rules](docs/rules.md). The engines are pure: states are immutable and randomness comes only from the caller, so every hand can be replayed exactly. The bot design, card abstraction, training and evaluation method are in [docs/bots.md](docs/bots.md), and the art rules in [docs/design.md](docs/design.md).
 
 ## Play locally
 
-Use [uv](https://docs.astral.sh/uv/getting-started/installation/) from the repository root. The project develops on Python 3.12.
+Use [uv](https://docs.astral.sh/uv/getting-started/installation/) from the repository root. The project develops on Python 3.12.15 (`.python-version`), with the packages pinned in `uv.lock`.
 
 ### In the browser
 
@@ -119,10 +119,9 @@ rivermind-poker/
 ├── rivermind/
 │   ├── engine/             The reference no-limit engine, fuzzing and benchmarks
 │   ├── bots/               Simple bots, card tables, blueprint training, evaluation, serving bundles
-│   ├── server/             The Python table server (serve-nl), the rollback until P4B.8
-│   └── db/                 SQLAlchemy models and Alembic migrations, until P4B.8
+│   └── server/             The Python table model, the reference for `pnpm table:parity`
 ├── poker_ai/               The short-deck prototype and the terminal client (legacy)
-├── test/                   pytest: engine, server, database, unit and functional tests
+├── test/                   pytest: engine, table model, unit and functional tests
 ├── deploy/                 systemd units, the Caddy site, database setup and the update script
 ├── docs/                   Rules, bots, design, roadmap, evaluations and build history
 └── artifacts/              Generated card tables, checkpoints and bundles (ignored by Git)

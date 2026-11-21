@@ -25,7 +25,7 @@ test('serves pages and assets with the site headers', async ({ page, request, cs
 	expect((await request.get('/_app/immutable/missing.js')).status()).toBe(404);
 
 	const health = await request.get('/healthz');
-	expect(await health.text()).toBe('ok\n');
+	expect(await health.json()).toMatchObject({ status: 'ok' });
 	const config = await request.get('/api/config');
 	expect(config.ok()).toBe(true);
 	expect((await config.json()).protocol).toBe(2);

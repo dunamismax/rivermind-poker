@@ -277,6 +277,37 @@ describe.skipIf(!url)('durable tables on PostgreSQL', () => {
 		expect(final.holeCards[0]).not.toBeNull();
 	});
 
+	it('lets a release candidate check the saved tables without touching them', async () => {
+		const live = await serve(6);
+		const player = await Player.create(live);
+		const tableId = await player.newTable(6, 'heuristic');
+		const socket = await player.socket();
+		await socket.join(tableId);
+		for (let i = 0; i < 4; i++) socket.play(tableId, await socket.myTurn(tableId));
+		await socket.myTurn(tableId); // mid-hand, waiting for us
+		await live.settle();
+		const before = await savedState(tableId);
+		const saved = await rows(sql`SELECT * FROM poker_tables ORDER BY id`);
+
+		// A candidate's Tables on the same database is never started.
+		const candidate = new TestServer({ seed: 7, site: { db }, store: new TableStore(db) });
+		expect(await candidate.tables.restorable()).toBe(true);
+		expect(candidate.tables.manager.tables.size).toBe(0);
+		expect(await rows(sql`SELECT * FROM poker_tables ORDER BY id`)).toEqual(saved);
+		expect(await savedState(tableId)).toEqual(before);
+		// The live server's hand goes on.
+		expect(live.runner(tableId).table.handInProgress).toBe(true);
+
+		// A saved table this build could not restore fails the check, and is left as it was.
+		await db.execute(
+			sql`UPDATE poker_tables SET state = jsonb_set(state, '{format}', '999') WHERE id = ${tableId}`
+		);
+		const broken = await savedState(tableId);
+		expect(await candidate.tables.restorable()).toBe(false);
+		expect(await savedState(tableId)).toEqual(broken);
+		expect(candidate.log.lines.some((line) => line.includes(tableId))).toBe(true);
+	});
+
 	it('keeps lobby settings, held seats and the waitlist over a restart', async () => {
 		let server = await serve(5);
 		const alice = await Player.create(server);

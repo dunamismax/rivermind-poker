@@ -8,7 +8,8 @@
 # of SvelteKit's start-up script; Caddy adds its policy only to the API, the
 # socket handshake and its own error page.
 #
-# Check and reload: caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
+# Check: caddy-apply --check rivermindpoker.com deploy/rivermindpoker.com.caddy
+# Install and reload only through caddy-apply, inside with-deploy-lock (update.sh step 7).
 
 www.rivermindpoker.com {
 	redir https://rivermindpoker.com{uri} permanent

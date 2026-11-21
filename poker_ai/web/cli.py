@@ -55,23 +55,18 @@ def serve(host: str, port: int, strategy_path: Optional[str],
 
 
 @click.command()
-@click.option("--version", "version", type=click.Choice(["1", "2"]), default="1", show_default=True,
-              help="Protocol version: 1 for the short-deck table, 2 for the no-limit server.")
 @click.option("--output", default=None,
               help="Write the JSON Schema to this file instead of standard output.")
 @click.option("--typescript", "typescript_path", default=None,
               help="Also write TypeScript types generated from the schema to this "
-                   "file (the web client's src/lib/protocol.ts, or protocol-v2.ts).")
-def protocol_schema(version: str, output: Optional[str], typescript_path: Optional[str]):
-    """Export a table protocol as JSON Schema, optionally as TypeScript too."""
+                   "file (the web client's src/lib/protocol.ts).")
+def protocol_schema(output: Optional[str], typescript_path: Optional[str]):
+    """Export the short-deck table protocol as JSON Schema, optionally as TypeScript too."""
     import json
 
     from rivermind.server.typescript import to_typescript
 
-    if version == "2":
-        from rivermind.server.protocol import json_schema
-    else:
-        from poker_ai.web.protocol import json_schema
+    from poker_ai.web.protocol import json_schema
 
     schema = json_schema()
     text = json.dumps(schema, indent=2) + "\n"
@@ -80,5 +75,5 @@ def protocol_schema(version: str, output: Optional[str], typescript_path: Option
     elif not typescript_path:
         click.echo(text, nl=False)
     if typescript_path:
-        Path(typescript_path).write_text(to_typescript(schema, int(version)))
+        Path(typescript_path).write_text(to_typescript(schema, 1))
         click.echo(f"Wrote {typescript_path}", err=True)

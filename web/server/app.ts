@@ -1,27 +1,34 @@
 // The RiverMind Poker web server: SvelteKit's Node handler and the /ws
 // WebSocket on one HTTP server (D-2). /api/* is answered by the TypeScript API
 // (api.ts, P4B.5a) and /ws by the TypeScript table server (`sockets`, P4B.5b),
-// as the live site runs since the P4B.7 cutover. With a legacy target both are
-// forwarded to the Python table server instead (legacy.ts): the rollback, kept
-// until P4B.8. With neither, /ws accepts sockets and closes them.
+// as the live site runs since the P4B.7 cutover. Without them, /api/* goes to
+// the handler and /ws accepts sockets and closes them.
+//
+// /healthz answers {"status":"ok","revision":"<commit>","database":"ok"}
+// (docs/web-platform.md in ubuntu-vm-backup): `revision` is the release's
+// REVISION, and each of `checks` adds a field that is "ok" or "error". Any
+// error, or a server shutting down, answers 503.
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import type { Socket } from 'node:net';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer } from 'ws';
 import { serveApi, type ApiHandler } from './api.ts';
-import { forwardRequest, forwardUpgrade, isLegacyPath } from './legacy.ts';
 
 export type Handler = (req: IncomingMessage, res: ServerResponse, next?: () => void) => void;
+
+/** A /healthz check: resolves true when healthy. A rejection counts as unhealthy. */
+export type HealthCheck = () => Promise<boolean>;
 
 export interface Options {
 	/** SvelteKit's request handler, from the build's handler.js. */
 	handler: Handler;
-	/** The Python table server to forward /api/* and /ws to: the rollback, until P4B.8. */
-	legacyApi?: URL | null;
 	/** How long a shutdown waits for open requests before closing them, in milliseconds. */
 	shutdownTimeoutMs?: number;
-	/** Protocol v2's HTTP API (P4B.5a), for /api/* when nothing is forwarded to serve-nl. */
+	/** The release's commit, from its REVISION file; null when not run from a release. */
+	revision?: string | null;
+	/** /healthz's checks by name, such as `database`. */
+	checks?: Record<string, HealthCheck>;
+	/** Protocol v2's HTTP API (P4B.5a), for /api/*. */
 	api?: ApiHandler | null;
 	/** The site's public origin (adapter-node's ORIGIN), whose scheme the API sees. */
 	origin?: URL | null;
@@ -77,34 +84,51 @@ function pathOf(req: IncomingMessage): string {
 	return end === -1 ? url : url.slice(0, end);
 }
 
+/** Paths the HTTP API answers. */
+export function isApiPath(path: string): boolean {
+	return path === '/api' || path.startsWith('/api/');
+}
+
 export function createApp({
 	handler,
-	legacyApi = null,
 	shutdownTimeoutMs = 10_000,
+	revision = null,
+	checks = {},
 	api = null,
 	origin = null,
 	sockets: tables = null
 }: Options): App {
 	const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
-	const forwarded = new Set<Socket>();
 	let closing = false;
+
+	async function health(res: ServerResponse): Promise<void> {
+		const body: Record<string, string | null> = { status: 'ok', revision };
+		let healthy = !closing;
+		if (closing) {
+			body.status = 'stopping';
+		} else {
+			for (const [name, check] of Object.entries(checks)) {
+				const ok = await check().catch(() => false);
+				body[name] = ok ? 'ok' : 'error';
+				if (!ok) healthy = false;
+			}
+			if (!healthy) body.status = 'error';
+		}
+		res.writeHead(healthy ? 200 : 503, {
+			'content-type': 'application/json',
+			'cache-control': 'no-store'
+		});
+		res.end(JSON.stringify(body) + '\n');
+	}
 
 	const server = createServer((req, res) => {
 		const path = pathOf(req);
 		if (closing) res.setHeader('connection', 'close');
 		if (path === '/healthz') {
-			res.writeHead(closing ? 503 : 200, {
-				'content-type': 'text/plain; charset=utf-8',
-				'cache-control': 'no-store'
-			});
-			res.end(closing ? 'stopping\n' : 'ok\n');
+			void health(res);
 			return;
 		}
-		if (legacyApi && isLegacyPath(path)) {
-			forwardRequest(legacyApi, req, res);
-			return;
-		}
-		if (api && isLegacyPath(path)) {
+		if (api && isApiPath(path)) {
 			void serveApi(api, req, res, origin);
 			return;
 		}
@@ -118,12 +142,6 @@ export function createApp({
 	server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
 		if (closing || pathOf(req) !== '/ws') {
 			socket.destroy();
-			return;
-		}
-		if (legacyApi) {
-			const upstream = forwardUpgrade(legacyApi, req, socket, head);
-			forwarded.add(upstream);
-			upstream.on('close', () => forwarded.delete(upstream));
 			return;
 		}
 		if (tables === null) {
@@ -166,13 +184,9 @@ export function createApp({
 		const stopped = new Promise<void>((resolve) => server.close(() => resolve()));
 		server.closeIdleConnections();
 		for (const ws of sockets.clients) ws.close(SERVICE_RESTART, 'The server is restarting.');
-		// A forwarded socket is closed at the Python end, which ends the browser's side too;
-		// the client reconnects to whichever server answers next.
-		for (const upstream of forwarded) upstream.end();
 		const timer = setTimeout(() => {
 			server.closeAllConnections();
 			for (const ws of sockets.clients) ws.terminate();
-			for (const upstream of forwarded) upstream.destroy();
 		}, shutdownTimeoutMs);
 		timer.unref();
 		await stopped;
