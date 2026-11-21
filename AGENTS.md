@@ -88,7 +88,7 @@ The owner runs several sessions at once, often in this checkout, and long traini
 - **Expect half-finished work.** Another session may leave staged or uncommitted changes. If its edits break the build, verify yours in a scratch copy of `main` plus your changes. Do the same before `pnpm add` or `uv add` while another session’s tests are running.
 - **Don’t rebuild `web/build` while Playwright is running**, yours or anyone else’s: the run breaks.
 - **Training runs in the background.** **Now** names any run in progress and the command that resumes it. Leave it running. Stop it only with SIGTERM (or Ctrl-C), which finishes the batch and writes a checkpoint first, and resume it with `--resume` at low priority (`nice -n 19`).
-- **Heavy load changes timing.** With training and other sessions running, the load average can pass 100. A timing-sensitive test that fails under load and passes alone is still worth a look before you call it flaky: a ledger check that failed once under load turned out to be a real race in `serve-nl` (see the P4.2/P4.4 handoff in BUILD.md). Record the load when you report a failure.
+- **Heavy load changes timing.** With training and other sessions running, the load average can pass 100. A timing-sensitive test that fails under load and passes alone is still worth a look before you call it flaky: a ledger check that failed once under load turned out to be a real race in `serve-nl` (see the P4.2/P4.4 handoff in [docs/build-history.md](docs/build-history.md)). Record the load when you report a failure.
 
 ## 6. Stack and layout
 
