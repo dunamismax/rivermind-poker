@@ -296,11 +296,24 @@ pnpm e2e:live   # against https://rivermindpoker.com (or LIVE_URL)
 - `adapter-node` assumes https unless `ORIGIN` or `PROTOCOL_HEADER` is set, so set `ORIGIN` when running `pnpm start` locally. Unknown paths are 404s, not an SPA fallback; invites use `/?invite=`.
 - `web/src/lib/protocol-v2.ts` is the no-limit protocol's source (P4B.5b). Change it and `rivermind/server/protocol.py` together until P4B.8; pytest fails while the Pydantic models describe anything else. After changing `poker_ai/web/protocol.py`, run `pnpm protocol` and commit the regenerated `web/src/lib/protocol.ts`.
 
+### Styles
+
+Pages and components are styled with Tailwind utilities on the theme `pnpm art` generates ([docs/design.md](docs/design.md#styling-tailwind-on-the-kits-own-theme) has the tokens, variants and what stays outside utilities). Check every change to styles or markup with `pnpm visual` against captures of the commit before it.
+
+- One utility per property on an element. When two set the same property at the same variant, the stylesheet's order decides, not the markup's: a tag with `ml-3` and `ml-0` kept `ml-3`. Build class strings so that never happens.
+- Layers decide before specificity: preflight, then `base` (app.css), then the kit (`pixel.css`, `components`), then utilities. A component's `<style>` block is unlayered and beats them all, so a property set there cannot be changed by a utility.
+- Preflight removes margins, borders, list markers and link underlines. A page that needs one says so (`list-disc`, `my-10`). Checkboxes keep each browser's own margins (`margin: revert` in `base`): WebKit's differ from Chromium's.
+- `grid-cols-5` and `auto-cols-fr` are `minmax(0, 1fr)`. Where the layout was drawn with plain `1fr`, write `grid-cols-[repeat(5,1fr)]`.
+- Write a value out when it must match exactly: `bg-[rgb(12_13_21/0.72)]`, not `bg-ink/72` (the modifier rounds the alpha), and `[box-shadow:…]`, not `shadow-[…]` (which brings Tailwind's ring and shadow variables into the page).
+- The translate utilities set the `translate` property, not `transform`. A keyframe that animates `transform` then moves on top of it, so write keyframes as offsets from the resting place.
+- Tailwind reads every word of a scanned file as a possible class. Do not name a class after a utility (`grow`), and add an ordinary word that turns into one to the `@source not inline(...)` list in `app.css`.
+- A variable named `state` in a component makes `$state(...)` a store read; Svelte only warns.
+
 ### Art
 
-The site’s art is pixel art drawn as text: the palette, sprites and font are in `web/art/`, and `pnpm art` renders them into `web/src/lib/art/` and `web/static/`. [The design notes](docs/design.md) and the `/style` page describe the kit.
+The site’s art is pixel art drawn as text: the palette, sprites and font are in `web/art/`, and `pnpm art` renders them, and the Tailwind theme (`theme.css`), into `web/src/lib/art/` and `web/static/`. [The design notes](docs/design.md) and the `/style` page describe the kit.
 
-- Never edit a generated PNG, the font or `palette.css` by hand. Change the source, run `pnpm art --preview <dir outside the repo>`, look at the contact sheets, and commit both.
+- Never edit a generated PNG, the font or `theme.css` by hand. Change the source, run `pnpm art --preview <dir outside the repo>`, look at the contact sheets, and commit both.
 - Draw only with palette names, keep art at whole-number scales, and size text in multiples of 10px.
 - The cards are the exception: the owner’s PNG sprites in `web/art/cards/` (`fronts/<rank>-<suit>.png`, `backs/<name>.png`) are the only card art, are not on the palette, and are shrunk by `pnpm art` to 71 × 95. Size cards with `--k`; they snap to whole device pixels per art pixel, so check them at DPR 1, 2 and 3.
 
@@ -382,6 +395,7 @@ Ranges are in `pyproject.toml` and `web/package.json`; the exact versions are in
 | Node | 26 | `web/.node-version` and `engines` (mise reads it on this Mac and the server) |
 | pnpm | 12.18.0 | `packageManager`, through corepack |
 | SvelteKit, Svelte | 3, 5.57 | with `@sveltejs/adapter-node` 6 |
+| Tailwind CSS | 4.3 | through `@tailwindcss/vite` |
 | TypeScript, Vite, Vitest | 6.0, 8.3, 5.1 | |
 | Playwright | 1.65 | Chromium, Firefox and WebKit |
 | Drizzle ORM, drizzle-kit, pg | 0.45, 0.31, 8.23 | |
