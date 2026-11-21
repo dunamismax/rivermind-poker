@@ -66,7 +66,10 @@ WEB_LIVE=/home/sawyer/github/ubuntu-vm-backup/bin/web-live
 # Python 3.12 from .python-version lives here, readable by sawyer; never downloaded.
 export UV_PYTHON_INSTALL_DIR=/opt/uv-python UV_PYTHON_DOWNLOADS=never
 
-step() { printf '\n== %s: %s\n' "$SITE" "$*"; }
+step() { current_step=$*; printf '\n== %s: %s\n' "$SITE" "$*"; }
+current_step="1. build"
+# Any command that fails stops the deploy; say in which step.
+trap 'printf "%s deploy stopped in step %s\n" "$SITE" "$current_step" >&2' ERR
 die() { printf '%s deploy stopped: %s\n' "$SITE" "$*" >&2; exit 1; }
 
 # Run a command as sawyer with one env file's variables in its environment,

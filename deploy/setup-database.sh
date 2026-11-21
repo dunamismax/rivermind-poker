@@ -7,8 +7,8 @@
 #   rivermind_poker              the site database, owned by a NOLOGIN role
 #   rivermind_poker_owner        owns the database and its `app` schema
 #   rivermind_poker_migration    LOGIN, NOINHERIT; may SET ROLE to the owner,
-#                                which Alembic and `pnpm db:migrate` do
-#                                (RIVERMIND_MIGRATION_ROLE)
+#                                which the release's migrator does
+#                                (DB_OWNER_ROLE)
 #   rivermind_poker_web          LOGIN, NOINHERIT; reads and writes rows only
 #   rivermind_poker_test         LOGIN; owns the separate rivermind_poker_test
 #                                database used by the deploy's test run
@@ -16,10 +16,13 @@
 # scram-sha-256 (pg_hba.conf). All roles use search_path = app. The owner
 # also owns the `drizzle` schema, where Drizzle's migrator records applied
 # migrations (P4B.3); the web role cannot see it. Credentials
-# are written once as root-only env files in /etc/rivermind-poker:
+# are written once as root-only env files in /etc/web-apps/rivermind_poker
+# (the host's web platform contract):
 #   web.env        DATABASE_URL for the service (EnvironmentFile in the unit)
-#   migration.env  DATABASE_URL and RIVERMIND_MIGRATION_ROLE for update.sh
+#   migration.env  DATABASE_URL and DB_OWNER_ROLE for update.sh's migration step
 #   test.env       RIVERMIND_TEST_DATABASE_URL for update.sh's test run
+# It predates the host's bin/provision-app-database, which provisions a new
+# database; this one keeps its roles and passwords.
 set -euo pipefail
 
 [[ $EUID -eq 0 ]] || { echo "run as root" >&2; exit 1; }
@@ -30,7 +33,7 @@ OWNER=${DB}_owner
 WEB=${DB}_web
 MIGRATION=${DB}_migration
 TESTER=$TEST_DB
-ETC=/etc/rivermind-poker
+ETC=/etc/web-apps/rivermind_poker
 HOST=127.0.0.1
 PORT=5432
 
@@ -141,7 +144,8 @@ write_env() {
 }
 write_env "$ETC/web.env" "DATABASE_URL=postgresql://$WEB:$WEB_PW@$HOST:$PORT/$DB"
 write_env "$ETC/migration.env" "DATABASE_URL=postgresql://$MIGRATION:$MIGRATION_PW@$HOST:$PORT/$DB
-RIVERMIND_MIGRATION_ROLE=$OWNER"
+RIVERMIND_MIGRATION_ROLE=$OWNER
+DB_OWNER_ROLE=$OWNER"
 write_env "$ETC/test.env" "RIVERMIND_TEST_DATABASE_URL=postgresql://$TESTER:$TEST_PW@$HOST:$PORT/$TEST_DB"
 
 echo "PostgreSQL $CLUSTER: $DB and $TEST_DB are ready; credentials are in $ETC"
