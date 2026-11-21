@@ -33,6 +33,10 @@
 		'avatar-bot'
 	];
 	let range = $state(40);
+
+	const heading = 'mb-6 text-l text-shadow-ink';
+	const row = 'row flex flex-wrap items-center gap-6';
+	const size = 'grid justify-items-center gap-3 text-mist';
 </script>
 
 <svelte:head>
@@ -42,40 +46,47 @@
 
 <SiteHeader />
 
-<main>
-	<h2>Design reference</h2>
-	<p class="lead">
+<main class="mx-auto grid max-w-[1180px] gap-16 px-8 pt-12 pb-32">
+	<h2 class="text-xl text-gold text-shadow-ink">Design reference</h2>
+	<p class="lead max-w-[60ch] text-mist">
 		Every piece of the pixel kit as the site draws it. Art pixels are drawn at 2x for the interface;
-		cards at a whole number of screen pixels per art pixel, the size <code>--k</code> asks for.
-		Sources live in <code>web/art/</code>; run <code>pnpm art</code> after changing them.
+		cards at a whole number of screen pixels per art pixel, the size <code class="text-gold-light">
+			--k
+		</code>
+		asks for. Sources live in <code class="text-gold-light">web/art/</code>; run
+		<code class="text-gold-light">pnpm art</code> after changing them.
 	</p>
 
 	<section>
-		<h3>Palette</h3>
-		<ul class="palette">
+		<h3 class={heading}>Palette</h3>
+		<ul class="palette grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-x-8 gap-y-4">
 			{#each palette as color (color.name)}
-				<li>
-					<svg viewBox="0 0 8 8" aria-hidden="true">
+				<li class="grid grid-cols-[32px_1fr] items-center gap-x-4 text-s">
+					<svg
+						class="row-span-2 size-16 [box-shadow:0_0_0_2px_var(--color-ink)]"
+						viewBox="0 0 8 8"
+						aria-hidden="true"
+					>
 						<rect width="8" height="8" fill={color.hex} />
 					</svg>
 					<span>{color.name}</span>
-					<code>{color.hex}</code>
+					<code class="text-haze">{color.hex}</code>
 				</li>
 			{/each}
 		</ul>
 	</section>
 
 	<section>
-		<h3>Type: RiverMind Pixel</h3>
-		<p class="t40 t-gold">40px · No-limit hold’em</p>
-		<p class="t30">30px · Pot 12,450 · A♠ K♥</p>
-		<p class="t20">20px · The quick brown fox jumps over the lazy dog. 0123456789</p>
-		<p class="t15 t-muted">15px · secondary text, hand log, tags (crisp on 2x screens)</p>
+		<h3 class={heading}>Type: RiverMind Pixel</h3>
+		<p class="text-xl text-gold text-shadow-ink">40px · No-limit hold’em</p>
+		<p class="text-l">30px · Pot 12,450 · A♠ K♥</p>
+		<p class="text-m">20px · The quick brown fox jumps over the lazy dog. 0123456789</p>
+		<p class="text-s text-mist">15px · secondary text, hand log, tags (crisp on 2x screens)</p>
 	</section>
 
 	<section>
-		<h3>Buttons</h3>
-		<div class="row">
+		<h3 class={heading}>Buttons</h3>
+		<div class={row}>
 			{#each buttons as color (color)}
 				<button type="button" class="px-btn {color}">{color || 'slate'}</button>
 			{/each}
@@ -86,24 +97,26 @@
 	</section>
 
 	<section>
-		<h3>Frames</h3>
-		<div class="row">
-			{#each frames as frame (frame)}<div class="frame {frame}">{frame}</div>{/each}
+		<h3 class={heading}>Frames</h3>
+		<div class={row}>
+			{#each frames as frame (frame)}<div class="frame min-w-70 px-8 py-6 {frame}">
+					{frame}
+				</div>{/each}
 		</div>
 	</section>
 
 	<section>
-		<h3>Fields</h3>
-		<div class="row fields">
-			<label>
+		<h3 class={heading}>Fields</h3>
+		<div class="{row} fields">
+			<label class="grid gap-3">
 				<span>Select</span>
 				<select class="px-field"><option>50/100</option><option>100/200</option></select>
 			</label>
-			<label>
+			<label class="grid gap-3">
 				<span>Number</span>
 				<input class="px-field" type="number" value="2400" />
 			</label>
-			<label class="grow">
+			<label class="grid min-w-[220px] flex-1 gap-3">
 				<span>Slider: {range}</span>
 				<input class="px-range" type="range" min="0" max="100" bind:value={range} />
 			</label>
@@ -111,39 +124,45 @@
 	</section>
 
 	<section>
-		<h3>Cards</h3>
-		<div class="deck">
+		<h3 class={heading}>Cards</h3>
+		<div class="deck grid gap-5 [--k:1] lt-640:[--k:0.75]">
 			{#each suits as suit (suit)}
-				<div class="suit">
+				<div class="suit flex flex-wrap gap-3">
 					{#each CARD_RANKS as rank (rank)}<PlayingCard card={{ rank, suit }} />{/each}
 				</div>
 			{/each}
-			<div class="suit">
+			<div class="suit flex flex-wrap gap-3">
 				{#each CARD_BACKS as back (back)}
-					<figure class="back">
+					<figure class="back grid w-60 justify-items-center gap-2 text-s text-mist">
 						<PlayingCard card={null} {back} />
 						<figcaption>{back}</figcaption>
 					</figure>
 				{/each}
-				<figure class="back">
+				<figure class="back grid w-60 justify-items-center gap-2 text-s text-mist">
 					<PlayingCard card={undefined} />
 					<figcaption>slot</figcaption>
 				</figure>
 			</div>
 		</div>
-		<div class="sizes">
-			<div class="k1">
+		<div class="sizes mt-8 flex items-end gap-12 lt-640:flex-wrap">
+			<div class="{size} [--k:0.75]">
 				<PlayingCard card={{ rank: 13, suit: 'hearts' }} /><span>--k: 0.75</span>
 			</div>
-			<div class="k2"><PlayingCard card={{ rank: 13, suit: 'hearts' }} /><span>--k: 1</span></div>
-			<div class="k3"><PlayingCard card={{ rank: 13, suit: 'hearts' }} /><span>--k: 1.4</span></div>
-			<div class="k4"><PlayingCard card={{ rank: 13, suit: 'hearts' }} /><span>--k: 2</span></div>
+			<div class="{size} [--k:1]">
+				<PlayingCard card={{ rank: 13, suit: 'hearts' }} /><span>--k: 1</span>
+			</div>
+			<div class="{size} [--k:1.4]">
+				<PlayingCard card={{ rank: 13, suit: 'hearts' }} /><span>--k: 1.4</span>
+			</div>
+			<div class="{size} [--k:2]">
+				<PlayingCard card={{ rank: 13, suit: 'hearts' }} /><span>--k: 2</span>
+			</div>
 		</div>
 	</section>
 
 	<section>
-		<h3>Sprites</h3>
-		<div class="row sprites">
+		<h3 class={heading}>Sprites</h3>
+		<div class="{row} sprites">
 			{#each chips as chip (chip)}<span class="sprite chip chip-{chip}" title="chip-{chip}"
 				></span>{/each}
 			<span class="sprite pot-pile" title="pot-pile"></span>
@@ -151,146 +170,9 @@
 			<span class="sprite mini-cards" title="mini-cards"></span>
 			<span class="sprite emblem" title="emblem"></span>
 		</div>
-		<div class="row sprites">
-			{#each avatars as avatar (avatar)}<span class="sprite avatar {avatar}" title={avatar}
+		<div class="{row} sprites">
+			{#each avatars as avatar (avatar)}<span class="sprite avatar size-32 {avatar}" title={avatar}
 				></span>{/each}
 		</div>
 	</section>
 </main>
-
-<style>
-	main {
-		max-width: 1180px;
-		margin: 0 auto;
-		padding: 24px 16px 64px;
-		display: grid;
-		gap: 32px;
-	}
-	h2 {
-		font-size: var(--fs-xl);
-		color: var(--color-gold);
-		text-shadow: var(--shadow-text);
-	}
-	h3 {
-		font-size: var(--fs-l);
-		margin-bottom: 12px;
-		text-shadow: var(--shadow-text);
-	}
-	.lead {
-		color: var(--color-mist);
-		max-width: 60ch;
-	}
-	code {
-		font-family: var(--font);
-		color: var(--color-gold-light);
-	}
-	.palette {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-		gap: 8px 16px;
-	}
-	.palette li {
-		display: grid;
-		grid-template-columns: 32px 1fr;
-		column-gap: 8px;
-		align-items: center;
-		font-size: var(--fs-s);
-	}
-	.palette svg {
-		grid-row: span 2;
-		width: 32px;
-		height: 32px;
-		box-shadow: 0 0 0 var(--px) var(--color-ink);
-	}
-	.palette code {
-		color: var(--color-haze);
-	}
-	.t40 {
-		font-size: var(--fs-xl);
-	}
-	.t30 {
-		font-size: var(--fs-l);
-	}
-	.t20 {
-		font-size: var(--fs);
-	}
-	.t15 {
-		font-size: var(--fs-s);
-	}
-	.row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 12px;
-		align-items: center;
-	}
-	.frame {
-		padding: 12px 16px;
-		min-width: 140px;
-	}
-	.fields label {
-		display: grid;
-		gap: 6px;
-	}
-	.fields .grow {
-		flex: 1;
-		min-width: 220px;
-	}
-	.deck {
-		--k: 1;
-		display: grid;
-		gap: 10px;
-	}
-	.suit {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-	.sizes {
-		display: flex;
-		align-items: end;
-		gap: 24px;
-		margin-top: 16px;
-	}
-	.sizes > div {
-		display: grid;
-		justify-items: center;
-		gap: 6px;
-		color: var(--color-mist);
-	}
-	.back {
-		display: grid;
-		justify-items: center;
-		gap: 4px;
-		width: 120px;
-		margin: 0;
-		color: var(--color-mist);
-		font-size: var(--fs-s);
-	}
-	.k1 {
-		--k: 0.75;
-	}
-	.k2 {
-		--k: 1;
-	}
-	.k3 {
-		--k: 1.4;
-	}
-	.k4 {
-		--k: 2;
-	}
-	.sprites .avatar {
-		width: 64px;
-		height: 64px;
-	}
-	@media (max-width: 639px) {
-		.deck {
-			--k: 0.75;
-		}
-		.sizes {
-			flex-wrap: wrap;
-		}
-	}
-</style>

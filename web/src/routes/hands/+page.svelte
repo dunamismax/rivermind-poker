@@ -28,6 +28,13 @@
 	const signed = (n: number) =>
 		n > 0 ? `+${n.toLocaleString('en-US')}` : n.toLocaleString('en-US');
 
+	const panel = 'px-8 pt-6 pb-8';
+	const tag = 'tag ml-3 bg-ink px-3 text-s text-violet-light';
+	const goldTag = 'tag gold ml-3 bg-gold px-3 text-s text-ink';
+	/** A result's colour: won, lost or even. */
+	const tone = (net: number) =>
+		net > 0 ? 'won text-green-light' : net < 0 ? 'lost text-red-light' : 'text-paper-shade';
+
 	async function load(before: string | null = null) {
 		loading = true;
 		error = null;
@@ -81,91 +88,107 @@
 	<a class="px-btn small" href={resolve('/')}>Play</a>
 </SiteHeader>
 
-<main class="page">
-	<section class="px-panel intro">
-		<h2>Your hands</h2>
+<main class="page mx-auto grid max-w-[900px] gap-8 p-8 text-mist lt-600:p-4">
+	<section class="px-panel intro {panel}">
+		<h2 class="mb-4 text-l text-gold text-shadow-ink">Your hands</h2>
 		<p>
 			Every hand you were dealt into, newest first. Open one to see your cards, the board, every
 			action and the hands shown at showdown. Folded and mucked hands stay hidden.
-			<a href={resolve('/fairness')}>How dealing works</a>
+			<a class="text-gold-light" href={resolve('/fairness')}>How dealing works</a>
 		</p>
 	</section>
 
 	{#if open}
 		<section
-			class="px-panel detail"
+			class="px-panel detail {panel}"
 			aria-label="Hand {open.hand.hand_no} at {open.hand.table_name}"
 		>
-			<div class="detail-top">
-				<h3>{open.hand.table_name} · hand #{open.hand.hand_no}</h3>
+			<div class="detail-top flex items-center justify-between gap-6">
+				<h3 class="mb-4 text-m text-gold text-shadow-ink">
+					{open.hand.table_name} · hand #{open.hand.hand_no}
+				</h3>
 				<button type="button" class="px-btn small" onclick={close}>Close</button>
 			</div>
-			<p class="meta">
+			<p class="meta text-s text-paper-shade">
 				{#if open.hand.practice}Practice chips ·
 				{/if}{when(open.hand.at)} · Blinds {open.hand.small_blind}/{open.hand.big_blind} · Pot {open.hand.pot.toLocaleString(
 					'en-US'
 				)}
 			</p>
-			<div class="board" aria-label="Board">
+			<div class="board my-6 flex gap-2 lt-600:[&>.card+.card]:-ml-7" aria-label="Board">
 				{#each Array.from({ length: 5 }, (_, i) => open!.hand.board[i]) as card, i (i)}
 					<PlayingCard {card} />
 				{/each}
 			</div>
-			<ul class="seats">
+			<ul class="seats grid gap-3">
 				{#each open.seats as seat (seat.seat)}
-					<li class:you={seat.you}>
-						<span class="who">
-							{seat.name}{#if seat.kind === 'bot'}<span class="tag">
+					<li
+						class="grid grid-cols-[minmax(0,1fr)_auto_90px] items-center gap-5 border-b-2 border-deep-slate py-2"
+						class:you={seat.you}
+					>
+						<span class={['who truncate', seat.you && 'text-gold-light']}>
+							{seat.name}{#if seat.kind === 'bot'}<span class={tag}>
 									Bot
-								</span>{/if}{#if seat.you}<span class="tag gold">
+								</span>{/if}{#if seat.you}<span class={goldTag}>
 									You
-								</span>{/if}{#if open.button === seat.seat}<span class="tag">Button</span>{/if}
+								</span>{/if}{#if open.button === seat.seat}<span class={tag}>Button</span>{/if}
 						</span>
+						<!-- Whole cards where there is room; phones keep the compact peek. -->
 						<span
-							class="hole"
+							class="hole flex gap-2 ge-600:h-auto ge-600:w-auto ge-600:overflow-visible ge-600:[--k:1] ge-600:[&>.card+.card]:-ml-13"
 							class:card-peek={seat.cards}
 							aria-label={seat.cards ? 'Cards' : 'Cards not shown'}
 						>
 							{#if seat.cards}
 								{#each seat.cards as card (`${card.rank}${card.suit}`)}<PlayingCard {card} />{/each}
 							{:else}
-								<span class="hidden-cards">Not shown</span>
+								<span class="hidden-cards text-s text-paper-shade">Not shown</span>
 							{/if}
 						</span>
-						<span class="net" class:won={seat.net > 0} class:lost={seat.net < 0}>
+						<span class="net text-right {tone(seat.net)}">
 							{signed(seat.net)}
 						</span>
 					</li>
 				{/each}
 			</ul>
-			<h4>Hand history</h4>
-			<pre class="px-inset">{open.text}</pre>
+			<h4 class="mt-8 mb-4 text-m text-gold-light text-shadow-ink">Hand history</h4>
+			<pre
+				class="px-inset max-h-[420px] overflow-auto p-5 text-s leading-[1.5] wrap-anywhere whitespace-pre-wrap text-paper">{open.text}</pre>
 		</section>
 	{/if}
 
-	<section class="px-panel list" aria-label="Hands">
-		{#if error}<p class="error" role="alert">{error}</p>{/if}
+	<section class="px-panel list {panel}" aria-label="Hands">
+		{#if error}<p class="error mb-4 text-red-light" role="alert">{error}</p>{/if}
 		{#if hands.length === 0 && !loading && !error}
-			<p>No hands yet. <a href={resolve('/')}>Sit down at a table</a> and they will appear here.</p>
+			<p>
+				No hands yet. <a class="text-gold-light" href={resolve('/')}>Sit down at a table</a> and they
+				will appear here.
+			</p>
 		{:else}
-			<ol>
+			<ol class="mb-6 grid gap-3">
 				{#each hands as hand (hand.hand_id)}
 					<li class="row px-inset">
 						<button
 							type="button"
-							class="open"
+							class="open group grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_90px] items-center gap-x-6 px-4 py-3 text-left"
 							aria-current={open?.hand.hand_id === hand.hand_id ? 'true' : undefined}
 							disabled={opening !== null}
 							onclick={() => show(hand.hand_id)}
 						>
-							<span class="title">{hand.table_name} · hand #{hand.hand_no}</span>
-							<span class="when">
-								{#if hand.practice}<span class="tag gold first">Practice</span>{/if}{when(hand.at)}
+							<span
+								class="title col-1 row-1 truncate group-hover:text-gold-light group-focus-visible:text-gold-light group-aria-[current=true]:text-gold-light"
+							>
+								{hand.table_name} · hand #{hand.hand_no}
 							</span>
-							<span class="cards card-peek" aria-hidden="true">
+							<span class="when col-1 row-2 text-s text-paper-shade">
+								{#if hand.practice}<span class="tag gold first mr-3 bg-gold px-3 text-s text-ink">
+										Practice
+									</span>{/if}{when(hand.at)}
+							</span>
+							<span class="cards card-peek col-2 row-[1/3]" aria-hidden="true">
 								{#each hand.cards as card (`${card.rank}${card.suit}`)}<PlayingCard {card} />{/each}
 							</span>
-							<span class="net" class:won={hand.net > 0} class:lost={hand.net < 0}>
+							<span class="net col-3 row-[1/3] text-right {tone(hand.net)}">
 								{signed(hand.net)}
 							</span>
 						</button>
@@ -186,193 +209,3 @@
 		{#if loading}<p role="status">Loading hands…</p>{/if}
 	</section>
 </main>
-
-<style>
-	.page {
-		max-width: 900px;
-		margin: 0 auto;
-		padding: 16px;
-		display: grid;
-		gap: 16px;
-		color: var(--color-mist);
-	}
-	.px-panel {
-		padding: 12px 16px 16px;
-	}
-	h2,
-	h3,
-	h4 {
-		margin: 0 0 8px;
-		font-weight: normal;
-		color: var(--color-gold);
-		text-shadow: var(--shadow-text);
-	}
-	h2 {
-		font-size: var(--fs-l);
-	}
-	h3,
-	h4 {
-		font-size: var(--fs);
-	}
-	h4 {
-		margin-top: 16px;
-		color: var(--color-gold-light);
-	}
-	p {
-		margin: 0;
-		line-height: 1.4;
-	}
-	a:not(.px-btn) {
-		color: var(--color-gold-light);
-	}
-	.detail-top {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 12px;
-	}
-	.meta,
-	.when {
-		color: var(--color-paper-shade);
-		font-size: var(--fs-s);
-	}
-	.board,
-	.hole {
-		display: flex;
-		gap: 4px;
-	}
-	.board {
-		margin: 12px 0;
-	}
-	/* Whole cards where there is room; phones keep the compact peek. */
-	@media (min-width: 600px) {
-		.hole {
-			--k: 1;
-			width: auto;
-			height: auto;
-			overflow: visible;
-		}
-		.hole :global(.card + .card) {
-			margin-left: -26px;
-		}
-	}
-	@media (max-width: 599px) {
-		.board :global(.card + .card) {
-			margin-left: -14px;
-		}
-		.page {
-			padding: 8px;
-		}
-	}
-	.seats {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: grid;
-		gap: 6px;
-	}
-	.seats li {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto 90px;
-		align-items: center;
-		gap: 10px;
-		padding: 4px 0;
-		border-bottom: var(--px) solid var(--color-deep-slate);
-	}
-	.seats li.you .who {
-		color: var(--color-gold-light);
-	}
-	.who {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.tag {
-		margin-left: 6px;
-		padding: 0 6px;
-		font-size: var(--fs-s);
-		color: var(--color-violet-light);
-		background: var(--color-ink);
-	}
-	.tag.gold {
-		color: var(--color-ink);
-		background: var(--color-gold);
-	}
-	.tag.first {
-		margin: 0 6px 0 0;
-	}
-	.hidden-cards {
-		font-size: var(--fs-s);
-		color: var(--color-paper-shade);
-	}
-	.net {
-		text-align: right;
-		color: var(--color-paper-shade);
-	}
-	.net.won {
-		color: var(--color-green-light);
-	}
-	.net.lost {
-		color: var(--color-red-light);
-	}
-	pre {
-		margin: 0;
-		padding: 10px;
-		max-height: 420px;
-		overflow: auto;
-		white-space: pre-wrap;
-		overflow-wrap: anywhere;
-		font-family: inherit;
-		font-size: var(--fs-s);
-		line-height: 1.5;
-		color: var(--color-paper);
-	}
-	ol {
-		list-style: none;
-		margin: 0 0 12px;
-		padding: 0;
-		display: grid;
-		gap: 6px;
-	}
-	.open {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto 90px;
-		grid-template-areas:
-			'title cards net'
-			'when cards net';
-		align-items: center;
-		column-gap: 12px;
-		width: 100%;
-		padding: 6px 8px;
-		border: 0;
-		background: none;
-		font: inherit;
-		color: inherit;
-		text-align: left;
-		cursor: pointer;
-	}
-	.open:hover .title,
-	.open:focus-visible .title,
-	.open[aria-current='true'] .title {
-		color: var(--color-gold-light);
-	}
-	.title {
-		grid-area: title;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.when {
-		grid-area: when;
-	}
-	.cards {
-		grid-area: cards;
-	}
-	.open .net {
-		grid-area: net;
-	}
-	.error {
-		color: var(--color-red-light);
-		margin-bottom: 8px;
-	}
-</style>

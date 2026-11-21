@@ -10,39 +10,11 @@
 	};
 </script>
 
-<span class="status" data-state={status} title={LABELS[status]}>
-	<span class="light" aria-hidden="true"></span>
-	<span class="visually-hidden">{LABELS[status]}</span>
+<!-- A square signal lamp, outlined in ink, lit from the top-left. -->
+<span class="status group inline-flex items-center" data-state={status} title={LABELS[status]}>
+	<span
+		class="light size-5 bg-haze [box-shadow:0_0_0_2px_var(--color-ink),inset_2px_2px_0_rgb(255_255_255/0.35)] group-data-[state=closed]:animate-blink group-data-[state=closed]:bg-red group-data-[state=connecting]:animate-blink group-data-[state=connecting]:bg-gold group-data-[state=open]:bg-green"
+		aria-hidden="true"
+	></span>
+	<span class="sr-only">{LABELS[status]}</span>
 </span>
-
-<style>
-	.status {
-		display: inline-flex;
-		align-items: center;
-	}
-	/* A square signal lamp, outlined in ink, lit from the top-left. */
-	.light {
-		width: calc(5 * var(--px));
-		height: calc(5 * var(--px));
-		background: var(--color-haze);
-		box-shadow:
-			0 0 0 var(--px) var(--color-ink),
-			inset var(--px) var(--px) 0 rgb(255 255 255 / 0.35);
-	}
-	[data-state='open'] .light {
-		background: var(--color-green);
-	}
-	[data-state='connecting'] .light {
-		background: var(--color-gold);
-		animation: blink 0.8s steps(2, end) infinite;
-	}
-	[data-state='closed'] .light {
-		background: var(--color-red);
-		animation: blink 0.8s steps(2, end) infinite;
-	}
-	@keyframes blink {
-		50% {
-			opacity: 0.35;
-		}
-	}
-</style>

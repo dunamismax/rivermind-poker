@@ -142,6 +142,15 @@
 		});
 	}
 
+	const note = 'note text-green-light text-shadow-ink';
+	const bet =
+		'bet absolute z-2 flex -translate-1/2 animate-pop items-center gap-3 bg-[rgb(12_13_21/0.72)] py-1 pr-4 pl-2 text-s whitespace-nowrap text-paper phone:gap-[3px] phone:py-0 phone:pr-2 phone:pl-1 phone:text-xs';
+	// A seat nobody is in: a dashed outline on the felt, and a button when the viewer may take it.
+	const emptySeat =
+		'empty absolute -translate-1/2 border-2 border-dashed bg-[rgb(12_13_21/0.35)] px-5 py-2 text-s phone:px-3 phone:py-1';
+	const empty = `${emptySeat} phone:text-xs`;
+	const openSeat = `${emptySeat} open z-3 cursor-pointer border-gold text-gold-light enabled:hover:bg-[rgb(12_13_21/0.7)] enabled:hover:outline-2 enabled:hover:outline-gold-light focus-visible:bg-[rgb(12_13_21/0.7)] focus-visible:outline-2 focus-visible:outline-gold-light disabled:cursor-default disabled:opacity-60`;
+
 	let sharing = $state(false);
 	let copied = $state(false);
 	const inviteLink = $derived(
@@ -159,14 +168,31 @@
 	}
 </script>
 
-<section class="nl-table" class:my-turn={myTurn} aria-label="Table">
-	<div class="bar">
+<!-- Wide screens: the table on the left; the action dock, the seat tools and the hand log in a
+     column on the right, narrower on a laptop (`lap:`). Upright and narrow screens (`tall:`): one
+     column, the seat tools above the table so they never move, and the dock pinned to the bottom. -->
+<section
+	class="nl-table grid grid-cols-[minmax(0,1fr)_360px] grid-rows-[auto_auto_auto_1fr_auto] items-start gap-x-8 gap-y-6 lap:grid-cols-[minmax(0,1fr)_300px] tall:grid-cols-1 tall:grid-rows-none phone:gap-4"
+	class:my-turn={myTurn}
+	aria-label="Table"
+>
+	<div
+		class="bar col-span-full row-1 flex min-h-24 flex-wrap items-center gap-6 phone:min-h-20 phone:gap-4"
+	>
 		{#if me}
-			<button type="button" class="px-btn small leave" onclick={() => connection.leave()}>
+			<button
+				type="button"
+				class="px-btn small leave phone:px-1"
+				onclick={() => connection.leave()}
+			>
 				<span aria-hidden="true">←</span> Leave table
 			</button>
 		{:else}
-			<button type="button" class="px-btn small leave" onclick={() => connection.leave()}>
+			<button
+				type="button"
+				class="px-btn small leave phone:px-1"
+				onclick={() => connection.leave()}
+			>
 				<span aria-hidden="true">←</span> Lobby
 			</button>
 		{/if}
@@ -181,23 +207,33 @@
 			</button>
 		{/if}
 		{#if view.practice}
-			<span class="practice-tag" title="Practice chips: your wallet is not touched">
+			<span
+				class="practice-tag bg-gold px-4 py-1 text-s whitespace-nowrap text-ink [box-shadow:0_2px_0_var(--color-amber-deep)]"
+				title="Practice chips: your wallet is not touched"
+			>
 				Practice
 			</span>
 		{/if}
-		<div class="meta">
+		<div class="meta flex-1 text-center text-mist capitalize text-shadow-ink phone:text-s">
 			{#if hand}Hand #{hand.hand_no} · {hand.street}{:else}Waiting for players{/if}
 		</div>
-		<div class="stakes" aria-label="Blinds">
-			<span class="sprite chip chip-red" aria-hidden="true"></span>{view.settings.small_blind}/{view
-				.settings.big_blind}
+		<div
+			class="stakes ml-auto flex items-center gap-3 text-paper-shade text-shadow-ink phone:text-s"
+			aria-label="Blinds"
+		>
+			<span class="sprite chip chip-red size-7" aria-hidden="true"></span>{view.settings
+				.small_blind}/{view.settings.big_blind}
 		</div>
 		{#if sharing && inviteLink}
-			<div class="share px-inset" role="group" aria-label="Invite link">
-				<label>
-					<span class="visually-hidden">Invite link</span>
+			<div
+				class="share px-inset flex flex-[1_1_100%] flex-wrap items-center gap-4 p-4"
+				role="group"
+				aria-label="Invite link"
+			>
+				<label class="min-w-0 flex-[1_1_260px]">
+					<span class="sr-only">Invite link</span>
 					<input
-						class="px-field"
+						class="px-field w-full"
 						type="text"
 						readonly
 						value={inviteLink}
@@ -207,17 +243,23 @@
 				<button type="button" class="px-btn small amber" onclick={copyInvite}>
 					{copied ? 'Copied' : 'Copy'}
 				</button>
-				<span class="note">This private table is not listed: anyone with the link can join.</span>
+				<span class={note}>This private table is not listed: anyone with the link can join.</span>
 			</div>
 		{/if}
 		{#if picked !== null && pickedInfo}
-			<div class="player-menu px-inset" role="dialog" aria-label="Player {pickedInfo.name}">
+			<div
+				class="player-menu px-inset grid flex-[1_1_100%] gap-4 p-4 text-mist"
+				role="dialog"
+				aria-label="Player {pickedInfo.name}"
+			>
 				<p class="who-menu">
-					<strong>{pickedInfo.name}</strong>{#if pickedRelation}<span class="note">
+					<strong class="text-gold-light">{pickedInfo.name}</strong>{#if pickedRelation}<span
+							class={note}
+						>
 							{` · ${relationText(pickedRelation)}`}
 						</span>{/if}
 				</p>
-				<div class="menu-row">
+				<div class="menu-row flex flex-wrap items-center gap-4">
 					<button
 						type="button"
 						class="px-btn small"
@@ -238,18 +280,18 @@
 					</button>
 					<button type="button" class="px-btn small" onclick={() => (picked = null)}>Close</button>
 				</div>
-				<p class="hint">
+				<p class="hint text-s text-paper-shade">
 					Muting hides their reactions. Blocking also keeps quick seat from seating you together.
 				</p>
 				<form
-					class="menu-row"
+					class="menu-row flex flex-wrap items-center gap-4"
 					onsubmit={(e) => {
 						e.preventDefault();
 						sendReport();
 					}}
 				>
 					<label>
-						<span class="visually-hidden">Reason</span>
+						<span class="sr-only">Reason</span>
 						<select class="px-field" bind:value={reason}>
 							{#each REPORT_REASONS as option (option.reason)}
 								<option value={option.reason}>{option.text}</option>
@@ -258,27 +300,37 @@
 					</label>
 					<button type="submit" class="px-btn small amber" disabled={busy}>Report</button>
 				</form>
-				{#if reported}<p class="note" role="status">{reported}</p>{/if}
+				{#if reported}<p class={note} role="status">{reported}</p>{/if}
 			</div>
 		{/if}
 	</div>
 
-	<div class="arena seats-{count}">
-		<div class="stage">
-			<div class="felt" aria-hidden="true"></div>
-			<div class="centre">
-				<div class="pot-line">
+	<!-- The arena leaves room around the felt for the seats on its rail. -->
+	<div
+		class="arena col-1 row-[2/5] px-37 pt-32 pb-54 seats-{count} lap:px-33 lap:pt-30 lap:pb-48 tall:row-3 phone:px-0 phone:pt-0 phone:pb-32"
+	>
+		<div
+			class="stage relative mx-auto aspect-[21/10] w-[min(100%,calc((100dvh-340px)*2.1))] min-w-[min(100%,560px)] lap:aspect-[18/10] lap:w-[min(100%,calc((100dvh-330px)*1.8))] lap:min-w-[min(100%,480px)] tall:aspect-[16/10] tall:w-[min(100%,calc((100dvh-520px)*1.6))] tall:min-w-[min(100%,520px)] phone:aspect-[3/4] phone:max-h-[calc(100dvh-380px)] phone:min-h-[420px] phone:w-full phone:min-w-0"
+		>
+			<div class="felt px-table absolute inset-0 lap:[--table-px:2px]" aria-hidden="true"></div>
+			<div
+				class="centre absolute top-[48%] left-1/2 z-1 grid -translate-1/2 justify-items-center gap-4 text-center [--k:1.4] lap:[--k:1] phone:top-1/2 phone:gap-3 tab:[--k:1.4]"
+			>
+				<div class="pot-line flex min-h-16 items-center gap-5">
 					{#if hand && !result}
 						<span class="sprite pot-pile" aria-hidden="true"></span>
-						<span class="pot">Pot {hand.pot}</span>
+						<span class="pot text-gold-light text-shadow-ink">Pot {hand.pot}</span>
 					{/if}
 				</div>
-				<div class="board" aria-label="Board">
+				<div class="board flex gap-4 phone:gap-0 phone:[&>.card+.card]:-ml-3" aria-label="Board">
 					{#each board as card, i (i)}
 						<PlayingCard {card} />
 					{/each}
 				</div>
-				<div class="result" role="status">
+				<div
+					class="result min-h-14 text-gold text-shadow-ink phone:max-w-[300px] phone:text-s"
+					role="status"
+				>
 					{#each winners as line (line.key)}<div>{line.text}</div>{/each}
 				</div>
 			</div>
@@ -298,53 +350,72 @@
 						onselect={info.kind === 'human' && seat !== mine ? () => pick(seat) : undefined}
 					/>
 					{#if info.bet > 0 && !result}
-						<div class="bet {betClass(seat, mine, count)}">
+						<div class="{bet} {betClass(seat, mine, count)}">
 							<span
-								class="sprite chip {chipFor(info.bet, view.settings.big_blind)}"
+								class="sprite chip size-11 phone:size-7 {chipFor(
+									info.bet,
+									view.settings.big_blind
+								)}"
 								aria-hidden="true"
 							></span>
 							<span>Bet {info.bet}</span>
 						</div>
 					{/if}
 				{:else if holdAt.has(seat)}
-					<div class="empty held {placeClass(seat, mine, count)}">
+					<div class="held border-amber-dark text-amber {empty} {placeClass(seat, mine, count)}">
 						{hold?.seat === seat ? 'Your seat' : 'Held'}
 					</div>
 				{:else if mine === null && !hold && view.you.waitlist_position === null}
 					<button
 						type="button"
-						class="empty open {placeClass(seat, mine, count)}"
+						class="{openSeat} {placeClass(seat, mine, count)}"
 						disabled={seating || short}
 						onclick={() => seatTask(() => connection.holdSeat(seat))}
 					>
-						Sit here<span class="visually-hidden">, seat {seat + 1}</span>
+						Sit here<span class="sr-only">, seat {seat + 1}</span>
 					</button>
 				{:else}
-					<div class="empty {placeClass(seat, mine, count)}" aria-hidden="true">Empty</div>
+					<div
+						class="border-felt-light text-haze {empty} {placeClass(seat, mine, count)}"
+						aria-hidden="true"
+					>
+						Empty
+					</div>
 				{/if}
 			{/each}
 		</div>
 	</div>
 
-	<div class="dock">
+	<!-- The dock keeps its height whether or not it is the viewer's turn, so nothing below it moves
+	     when the action panel opens. -->
+	<div
+		class={[
+			'dock col-2 row-2 grid min-h-98 content-start tall:sticky tall:bottom-0 tall:z-5 tall:col-1 tall:row-4 tall:min-h-0 tall:pb-[env(safe-area-inset-bottom)]',
+			myTurn && 'tall:bg-[linear-gradient(to_bottom,transparent,var(--color-night)_12px)]'
+		]}
+	>
 		{#if !me}
-			<div class="join px-inset" role="group" aria-label="Take a seat">
+			<div
+				class="join px-inset grid justify-items-center gap-5 px-6 pt-5 pb-6 text-center text-mist"
+				role="group"
+				aria-label="Take a seat"
+			>
 				{#if hold?.ready}
 					<p role="status">
 						Seat {hold.seat + 1} is held for you{holdLeft !== null ? ` for ${holdLeft}s` : ''}. Buy
 						in to sit down.
 					</p>
 					<form
-						class="buy-in"
+						class="buy-in flex flex-wrap items-center justify-center gap-4"
 						onsubmit={(e) => {
 							e.preventDefault();
 							connection.sit(hold!.seat, Math.floor(buyIn));
 						}}
 					>
 						<label>
-							<span class="visually-hidden">Buy-in</span>
+							<span class="sr-only">Buy-in</span>
 							<input
-								class="px-field"
+								class="px-field w-65 text-right"
 								type="number"
 								inputmode="numeric"
 								min={view.settings.min_buy_in}
@@ -365,7 +436,7 @@
 							Give up
 						</button>
 					</form>
-					<p class="hint">
+					<p class="hint text-s text-haze">
 						Buy in for {view.settings.min_buy_in.toLocaleString('en-US')} to {view.settings.max_buy_in.toLocaleString(
 							'en-US'
 						)} play chips.
@@ -426,7 +497,11 @@
 				onact={(action, amount) => connection.act(action, amount)}
 			/>
 		{:else if busted && view.practice}
-			<div class="waiting refill px-inset" role="group" aria-label="Out of practice chips">
+			<div
+				class="waiting refill px-inset grid min-h-32 place-items-center gap-4 px-6 py-4 text-center text-mist phone:min-h-28 phone:text-s"
+				role="group"
+				aria-label="Out of practice chips"
+			>
 				<p role="status">You are out of practice chips.</p>
 				<button
 					type="button"
@@ -438,7 +513,10 @@
 				</button>
 			</div>
 		{:else}
-			<p class="waiting px-inset" role="status">
+			<p
+				class="waiting px-inset grid min-h-32 place-items-center px-6 text-center text-mist phone:min-h-28 phone:text-s"
+				role="status"
+			>
 				{#if busted}
 					You are out of chips. Rebuy to keep playing.
 				{:else if view.you.sitting_out}
@@ -455,7 +533,9 @@
 	</div>
 
 	{#if me}
-		<div class="tools">
+		<div
+			class="tools col-2 row-3 flex flex-wrap items-center justify-center gap-4 tall:col-1 tall:row-2 tall:justify-start phone:gap-3"
+		>
 			{#if view.you.sitting_out || view.you.sitting_out_next}
 				<button type="button" class="px-btn small green" onclick={() => connection.sitIn()}>
 					I’m back
@@ -467,16 +547,16 @@
 			{/if}
 			{#if rebuyRoom > 0 && !me.leaving && !view.practice}
 				<form
-					class="rebuy"
+					class="rebuy flex items-center gap-3"
 					onsubmit={(e) => {
 						e.preventDefault();
 						connection.rebuy(Math.floor(rebuyAmount));
 					}}
 				>
 					<label>
-						<span class="visually-hidden">Rebuy amount</span>
+						<span class="sr-only">Rebuy amount</span>
 						<input
-							class="px-field"
+							class="px-field w-60 text-right phone:min-h-20 phone:w-42"
 							type="number"
 							inputmode="numeric"
 							min="1"
@@ -489,7 +569,7 @@
 				</form>
 			{/if}
 			{#if view.you.pending_rebuy}
-				<span class="note">+{view.you.pending_rebuy} after this hand</span>
+				<span class={note}>+{view.you.pending_rebuy} after this hand</span>
 			{/if}
 			<button
 				type="button"
@@ -501,7 +581,12 @@
 				React
 			</button>
 			{#if reacting}
-				<div id="reactions" class="reactions" role="group" aria-label="Reactions">
+				<div
+					id="reactions"
+					class="reactions flex flex-[1_1_100%] flex-wrap gap-3"
+					role="group"
+					aria-label="Reactions"
+				>
 					{#each REACTIONS as option (option.kind)}
 						<button
 							type="button"
@@ -517,459 +602,16 @@
 		</div>
 	{/if}
 
-	<section class="log px-inset" aria-label="Hand log">
-		<h2>Hand log</h2>
-		<ol>
-			{#each lines as line (line.seq)}<li>{line.text}</li>{/each}
+	<section
+		class="log px-inset col-2 row-4 max-h-[440px] min-h-60 self-stretch overflow-auto p-4 lap:max-h-[360px] tall:col-1 tall:row-5 tall:max-h-[220px]"
+		aria-label="Hand log"
+	>
+		<h2 class="mb-3 text-m text-gold text-shadow-ink">Hand log</h2>
+		<ol class="grid gap-2 text-s text-mist">
+			{#each lines as line (line.seq)}<li class="first:text-paper">{line.text}</li>{/each}
 		</ol>
 	</section>
-	<p class="play-money">Play chips only: they can never be bought, sold or cashed out.</p>
+	<p class="play-money col-span-full row-5 text-center text-s text-haze tall:row-6">
+		Play chips only: they can never be bought, sold or cashed out.
+	</p>
 </section>
-
-<style>
-	/* Wide screens: the table on the left; the action dock, the seat tools and
-	   the hand log in a column on the right. */
-	.nl-table {
-		display: grid;
-		column-gap: 16px;
-		row-gap: 12px;
-		grid-template-columns: minmax(0, 1fr) 360px;
-		grid-template-rows: auto auto auto 1fr auto;
-		grid-template-areas:
-			'bar bar'
-			'arena dock'
-			'arena tools'
-			'arena log'
-			'money money';
-		align-items: start;
-	}
-	.bar {
-		grid-area: bar;
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 12px;
-		min-height: 48px;
-	}
-	.meta {
-		flex: 1;
-		text-align: center;
-		text-transform: capitalize;
-		color: var(--color-mist);
-		text-shadow: var(--shadow-text);
-	}
-	.stakes {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		color: var(--color-paper-shade);
-		text-shadow: var(--shadow-text);
-		margin-left: auto;
-	}
-	.stakes .chip {
-		width: 14px;
-		height: 14px;
-	}
-
-	/* The arena leaves room around the felt for the seats on its rail. */
-	.arena {
-		grid-area: arena;
-		padding: 64px 74px 108px;
-	}
-	.stage {
-		position: relative;
-		width: min(100%, calc((100dvh - 340px) * 2.1));
-		min-width: min(100%, 560px);
-		aspect-ratio: 21 / 10;
-		margin: 0 auto;
-	}
-	.felt {
-		--table-px: 3px;
-		position: absolute;
-		inset: 0;
-		border: calc(48 * var(--table-px)) solid transparent;
-		border-image: url('../art/ui/table.png') 48 fill stretch;
-		image-rendering: pixelated;
-		display: grid;
-		place-items: center;
-		filter: drop-shadow(0 calc(3 * var(--table-px)) 0 rgb(0 0 0 / 0.45));
-	}
-	.centre {
-		position: absolute;
-		left: 50%;
-		top: 48%;
-		transform: translate(-50%, -50%);
-		display: grid;
-		justify-items: center;
-		gap: 8px;
-		text-align: center;
-		z-index: 1;
-		--k: 1.4;
-	}
-	.pot-line {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		min-height: 32px;
-	}
-	.pot {
-		color: var(--color-gold-light);
-		text-shadow: var(--shadow-text);
-	}
-	.board {
-		display: flex;
-		gap: 8px;
-	}
-	.result {
-		min-height: 28px;
-		color: var(--color-gold);
-		text-shadow: var(--shadow-text);
-	}
-	.bet {
-		position: absolute;
-		transform: translate(-50%, -50%);
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 2px 8px 2px 4px;
-		background: rgb(12 13 21 / 0.72);
-		color: var(--color-paper);
-		font-size: var(--fs-s);
-		white-space: nowrap;
-		z-index: 2;
-		animation: pop 0.2s steps(3, end);
-	}
-	.bet .chip {
-		width: 22px;
-		height: 22px;
-	}
-	.empty {
-		position: absolute;
-		transform: translate(-50%, -50%);
-		padding: 4px 10px;
-		color: var(--color-haze);
-		font-size: var(--fs-s);
-		border: var(--px) dashed var(--color-felt-light);
-		background: rgb(12 13 21 / 0.35);
-	}
-	.empty.held {
-		color: var(--color-amber);
-		border-color: var(--color-amber-dark);
-	}
-	button.empty.open {
-		font: inherit;
-		font-size: var(--fs-s);
-		color: var(--color-gold-light);
-		border-color: var(--color-gold);
-		cursor: pointer;
-		z-index: 3;
-	}
-	button.empty.open:hover:not(:disabled),
-	button.empty.open:focus-visible {
-		background: rgb(12 13 21 / 0.7);
-		outline: var(--px) solid var(--color-gold-light);
-	}
-	button.empty.open:disabled {
-		cursor: default;
-		opacity: 0.6;
-	}
-	.share {
-		flex: 1 1 100%;
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 8px;
-		padding: 8px;
-	}
-	.player-menu {
-		flex: 1 1 100%;
-		display: grid;
-		gap: 8px;
-		padding: 8px;
-		color: var(--color-mist);
-	}
-	.player-menu p {
-		margin: 0;
-	}
-	.who-menu strong {
-		color: var(--color-gold-light);
-		font-weight: normal;
-	}
-	.menu-row {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 8px;
-	}
-	.player-menu .hint {
-		font-size: var(--fs-s);
-		color: var(--color-paper-shade);
-	}
-	.reactions {
-		flex: 1 1 100%;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-	.share label {
-		flex: 1 1 260px;
-		min-width: 0;
-	}
-	.share input {
-		width: 100%;
-	}
-	.join {
-		display: grid;
-		gap: 10px;
-		justify-items: center;
-		text-align: center;
-		padding: 10px 12px 12px;
-		color: var(--color-mist);
-	}
-	.buy-in {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		align-items: center;
-		gap: 8px;
-	}
-	.buy-in input {
-		width: 130px;
-		text-align: right;
-	}
-	.join .hint {
-		color: var(--color-haze);
-		font-size: var(--fs-s);
-	}
-	@keyframes pop {
-		from {
-			transform: translate(-50%, -50%) scale(0.6);
-			opacity: 0;
-		}
-	}
-
-	/* The dock keeps its height whether or not it is the viewer's turn, so
-	   nothing below it moves when the action panel opens. */
-	.dock {
-		grid-area: dock;
-		min-height: 196px;
-		display: grid;
-		align-content: start;
-	}
-	.waiting {
-		min-height: 64px;
-		display: grid;
-		place-items: center;
-		text-align: center;
-		color: var(--color-mist);
-		padding: 0 12px;
-	}
-	.refill {
-		gap: 8px;
-		padding: 8px 12px;
-	}
-	.practice-tag {
-		padding: 2px 8px;
-		color: var(--color-ink);
-		background: var(--color-gold);
-		box-shadow: 0 var(--px) 0 var(--color-amber-deep);
-		font-size: var(--fs-s);
-		white-space: nowrap;
-	}
-	.tools {
-		grid-area: tools;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		align-items: center;
-		justify-content: center;
-	}
-	.rebuy {
-		display: flex;
-		gap: 6px;
-		align-items: center;
-	}
-	.rebuy input {
-		width: 120px;
-		text-align: right;
-	}
-	.note {
-		color: var(--color-green-light);
-		text-shadow: var(--shadow-text);
-	}
-	.log {
-		grid-area: log;
-		align-self: stretch;
-		padding: 8px;
-		min-height: 120px;
-		max-height: 440px;
-		overflow: auto;
-	}
-	.log h2 {
-		font-size: var(--fs);
-		color: var(--color-gold);
-		text-shadow: var(--shadow-text);
-		margin-bottom: 6px;
-	}
-	.log ol {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		color: var(--color-mist);
-		font-size: var(--fs-s);
-		display: grid;
-		gap: 4px;
-	}
-	.log li:first-child {
-		color: var(--color-paper);
-	}
-	.play-money {
-		grid-area: money;
-		color: var(--color-haze);
-		font-size: var(--fs-s);
-		text-align: center;
-	}
-
-	/* Smaller landscape screens (a laptop, a tablet held sideways): the same
-	   side column, narrower, around a smaller table. */
-	@media (max-width: 1279px) {
-		.nl-table {
-			grid-template-columns: minmax(0, 1fr) 300px;
-		}
-		.arena {
-			padding: 60px 66px 96px;
-		}
-		.stage {
-			width: min(100%, calc((100dvh - 330px) * 1.8));
-			min-width: min(100%, 480px);
-			aspect-ratio: 18 / 10;
-		}
-		.felt {
-			--table-px: 2px;
-		}
-		.centre {
-			--k: 1;
-		}
-		.log {
-			max-height: 360px;
-		}
-	}
-
-	/* Upright and narrow screens: one column, the seat tools above the table
-	   (so they never move), and the dock pinned to the bottom of the screen. */
-	@media (max-width: 899px), (max-width: 1279px) and (orientation: portrait) {
-		.nl-table {
-			grid-template-columns: minmax(0, 1fr);
-			grid-template-rows: none;
-			grid-template-areas: 'bar' 'tools' 'arena' 'dock' 'log' 'money';
-		}
-		.tools {
-			justify-content: flex-start;
-		}
-		.stage {
-			width: min(100%, calc((100dvh - 520px) * 1.6));
-			min-width: min(100%, 520px);
-			aspect-ratio: 16 / 10;
-		}
-		.dock {
-			position: sticky;
-			bottom: 0;
-			z-index: 5;
-			min-height: 0;
-			padding-bottom: env(safe-area-inset-bottom);
-		}
-		.my-turn .dock {
-			background: linear-gradient(to bottom, transparent, var(--color-night) 12px);
-		}
-		.log {
-			max-height: 220px;
-		}
-	}
-
-	/* Tablets held upright: the tall table with roomier seats and big cards. */
-	@media (min-width: 640px) and (max-width: 1099px) and (orientation: portrait) {
-		.centre {
-			--k: 1.4;
-		}
-		.board {
-			gap: 6px;
-		}
-		.board :global(.card + .card) {
-			margin-left: 0;
-		}
-		.stage {
-			max-height: calc(100dvh - 540px);
-		}
-	}
-
-	/* Phones: a tall table that fills the width, the dock pinned to the bottom. */
-	@media (max-width: 639px), (max-width: 1099px) and (orientation: portrait) {
-		.nl-table {
-			gap: 8px;
-		}
-		.tools {
-			gap: 6px;
-		}
-		.rebuy input {
-			width: 84px;
-			min-height: 40px;
-		}
-		.bar {
-			gap: 8px;
-			min-height: 40px;
-		}
-		.meta {
-			font-size: var(--fs-s);
-		}
-		.stakes {
-			font-size: var(--fs-s);
-		}
-		.arena {
-			padding: 0 0 64px;
-		}
-		.stage {
-			width: 100%;
-			min-width: 0;
-			aspect-ratio: 3 / 4;
-			max-height: calc(100dvh - 380px);
-			min-height: 420px;
-		}
-		.felt {
-			--table-px: 2px;
-		}
-		.centre {
-			top: 50%;
-			gap: 6px;
-		}
-		.board {
-			gap: 0;
-		}
-		.board :global(.card + .card) {
-			margin-left: -6px;
-		}
-		.result {
-			font-size: var(--fs-s);
-			max-width: 300px;
-		}
-		.bet {
-			font-size: 10px;
-			padding: 0 4px 0 2px;
-			gap: 3px;
-		}
-		.bet .chip {
-			width: 14px;
-			height: 14px;
-		}
-		.empty {
-			font-size: 10px;
-			padding: 2px 6px;
-		}
-		.waiting {
-			min-height: 56px;
-			font-size: var(--fs-s);
-		}
-		.leave {
-			padding: 0 2px;
-		}
-	}
-</style>

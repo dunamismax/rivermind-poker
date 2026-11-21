@@ -6,6 +6,7 @@
  *   .px-panel .px-raised .px-inset .px-paper .px-gold .px-glow .px-danger
  *   .px-btn with .red .blue .amber .green .gold (slate by default)
  *   .px-field  text and number inputs, selects
+ *   .px-table  the felt and its rail
  *   .chip-* .avatar-* .dealer-button .pot-pile  sprites
  */
 
@@ -42,6 +43,15 @@
 	border-image-source: url('../lib/art/ui/frame-danger.png');
 }
 
+/* The table: a 96 × 96 image with 48-pixel corners, the rail and the felt in
+   one, drawn at --table-px screen pixels per art pixel (3 unless a page says). */
+.px-table {
+	border: calc(48 * var(--table-px, 3px)) solid transparent;
+	border-image: url('../lib/art/ui/table.png') 48 fill stretch;
+	image-rendering: pixelated;
+	filter: drop-shadow(0 calc(3 * var(--table-px, 3px)) 0 rgb(0 0 0 / 0.45));
+}
+
 /* --- Buttons: 7 × 9 images with a 2-pixel lip that disappears when pressed. */
 
 .px-btn {
@@ -59,7 +69,7 @@
 	border-image: var(--btn-up) 3 3 5 fill stretch;
 	background: none;
 	color: var(--color-paper);
-	text-shadow: var(--shadow-text);
+	text-shadow: var(--text-shadow-ink);
 	line-height: 1;
 	white-space: nowrap;
 	user-select: none;
@@ -116,7 +126,24 @@
 }
 .px-btn.small {
 	min-height: 40px;
-	font-size: var(--fs-s);
+	font-size: var(--text-s);
+}
+
+/* A choice that turns gold when it is the one chosen: a pressed toggle keeps its
+   pressed shape, and the face of a checked radio or checkbox stays raised. */
+.px-btn.choice[aria-pressed='true'] {
+	--btn-down: url('../lib/art/ui/button-gold-down.png');
+	color: var(--color-ink);
+	text-shadow: none;
+}
+input:checked + .px-btn.choice {
+	--btn-up: url('../lib/art/ui/button-gold.png');
+	color: var(--color-ink);
+	text-shadow: 0 var(--px) 0 var(--color-gold-light);
+}
+input:focus-visible + .px-btn.choice {
+	outline: var(--px) solid var(--color-gold-light);
+	outline-offset: var(--px);
 }
 
 /* --- Fields. ----------------------------------------------------------------- */
@@ -313,17 +340,4 @@ input.px-range:disabled {
 }
 .avatar-bot {
 	background-image: url('../lib/art/ui/avatar-bot.png');
-}
-
-/* --- Text. ------------------------------------------------------------------- */
-
-.t-gold {
-	color: var(--color-gold);
-	text-shadow: var(--shadow-text);
-}
-.t-muted {
-	color: var(--muted);
-}
-.t-shadow {
-	text-shadow: var(--shadow-text);
 }

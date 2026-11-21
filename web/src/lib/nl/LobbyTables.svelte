@@ -60,14 +60,24 @@
 	const canAfford = (t: TableSummary) => balance === null || balance >= t.min_buy_in;
 	const hasRoom = (t: TableSummary) => t.free_seats + t.bot_seats > 0;
 
+	const fieldLabel = 'field-label mb-3 block text-gold text-shadow-ink';
+	const seatState = 'state text-s text-green-light text-shadow-ink';
+	/** A pip's colour by who has the seat; each is a square with an inset edge. */
+	const PIPS = {
+		person: 'person bg-gold [box-shadow:inset_0_0_0_2px_var(--color-ink)]',
+		bot: 'bot bg-blue-light [box-shadow:inset_0_0_0_2px_var(--color-ink)]',
+		held: 'held bg-amber opacity-60 [box-shadow:inset_0_0_0_2px_var(--color-ink)]',
+		empty: 'empty bg-transparent [box-shadow:inset_0_0_0_2px_var(--color-haze)]'
+	};
+
 	/** One pip per seat: people, bots (a bot finishing its hand for a held seat included), held empty seats, empty seats. */
-	function pips(t: TableSummary): string[] {
+	function pips(t: TableSummary): (keyof typeof PIPS)[] {
 		const held = Math.max(0, t.seat_count - t.people - t.bots - t.free_seats);
 		return [
-			...Array<string>(t.people).fill('person'),
-			...Array<string>(t.bots).fill('bot'),
-			...Array<string>(held).fill('held'),
-			...Array<string>(t.free_seats).fill('empty')
+			...Array<'person'>(t.people).fill('person'),
+			...Array<'bot'>(t.bots).fill('bot'),
+			...Array<'held'>(held).fill('held'),
+			...Array<'empty'>(t.free_seats).fill('empty')
 		];
 	}
 
@@ -80,12 +90,12 @@
 	}
 </script>
 
-<section class="tables px-panel" aria-labelledby="tables-title">
-	<div class="head">
-		<h2 id="tables-title">Tables</h2>
+<section class="tables px-panel grid gap-6 px-7 pt-6 pb-7" aria-labelledby="tables-title">
+	<div class="head flex items-center justify-between gap-6">
+		<h2 id="tables-title" class="text-l text-gold text-shadow-ink">Tables</h2>
 		<button
 			type="button"
-			class="px-btn amber quick"
+			class="px-btn amber quick min-h-24 px-9 lt-460:px-5"
 			disabled={busy !== null}
 			onclick={() =>
 				run('quick', () => connection.quickSeat({ seats, big_blind: bigBlind, buy_in: null }))}
@@ -93,15 +103,19 @@
 			{busy === 'quick' ? 'Finding a seat…' : 'Quick seat'}
 		</button>
 	</div>
-	<p class="hint">
+	<p class="hint text-s text-mist">
 		Quick seat joins the busiest table that fits your filters, or starts one with bots. Bots give up
 		their seats to people.
 	</p>
 
-	<div class="filters" role="group" aria-label="Filters">
+	<div
+		class="filters grid grid-cols-[1fr_1fr_auto] items-end gap-6 lt-460:grid-cols-[1fr_1fr]"
+		role="group"
+		aria-label="Filters"
+	>
 		<label>
-			<span class="field-label">Seats</span>
-			<select class="px-field" bind:value={seats}>
+			<span class={fieldLabel}>Seats</span>
+			<select class="px-field w-full" bind:value={seats}>
 				<option value={null}>Any</option>
 				{#each config?.seat_counts ?? [] as count (count)}
 					<option value={count}>{count}</option>
@@ -109,51 +123,58 @@
 			</select>
 		</label>
 		<label>
-			<span class="field-label">Blinds</span>
-			<select class="px-field" bind:value={bigBlind}>
+			<span class={fieldLabel}>Blinds</span>
+			<select class="px-field w-full" bind:value={bigBlind}>
 				<option value={null}>Any</option>
 				{#each config?.stakes ?? [] as stakes (stakes.big_blind)}
 					<option value={stakes.big_blind}>{stakes.small_blind}/{stakes.big_blind}</option>
 				{/each}
 			</select>
 		</label>
-		<label class="check">
-			<input type="checkbox" bind:checked={openOnly} />
+		<label
+			class="check flex min-h-20 cursor-pointer items-center gap-4 text-paper-shade lt-460:col-span-full"
+		>
+			<input type="checkbox" class="size-10 accent-gold" bind:checked={openOnly} />
 			<span>Has a seat</span>
 		</label>
 	</div>
 
 	{#if tables === null}
-		<p class="empty-list" role="status">Looking for tables…</p>
+		<p class="empty-list text-s text-mist" role="status">Looking for tables…</p>
 	{:else if tables.length === 0}
-		<p class="empty-list" role="status">
+		<p class="empty-list text-s text-mist" role="status">
 			No tables match. Quick seat starts one, or set up your own below.
 		</p>
 	{:else}
-		<ul class="list" aria-label="Open tables">
+		<ul class="list grid max-h-[520px] gap-4 overflow-auto" aria-label="Open tables">
 			{#each tables as t (t.table_id)}
-				<li class="row px-inset" data-table={t.table_id}>
-					<div class="info">
-						<span class="name">
-							{t.name}{#if t.private}<span class="tag">Private</span>{/if}{#if t.blocked}<span
-									class="tag blocked"
+				<li
+					class="row px-inset grid grid-cols-[minmax(0,1fr)_auto] items-center gap-5 px-5 py-4 lt-460:grid-cols-1"
+					data-table={t.table_id}
+				>
+					<div class="info grid min-w-0 gap-2">
+						<span class="name truncate text-paper">
+							{t.name}{#if t.private}<span class="tag ml-4 bg-gold px-3 text-s text-ink">
+									Private
+								</span>{/if}{#if t.blocked}<span
+									class="tag blocked ml-4 bg-red-dark px-3 text-s text-white"
 									title="Someone you blocked, or who blocked you, sits here"
 								>
 									Blocked player
 								</span>{/if}
 						</span>
-						<span class="detail">
+						<span class="detail text-s text-mist">
 							Blinds {t.small_blind}/{t.big_blind} · buy-in {t.min_buy_in.toLocaleString('en-US')} to
 							{t.max_buy_in.toLocaleString('en-US')}
 						</span>
-						<span class="seats">
-							<span class="pips" aria-hidden="true">
-								{#each pips(t) as pip, i (i)}<span class="pip {pip}"></span>{/each}
+						<span class="seats flex flex-wrap items-center gap-4 text-s text-mist">
+							<span class="pips flex gap-1" aria-hidden="true">
+								{#each pips(t) as pip, i (i)}<span class="pip size-5 {PIPS[pip]}"></span>{/each}
 							</span>
 							<span>{seatsText(t)}</span>
 						</span>
 					</div>
-					<div class="actions">
+					<div class="actions flex flex-wrap items-center justify-end gap-3 lt-460:justify-start">
 						{#if t.seated}
 							<button
 								type="button"
@@ -163,7 +184,7 @@
 								Back to your seat
 							</button>
 						{:else if t.hold?.ready}
-							<span class="state">Your seat is ready</span>
+							<span class={seatState}>Your seat is ready</span>
 							<button
 								type="button"
 								class="px-btn small amber"
@@ -181,7 +202,7 @@
 								Give up
 							</button>
 						{:else if t.hold}
-							<span class="state">Seat held: a bot is finishing its hand</span>
+							<span class={seatState}>Seat held: a bot is finishing its hand</span>
 							<button
 								type="button"
 								class="px-btn small"
@@ -190,7 +211,7 @@
 								Go to the table
 							</button>
 						{:else if t.waitlist_position !== null}
-							<span class="state">Number {t.waitlist_position} in line</span>
+							<span class={seatState}>Number {t.waitlist_position} in line</span>
 							<button
 								type="button"
 								class="px-btn small"
@@ -232,166 +253,5 @@
 			{/each}
 		</ul>
 	{/if}
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	{#if error}<p class="error text-red-light" role="alert">{error}</p>{/if}
 </section>
-
-<style>
-	.tables {
-		padding: 12px 14px 14px;
-		display: grid;
-		gap: 12px;
-	}
-	.head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-	}
-	h2 {
-		font-size: var(--fs-l);
-		color: var(--color-gold);
-		text-shadow: var(--shadow-text);
-	}
-	.quick {
-		min-height: 48px;
-		padding-inline: 18px;
-	}
-	.hint,
-	.empty-list {
-		color: var(--color-mist);
-		font-size: var(--fs-s);
-	}
-	.filters {
-		display: grid;
-		grid-template-columns: 1fr 1fr auto;
-		gap: 12px;
-		align-items: end;
-	}
-	.filters select {
-		width: 100%;
-	}
-	.field-label {
-		display: block;
-		margin-bottom: 6px;
-		color: var(--color-gold);
-		text-shadow: var(--shadow-text);
-	}
-	.check {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		min-height: 40px;
-		color: var(--color-paper-shade);
-		cursor: pointer;
-	}
-	.check input {
-		width: 20px;
-		height: 20px;
-		accent-color: var(--color-gold);
-	}
-	.list {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: grid;
-		gap: 8px;
-		max-height: 520px;
-		overflow: auto;
-	}
-	.row {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 10px;
-		align-items: center;
-		padding: 8px 10px;
-	}
-	.info {
-		display: grid;
-		gap: 4px;
-		min-width: 0;
-	}
-	.name {
-		color: var(--color-paper);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.tag {
-		margin-left: 8px;
-		padding: 0 6px;
-		color: var(--color-ink);
-		background: var(--color-gold);
-		font-size: var(--fs-s);
-	}
-	.tag.blocked {
-		color: var(--color-white);
-		background: var(--color-red-dark);
-	}
-	.detail,
-	.seats {
-		color: var(--color-mist);
-		font-size: var(--fs-s);
-	}
-	.seats {
-		display: flex;
-		align-items: center;
-		flex-wrap: wrap;
-		gap: 8px;
-	}
-	.pips {
-		display: flex;
-		gap: 2px;
-	}
-	.pip {
-		width: 10px;
-		height: 10px;
-		box-shadow: inset 0 0 0 var(--px) var(--color-ink);
-	}
-	.pip.person {
-		background: var(--color-gold);
-	}
-	.pip.bot {
-		background: var(--color-blue-light);
-	}
-	.pip.held {
-		background: var(--color-amber);
-		opacity: 0.6;
-	}
-	.pip.empty {
-		background: transparent;
-		box-shadow: inset 0 0 0 var(--px) var(--color-haze);
-	}
-	.actions {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: flex-end;
-		align-items: center;
-		gap: 6px;
-	}
-	.state {
-		color: var(--color-green-light);
-		font-size: var(--fs-s);
-		text-shadow: var(--shadow-text);
-	}
-	.error {
-		color: var(--danger);
-	}
-
-	@media (max-width: 459px) {
-		.filters {
-			grid-template-columns: 1fr 1fr;
-		}
-		.check {
-			grid-column: 1 / -1;
-		}
-		.row {
-			grid-template-columns: minmax(0, 1fr);
-		}
-		.actions {
-			justify-content: flex-start;
-		}
-		.quick {
-			padding-inline: 10px;
-		}
-	}
-</style>

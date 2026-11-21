@@ -31,16 +31,20 @@
 	const sizes = $derived(presets(legal, hand));
 	const target = $derived(clampAmount(amount, legal));
 	const canRaise = $derived(legal.raise_kind !== null && legal.max_to >= legal.min_to);
+
+	// The three main buttons: tall, with room for a label on two lines.
+	const main =
+		'min-h-30 px-2 text-center leading-[1.1] whitespace-normal lt-640:min-h-28 lt-640:text-s';
 </script>
 
-<div class="panel px-panel" role="group" aria-label="Your action">
+<div class="panel px-panel grid animate-slide gap-4 p-2" role="group" aria-label="Your action">
 	{#if canRaise && legal.max_to > legal.min_to}
-		<div class="sizing">
-			<div class="presets">
+		<div class="sizing grid gap-2">
+			<div class="presets grid grid-cols-[repeat(5,1fr)] gap-3 lt-640:gap-2">
 				{#each sizes as preset (preset.label)}
 					<button
 						type="button"
-						class="px-btn small"
+						class="px-btn small choice p-0"
 						aria-pressed={preset.amount === target}
 						aria-label={`${preset.label}: ${preset.amount}`}
 						{disabled}
@@ -50,7 +54,9 @@
 					</button>
 				{/each}
 			</div>
-			<div class="slider">
+			<div
+				class="slider grid grid-cols-[1fr_104px] items-center gap-6 lt-640:grid-cols-[1fr_96px] lt-640:gap-4"
+			>
 				<input
 					class="px-range"
 					type="range"
@@ -62,7 +68,7 @@
 					{disabled}
 				/>
 				<input
-					class="px-field amount"
+					class="px-field amount w-full text-right"
 					type="number"
 					inputmode="numeric"
 					min={legal.min_to}
@@ -76,15 +82,15 @@
 			</div>
 		</div>
 	{/if}
-	<div class="main">
+	<div class="main grid auto-cols-[1fr] grid-flow-col gap-4">
 		{#if legal.can_fold}
-			<button type="button" class="px-btn red" {disabled} onclick={() => onact('fold')}>
+			<button type="button" class="px-btn red {main}" {disabled} onclick={() => onact('fold')}>
 				Fold
 			</button>
 		{/if}
 		<button
 			type="button"
-			class="px-btn blue"
+			class="px-btn blue {main}"
 			{disabled}
 			onclick={() => onact(legal.can_check ? 'check' : 'call')}
 		>
@@ -93,7 +99,7 @@
 		{#if canRaise}
 			<button
 				type="button"
-				class="px-btn amber"
+				class="px-btn amber {main}"
 				{disabled}
 				onclick={() => onact(legal.raise_kind ?? 'bet', target)}
 			>
@@ -102,72 +108,3 @@
 		{/if}
 	</div>
 </div>
-
-<style>
-	.panel {
-		display: grid;
-		gap: 8px;
-		padding: 4px;
-		animation: slide 0.18s steps(3, end);
-	}
-	.main {
-		display: grid;
-		grid-auto-flow: column;
-		grid-auto-columns: 1fr;
-		gap: 8px;
-	}
-	.main .px-btn {
-		min-height: 60px;
-		padding: 0 4px;
-		white-space: normal;
-		text-align: center;
-		line-height: 1.1;
-	}
-	.sizing {
-		display: grid;
-		gap: 4px;
-	}
-	.presets {
-		display: grid;
-		grid-template-columns: repeat(5, 1fr);
-		gap: 6px;
-	}
-	.presets .px-btn {
-		padding: 0;
-		font-size: var(--fs-s);
-	}
-	.presets .px-btn[aria-pressed='true'] {
-		--btn-down: url('../art/ui/button-gold-down.png');
-		color: var(--color-ink);
-		text-shadow: none;
-	}
-	.slider {
-		display: grid;
-		grid-template-columns: 1fr 104px;
-		gap: 12px;
-		align-items: center;
-	}
-	.amount {
-		width: 100%;
-		text-align: right;
-	}
-	@keyframes slide {
-		from {
-			transform: translateY(8px);
-			opacity: 0;
-		}
-	}
-	@media (max-width: 639px) {
-		.main .px-btn {
-			min-height: 56px;
-			font-size: var(--fs-s);
-		}
-		.slider {
-			grid-template-columns: 1fr 96px;
-			gap: 8px;
-		}
-		.presets {
-			gap: 4px;
-		}
-	}
-</style>

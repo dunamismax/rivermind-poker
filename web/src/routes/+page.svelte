@@ -39,6 +39,8 @@
 		return () => clearInterval(timer);
 	});
 
+	const joining = 'joining mt-[12vh] animate-wait text-center text-mist text-shadow-ink';
+
 	onMount(() => {
 		invite = new URLSearchParams(location.search).get('invite');
 		void connection.start().finally(() => (ready = true));
@@ -54,18 +56,31 @@
 </svelte:head>
 
 <SiteHeader>
-	{#if connection.player}<span class="me">{connection.player.name}</span>{/if}
+	{#if connection.player}
+		<span
+			class="me overflow-hidden text-ellipsis whitespace-nowrap text-paper-shade text-shadow-ink lt-640:max-w-[46vw] lt-640:text-s"
+		>
+			{connection.player.name}
+		</span>
+	{/if}
 	<ConnectionStatus status={connection.status} />
 </SiteHeader>
 
-<main class:at-table={connection.tableId !== null}>
+<main
+	class={[
+		'mx-auto p-8',
+		connection.tableId !== null
+			? 'at-table max-w-[1440px] lt-640:px-2 lt-640:pt-2 lt-640:pb-0'
+			: 'max-w-[1080px] lt-640:px-4 lt-640:pt-4 lt-640:pb-6'
+	]}
+>
 	{#if !ready}
-		<p class="joining" role="status">Shuffling up…</p>
+		<p class={joining} role="status">Shuffling up…</p>
 	{:else if connection.tableId}
 		{#if connection.view}
 			<NlTable view={connection.view} {connection} />
 		{:else}
-			<p class="joining" role="status">Joining your table…</p>
+			<p class={joining} role="status">Joining your table…</p>
 		{/if}
 	{:else}
 		<NlLobby
@@ -78,64 +93,10 @@
 </main>
 
 {#if toast}
-	<div class="toast px-danger" role="alert">{toast}</div>
+	<div
+		class="toast px-danger fixed bottom-[calc(20px+env(safe-area-inset-bottom))] left-1/2 z-20 max-w-[calc(100vw-32px)] -translate-x-1/2 animate-drop px-6 py-3 text-shadow-ink"
+		role="alert"
+	>
+		{toast}
+	</div>
 {/if}
-
-<style>
-	.me {
-		color: var(--color-paper-shade);
-		text-shadow: var(--shadow-text);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	main {
-		max-width: 1080px;
-		margin: 0 auto;
-		padding: 16px;
-	}
-	main.at-table {
-		max-width: 1440px;
-	}
-	.joining {
-		color: var(--color-mist);
-		text-align: center;
-		margin-top: 12vh;
-		text-shadow: var(--shadow-text);
-		animation: blink 1s steps(2, end) infinite;
-	}
-	@keyframes blink {
-		50% {
-			opacity: 0.5;
-		}
-	}
-	.toast {
-		position: fixed;
-		left: 50%;
-		bottom: calc(20px + env(safe-area-inset-bottom));
-		transform: translateX(-50%);
-		padding: 6px 12px;
-		max-width: calc(100vw - 32px);
-		z-index: 20;
-		text-shadow: var(--shadow-text);
-		animation: drop 0.2s steps(3, end);
-	}
-	@keyframes drop {
-		from {
-			transform: translate(-50%, 12px);
-			opacity: 0;
-		}
-	}
-	@media (max-width: 639px) {
-		main {
-			padding: 8px 8px 12px;
-		}
-		main.at-table {
-			padding: 4px 4px 0;
-		}
-		.me {
-			font-size: var(--fs-s);
-			max-width: 46vw;
-		}
-	}
-</style>

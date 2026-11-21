@@ -3,6 +3,9 @@
 	// the table rules where card rooms differ. docs/rules.md is the full text.
 	import { resolve } from '$app/paths';
 	import SiteHeader from '#lib/components/SiteHeader.svelte';
+
+	const heading = 'mt-10 mb-3 text-m text-gold-light';
+	const list = 'list-disc pl-10 [&>li+li]:mt-3';
 </script>
 
 <svelte:head>
@@ -17,24 +20,24 @@
 	<a class="px-btn small" href={resolve('/')}>Play</a>
 </SiteHeader>
 
-<main class="page">
-	<article class="px-panel">
-		<h2>Rules and fair dealing</h2>
-		<p class="lead">
+<main class="page mx-auto max-w-[860px] p-8">
+	<article class="px-panel px-10 pt-8 pb-10 text-mist">
+		<h2 class="mb-5 text-l text-gold text-shadow-ink">Rules and fair dealing</h2>
+		<p class="lead text-paper">
 			RiverMind Poker deals no-limit Texas hold’em for play chips only: chips can never be bought,
 			sold or cashed out, and have no value. This page explains how every hand is dealt and how the
 			tables run.
 		</p>
 
 		<section aria-labelledby="dealing">
-			<h3 id="dealing">How the cards are dealt</h3>
-			<ul>
+			<h3 id="dealing" class={heading}>How the cards are dealt</h3>
+			<ul class={list}>
 				<li>
 					Every hand uses a full 52-card deck, shuffled from scratch on the server before the hand.
 					The shuffle draws on the operating system’s cryptographic random number generator
 					(Python’s
-					<code>secrets.SystemRandom</code>), the same source used for passwords and keys, so no one
-					can predict or influence the order of the cards.
+					<code class="text-green-light">secrets.SystemRandom</code>), the same source used for
+					passwords and keys, so no one can predict or influence the order of the cards.
 				</li>
 				<li>
 					Cards come off the top of the deck in order, as a dealer deals them: two hole cards to
@@ -53,8 +56,8 @@
 		</section>
 
 		<section aria-labelledby="bots">
-			<h3 id="bots">Bots play by the same rules</h3>
-			<ul>
+			<h3 id="bots" class={heading}>Bots play by the same rules</h3>
+			<ul class={list}>
 				<li>
 					Bots are always labelled. They decide from the same view a person in their seat would
 					have: their own cards and what happened at the table. They never see other hole cards or
@@ -68,17 +71,18 @@
 		</section>
 
 		<section aria-labelledby="history">
-			<h3 id="history">Check any hand you played</h3>
+			<h3 id="history" class={heading}>Check any hand you played</h3>
 			<p>
-				Every finished hand is stored. <a href={resolve('/hands')}>Your hands</a> lists the hands you
-				were dealt into, with your cards, the board, every action and every hand shown at showdown, so
-				you can check how each one played out.
+				Every finished hand is stored. <a class="text-gold-light" href={resolve('/hands')}>
+					Your hands
+				</a> lists the hands you were dealt into, with your cards, the board, every action and every hand
+				shown at showdown, so you can check how each one played out.
 			</p>
 		</section>
 
 		<section aria-labelledby="table-rules">
-			<h3 id="table-rules">Table rules</h3>
-			<dl>
+			<h3 id="table-rules" class={heading}>Table rules</h3>
+			<dl class="my-10 [&>dd]:mt-1 [&>dd]:ml-10 [&>dt]:mt-5 [&>dt]:text-paper">
 				<dt>Blinds and the button</dt>
 				<dd>
 					The two players left of the button post the small and big blinds. Heads-up, the button
@@ -117,7 +121,7 @@
 		</section>
 
 		<section aria-labelledby="conduct">
-			<h3 id="conduct">Playing fair</h3>
+			<h3 id="conduct" class={heading}>Playing fair</h3>
 			<p>
 				There is no chat: players can send a few preset reactions. Select a player’s name at the
 				table to mute, block or report them. Reports, and signs of players working together such as
@@ -126,61 +130,3 @@
 		</section>
 	</article>
 </main>
-
-<style>
-	.page {
-		max-width: 860px;
-		margin: 0 auto;
-		padding: 16px;
-	}
-	article {
-		padding: 16px 20px 20px;
-		color: var(--color-mist);
-	}
-	h2 {
-		margin: 0 0 10px;
-		font-size: var(--fs-l);
-		font-weight: normal;
-		color: var(--color-gold);
-		text-shadow: var(--shadow-text);
-	}
-	h3 {
-		margin: 20px 0 6px;
-		font-size: var(--fs);
-		font-weight: normal;
-		color: var(--color-gold-light);
-	}
-	.lead {
-		color: var(--color-paper);
-	}
-	p,
-	li,
-	dd {
-		line-height: 1.4;
-	}
-	ul {
-		margin: 0;
-		padding-left: 20px;
-		list-style: disc;
-	}
-	li + li {
-		margin-top: 6px;
-	}
-	dl {
-		margin: 20px 0;
-	}
-	dt {
-		margin-top: 10px;
-		color: var(--color-paper);
-	}
-	dd {
-		margin: 2px 0 0 20px;
-	}
-	a:not(.px-btn) {
-		color: var(--color-gold-light);
-	}
-	code {
-		font-family: inherit;
-		color: var(--color-green-light);
-	}
-</style>

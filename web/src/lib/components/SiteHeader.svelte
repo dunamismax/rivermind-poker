@@ -6,67 +6,14 @@
 	let { children }: { children?: Snippet } = $props();
 </script>
 
-<header class="topbar">
-	<a class="brand" href={resolve('/')}>
-		<span class="sprite emblem" aria-hidden="true"></span>
-		<h1>RiverMind <span class="poker">Poker</span></h1>
+<header
+	class="topbar flex min-h-30 items-center justify-between gap-6 border-b-2 border-deep-slate bg-ink px-8 py-4 [box-shadow:0_2px_0_var(--color-night)] lt-640:min-h-26 lt-640:px-5 lt-640:py-3"
+>
+	<a class="brand flex items-center gap-5 text-inherit no-underline" href={resolve('/')}>
+		<span class="sprite emblem lt-640:h-13 lt-640:w-11" aria-hidden="true"></span>
+		<h1 class="text-l whitespace-nowrap text-gold text-shadow-title lt-640:text-m">
+			RiverMind <span class="poker text-paper text-shadow-ink lt-360:hidden">Poker</span>
+		</h1>
 	</a>
-	<div class="right">{@render children?.()}</div>
+	<div class="right flex min-w-0 items-center gap-6">{@render children?.()}</div>
 </header>
-
-<style>
-	.topbar {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 8px 16px;
-		background: var(--color-ink);
-		border-bottom: var(--px) solid var(--color-deep-slate);
-		box-shadow: 0 var(--px) 0 var(--color-night);
-		min-height: 60px;
-	}
-	.brand {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		text-decoration: none;
-		color: inherit;
-	}
-	h1 {
-		font-size: var(--fs-l);
-		color: var(--color-gold);
-		text-shadow:
-			0 var(--px) 0 var(--color-amber-deep),
-			0 calc(2 * var(--px)) 0 var(--color-ink);
-		white-space: nowrap;
-	}
-	.poker {
-		color: var(--color-paper);
-		text-shadow: 0 var(--px) 0 var(--color-ink);
-	}
-	.right {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		min-width: 0;
-	}
-	@media (max-width: 639px) {
-		.topbar {
-			padding: 6px 10px;
-			min-height: 52px;
-		}
-		h1 {
-			font-size: var(--fs);
-		}
-		.brand .emblem {
-			width: 22px;
-			height: 26px;
-		}
-	}
-	@media (max-width: 359px) {
-		.poker {
-			display: none;
-		}
-	}
-</style>
