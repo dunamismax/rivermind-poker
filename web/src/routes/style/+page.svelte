@@ -1,6 +1,7 @@
 <script lang="ts">
-	// The design reference: every color, frame, button, field, card and sprite
-	// in the pixel kit, as the site draws them. See docs/design.md.
+	// The design reference: every color, text size, spacing step, frame, button,
+	// field, card and sprite in the pixel kit, as the site draws them, with the
+	// Tailwind utilities that name them. See docs/design.md.
 	import { CARD_BACKS, CARD_RANKS } from '#lib/card-assets.ts';
 	import themeCss from '#lib/art/theme.css?raw';
 	import PlayingCard from '#lib/components/PlayingCard.svelte';
@@ -37,6 +38,18 @@
 	const heading = 'mb-6 text-l text-shadow-ink';
 	const row = 'row flex flex-wrap items-center gap-6';
 	const size = 'grid justify-items-center gap-3 text-mist';
+	const note = 'mb-6 max-w-[60ch] text-s text-mist';
+	/** Bars as tall as the spacing steps they are labelled with. */
+	const RULER: Record<number, string> = {
+		1: 'h-1',
+		2: 'h-2',
+		3: 'h-3',
+		4: 'h-4',
+		6: 'h-6',
+		8: 'h-8',
+		12: 'h-12',
+		16: 'h-16'
+	};
 </script>
 
 <svelte:head>
@@ -59,6 +72,12 @@
 
 	<section>
 		<h3 class={heading}>Palette</h3>
+		<p class={note}>
+			The only colors there are. A utility takes a color's name with hyphens:
+			<code class="text-gold-light">bg-felt</code>,
+			<code class="text-gold-light">text-gold</code>,
+			<code class="text-gold-light">border-deep-slate</code>.
+		</p>
 		<ul class="palette grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-x-8 gap-y-4">
 			{#each palette as color (color.name)}
 				<li class="grid grid-cols-[32px_1fr] items-center gap-x-4 text-s">
@@ -78,10 +97,29 @@
 
 	<section>
 		<h3 class={heading}>Type: RiverMind Pixel</h3>
-		<p class="text-xl text-gold text-shadow-ink">40px · No-limit hold’em</p>
-		<p class="text-l">30px · Pot 12,450 · A♠ K♥</p>
-		<p class="text-m">20px · The quick brown fox jumps over the lazy dog. 0123456789</p>
-		<p class="text-s text-mist">15px · secondary text, hand log, tags (crisp on 2x screens)</p>
+		<p class="text-xl text-gold text-shadow-ink">40px · text-xl · No-limit hold’em</p>
+		<p class="text-l">30px · text-l · Pot 12,450 · A♠ K♥</p>
+		<p class="text-m">20px · text-m · The quick brown fox jumps over the lazy dog. 0123456789</p>
+		<p class="text-s text-mist">
+			15px · text-s · secondary text, hand log, tags (crisp on 2x screens)
+		</p>
+		<p class="text-xs text-mist">10px · text-xs · bets and tags on a phone’s table</p>
+	</section>
+
+	<section>
+		<h3 class={heading}>Spacing</h3>
+		<p class={note}>
+			Lengths count art pixels, 2px each: <code class="text-gold-light">p-3</code> is 6px of
+			padding, <code class="text-gold-light">gap-4</code> an 8px gap,
+			<code class="text-gold-light">size-7</code> a 14px square.
+		</p>
+		<div class="flex items-end gap-4">
+			{#each [1, 2, 3, 4, 6, 8, 12, 16] as n (n)}
+				<div class="grid justify-items-center gap-2 text-s text-mist">
+					<span class="block w-4 bg-gold {RULER[n]}"></span>{n}
+				</div>
+			{/each}
+		</div>
 	</section>
 
 	<section>
