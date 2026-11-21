@@ -135,23 +135,23 @@
 	}
 	article {
 		padding: 16px 20px 20px;
-		color: var(--mist);
+		color: var(--color-mist);
 	}
 	h2 {
 		margin: 0 0 10px;
 		font-size: var(--fs-l);
 		font-weight: normal;
-		color: var(--gold);
+		color: var(--color-gold);
 		text-shadow: var(--shadow-text);
 	}
 	h3 {
 		margin: 20px 0 6px;
 		font-size: var(--fs);
 		font-weight: normal;
-		color: var(--gold-light);
+		color: var(--color-gold-light);
 	}
 	.lead {
-		color: var(--paper);
+		color: var(--color-paper);
 	}
 	p,
 	li,
@@ -161,22 +161,26 @@
 	ul {
 		margin: 0;
 		padding-left: 20px;
+		list-style: disc;
 	}
 	li + li {
 		margin-top: 6px;
 	}
+	dl {
+		margin: 20px 0;
+	}
 	dt {
 		margin-top: 10px;
-		color: var(--paper);
+		color: var(--color-paper);
 	}
 	dd {
 		margin: 2px 0 0 20px;
 	}
 	a:not(.px-btn) {
-		color: var(--gold-light);
+		color: var(--color-gold-light);
 	}
 	code {
 		font-family: inherit;
-		color: var(--green-light);
+		color: var(--color-green-light);
 	}
 </style>

@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from 'vitest/config';
 import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
+import tailwindcss from '@tailwindcss/vite';
 
 // Until the P4B.7 cutover, `rivermind-poker serve-nl` (port 8000 by default)
 // owns /api and /ws. In development and preview, Vite forwards both so the
@@ -34,6 +35,7 @@ function announcerWithoutInlineStyle(): Plugin {
 
 export default defineConfig({
 	plugins: [
+		tailwindcss(),
 		announcerWithoutInlineStyle(),
 		sveltekit({
 			compilerOptions: {

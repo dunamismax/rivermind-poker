@@ -249,7 +249,7 @@
 	}
 	h2 {
 		font-size: var(--fs-l);
-		color: var(--gold);
+		color: var(--color-gold);
 		text-shadow: var(--shadow-text);
 	}
 	.quick {
@@ -258,7 +258,7 @@
 	}
 	.hint,
 	.empty-list {
-		color: var(--mist);
+		color: var(--color-mist);
 		font-size: var(--fs-s);
 	}
 	.filters {
@@ -273,7 +273,7 @@
 	.field-label {
 		display: block;
 		margin-bottom: 6px;
-		color: var(--gold);
+		color: var(--color-gold);
 		text-shadow: var(--shadow-text);
 	}
 	.check {
@@ -281,13 +281,13 @@
 		align-items: center;
 		gap: 8px;
 		min-height: 40px;
-		color: var(--paper-shade);
+		color: var(--color-paper-shade);
 		cursor: pointer;
 	}
 	.check input {
 		width: 20px;
 		height: 20px;
-		accent-color: var(--gold);
+		accent-color: var(--color-gold);
 	}
 	.list {
 		list-style: none;
@@ -311,7 +311,7 @@
 		min-width: 0;
 	}
 	.name {
-		color: var(--paper);
+		color: var(--color-paper);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -319,17 +319,17 @@
 	.tag {
 		margin-left: 8px;
 		padding: 0 6px;
-		color: var(--ink);
-		background: var(--gold);
+		color: var(--color-ink);
+		background: var(--color-gold);
 		font-size: var(--fs-s);
 	}
 	.tag.blocked {
-		color: var(--white);
-		background: var(--red-dark);
+		color: var(--color-white);
+		background: var(--color-red-dark);
 	}
 	.detail,
 	.seats {
-		color: var(--mist);
+		color: var(--color-mist);
 		font-size: var(--fs-s);
 	}
 	.seats {
@@ -345,21 +345,21 @@
 	.pip {
 		width: 10px;
 		height: 10px;
-		box-shadow: inset 0 0 0 var(--px) var(--ink);
+		box-shadow: inset 0 0 0 var(--px) var(--color-ink);
 	}
 	.pip.person {
-		background: var(--gold);
+		background: var(--color-gold);
 	}
 	.pip.bot {
-		background: var(--blue-light);
+		background: var(--color-blue-light);
 	}
 	.pip.held {
-		background: var(--amber);
+		background: var(--color-amber);
 		opacity: 0.6;
 	}
 	.pip.empty {
 		background: transparent;
-		box-shadow: inset 0 0 0 var(--px) var(--haze);
+		box-shadow: inset 0 0 0 var(--px) var(--color-haze);
 	}
 	.actions {
 		display: flex;
@@ -369,7 +369,7 @@
 		gap: 6px;
 	}
 	.state {
-		color: var(--green-light);
+		color: var(--color-green-light);
 		font-size: var(--fs-s);
 		text-shadow: var(--shadow-text);
 	}

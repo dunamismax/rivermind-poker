@@ -55,6 +55,7 @@
 		--card-a: calc(1px * var(--card-s) / var(--dpr, 1));
 		display: block;
 		flex: none;
+		max-width: none;
 		width: calc(71 * var(--card-a));
 		height: calc(95 * var(--card-a));
 		image-rendering: pixelated;

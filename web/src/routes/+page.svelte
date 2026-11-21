@@ -83,7 +83,7 @@
 
 <style>
 	.me {
-		color: var(--paper-shade);
+		color: var(--color-paper-shade);
 		text-shadow: var(--shadow-text);
 		white-space: nowrap;
 		overflow: hidden;
@@ -98,7 +98,7 @@
 		max-width: 1440px;
 	}
 	.joining {
-		color: var(--mist);
+		color: var(--color-mist);
 		text-align: center;
 		margin-top: 12vh;
 		text-shadow: var(--shadow-text);

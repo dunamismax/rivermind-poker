@@ -70,6 +70,37 @@ test('the drawn art is on the palette and the slot is card-sized', async () => {
 	}
 });
 
+test("the theme offers the palette, the font and the kit's sizes, and nothing of Tailwind's own", async () => {
+	const { themeCss, ART_PIXEL, TEXT_SIZES, FONT_FAMILY } = await load<{
+		themeCss: () => string;
+		ART_PIXEL: number;
+		TEXT_SIZES: Record<string, number>;
+		FONT_FAMILY: string;
+	}>('../../../scripts/pixel-art/render.js');
+	const { PALETTE } = await load<{ PALETTE: Map<string, number[]> }>(
+		'../../../scripts/pixel-art/canvas.js'
+	);
+	const css = themeCss();
+	// The committed file is the generated one (the first test compares every generated file).
+	expect(readFileSync(new URL('src/lib/art/theme.css', WEB), 'utf8')).toBe(css);
+	// One static block that first clears Tailwind's default theme.
+	expect(css.match(/@theme[^{]*\{/g)).toEqual(['@theme static {']);
+	expect(css.indexOf('--*: initial;')).toBeLessThan(css.indexOf('--color-'));
+	// Every palette color, in order, and no other.
+	const hex = (rgb: number[]) => '#' + rgb.map((v) => v.toString(16).padStart(2, '0')).join('');
+	expect(
+		[...css.matchAll(/--color-([a-z-]+): (#[0-9a-f]{6});/g)].map(([, n, h]) => [n, h])
+	).toEqual([...PALETTE].map(([name, rgb]) => [name.replace(/ /g, '-'), hex(rgb)]));
+	expect(css.match(/#[0-9a-f]{3,8}\b/g)).toHaveLength(PALETTE.size);
+	// Spacing counts whole art pixels; text is 15px or a multiple of 10px.
+	expect(ART_PIXEL).toBe(2);
+	expect(css).toContain(`--spacing: ${ART_PIXEL}px;`);
+	const sizes = [...css.matchAll(/--text-([a-z]+): (\d+)px;/g)].map(([, n, px]) => [n, Number(px)]);
+	expect(sizes).toEqual(Object.entries(TEXT_SIZES));
+	for (const [, px] of sizes) expect(px === 15 || (px as number) % 10 === 0).toBe(true);
+	expect(css).toContain(`--font-pixel: ${FONT_FAMILY};`);
+});
+
 test('the deck is 52 faces and the backs, each 71 × 95 with hard edges', RENDER, async () => {
 	const { renderDeck } = await load<{ renderDeck: () => Map<string, Image> }>(
 		'../../../scripts/pixel-art/cards.js'

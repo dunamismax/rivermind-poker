@@ -151,11 +151,25 @@ test('continues a hand across a service restart', async ({ page }) => {
 	const hand = await handNumber(page);
 	const cards = await myCards(page);
 	const call = await panel.getByRole('button', { name: /^(Check|Call \d+)$/ }).textContent();
-	execSync(restart!, { stdio: 'inherit' });
 	// The connection's own status: a seat has a `.status` label too, and for a moment after
 	// rejoining the player's own seat reads "Away", until the server sees them connected.
 	const status = page.locator('.status[data-state]');
-	await expect(status).toHaveAttribute('data-state', 'closed', { timeout: 30_000 });
+	// Note every state it passes through: a restart command that waits for the service to
+	// answer can return after the page has already lost the connection and found it again.
+	await status.evaluate((lamp) => {
+		const seen: string[] = [];
+		(window as unknown as { __states: string[] }).__states = seen;
+		new MutationObserver(() => seen.push((lamp as HTMLElement).dataset.state ?? '')).observe(lamp, {
+			attributes: true,
+			attributeFilter: ['data-state']
+		});
+	});
+	execSync(restart!, { stdio: 'inherit' });
+	await expect
+		.poll(() => page.evaluate(() => (window as unknown as { __states: string[] }).__states), {
+			timeout: 30_000
+		})
+		.toContain('closed');
 	await expect(status).toHaveAttribute('data-state', 'open', { timeout: 120_000 });
 	// The same hand, the same cards, and still our turn with the same choice.
 	expect(await handNumber(page)).toBe(hand);

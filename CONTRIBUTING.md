@@ -228,6 +228,22 @@ The no-limit UI is in `web/src/lib/nl/`. `NlConnection` (`connection.svelte.ts`)
 
 `pnpm e2e` runs the Playwright tests in `web/e2e/` in Chromium, Firefox and WebKit at desktop (1440×900) and phone (375×812) sizes. It builds the client once. Then each worker starts the built Node server (`node build/start.js`) on port 8800 and up, serving the pages, the API and the tables itself, with tables in memory (their durability is tested in Vitest and pytest). With `E2E_LEGACY=1` each worker also starts a `rivermind-poker serve-nl` 100 ports below and the Node server forwards to it, as the live site does until P4B.7; CI runs Chromium that way as well. The tests play at 2, 6 and 9 seats. Install the browsers once with `pnpm exec playwright install`, and pass `--project chromium` for a quick run.
 
+### Comparing screenshots (P4B.2)
+
+`pnpm visual` captures fixed scenes of the production build for comparing two commits pixel for pixel: the lobby, a table being watched and the player menu, a heads-up table at the first turn, with a bet being sized and at the result, a practice table, a private table's invite, a full nine-seat table and the seat tools, `/style`, `/fairness`, and `/hands` with a hand open. It takes them at 375×812, 768×1024 and 1440×900 at one, two and three device pixels per CSS pixel, and at 1024×768 and 860×600 at one, in Chromium, Firefox and WebKit: 462 PNGs under `VISUAL_OUT` (`artifacts/visual/current` by default).
+
+Each size gets its own site from [`web/e2e/visual/server.ts`](web/e2e/visual/server.ts), a test-only server built from the same parts as the live one, with seeded decks and bots, handles from a fixed list, numbered table ids and clocks that stand still; the browser's clock, time zone and locale are pinned too. The live server has no seeding switch (D-8). A scene is saved once two captures in a row agree.
+
+```sh
+git stash                                              # or check out the commit to compare with
+VISUAL_OUT=../artifacts/visual/before-1 pnpm visual    # two or three times, into before-1, before-2, ...
+git stash pop
+VISUAL_OUT=../artifacts/visual/after pnpm visual
+pnpm visual:compare ../artifacts/visual/before-1 ../artifacts/visual/before-2 ../artifacts/visual/after --diff ../artifacts/visual/diff
+```
+
+`pnpm visual:compare` passes a pixel only when some "before" capture has exactly that value there. One "before" run is the strict test. Several allow for what a browser does not draw the same way twice: Chromium anti-aliases the fanned (rotated) cards differently between runs of one build at three device pixels per CSS pixel, by 15 to 130 pixels in a capture of 11.6 million, so capture that size a few more times (`--project chromium -g "@3"`) when it is the only difference. `--diff` writes each failing capture with the changed pixels in magenta. `pnpm visual` builds first unless `E2E_SKIP_BUILD` is set, keeps its own `test-results-visual`, and takes ports from 8950 (`VISUAL_PORT`).
+
 ## Deploy rivermindpoker.com
 
 The site runs on the owner’s ubuntu-vm. Caddy terminates HTTPS and proxies pages and assets to `rivermind-poker-web.service`, the Node server running the current release from `/srv/rivermindpoker.com/current` on `127.0.0.1:4320`. Until the P4B.7 cutover, it proxies `/api/*` and `/ws` to `rivermind-poker.service` (`serve-nl`, from the checkout at `/home/sawyer/github/rivermind-poker`) on `127.0.0.1:4316`. After pushing `main`, update the live site with the following command.

@@ -194,7 +194,7 @@
 		padding: 16px;
 		display: grid;
 		gap: 16px;
-		color: var(--mist);
+		color: var(--color-mist);
 	}
 	.px-panel {
 		padding: 12px 16px 16px;
@@ -204,7 +204,7 @@
 	h4 {
 		margin: 0 0 8px;
 		font-weight: normal;
-		color: var(--gold);
+		color: var(--color-gold);
 		text-shadow: var(--shadow-text);
 	}
 	h2 {
@@ -216,14 +216,14 @@
 	}
 	h4 {
 		margin-top: 16px;
-		color: var(--gold-light);
+		color: var(--color-gold-light);
 	}
 	p {
 		margin: 0;
 		line-height: 1.4;
 	}
 	a:not(.px-btn) {
-		color: var(--gold-light);
+		color: var(--color-gold-light);
 	}
 	.detail-top {
 		display: flex;
@@ -233,7 +233,7 @@
 	}
 	.meta,
 	.when {
-		color: var(--paper-shade);
+		color: var(--color-paper-shade);
 		font-size: var(--fs-s);
 	}
 	.board,
@@ -277,10 +277,10 @@
 		align-items: center;
 		gap: 10px;
 		padding: 4px 0;
-		border-bottom: var(--px) solid var(--deep-slate);
+		border-bottom: var(--px) solid var(--color-deep-slate);
 	}
 	.seats li.you .who {
-		color: var(--gold-light);
+		color: var(--color-gold-light);
 	}
 	.who {
 		overflow: hidden;
@@ -291,29 +291,29 @@
 		margin-left: 6px;
 		padding: 0 6px;
 		font-size: var(--fs-s);
-		color: var(--violet-light);
-		background: var(--ink);
+		color: var(--color-violet-light);
+		background: var(--color-ink);
 	}
 	.tag.gold {
-		color: var(--ink);
-		background: var(--gold);
+		color: var(--color-ink);
+		background: var(--color-gold);
 	}
 	.tag.first {
 		margin: 0 6px 0 0;
 	}
 	.hidden-cards {
 		font-size: var(--fs-s);
-		color: var(--paper-shade);
+		color: var(--color-paper-shade);
 	}
 	.net {
 		text-align: right;
-		color: var(--paper-shade);
+		color: var(--color-paper-shade);
 	}
 	.net.won {
-		color: var(--green-light);
+		color: var(--color-green-light);
 	}
 	.net.lost {
-		color: var(--red-light);
+		color: var(--color-red-light);
 	}
 	pre {
 		margin: 0;
@@ -325,7 +325,7 @@
 		font-family: inherit;
 		font-size: var(--fs-s);
 		line-height: 1.5;
-		color: var(--paper);
+		color: var(--color-paper);
 	}
 	ol {
 		list-style: none;
@@ -354,7 +354,7 @@
 	.open:hover .title,
 	.open:focus-visible .title,
 	.open[aria-current='true'] .title {
-		color: var(--gold-light);
+		color: var(--color-gold-light);
 	}
 	.title {
 		grid-area: title;
@@ -372,7 +372,7 @@
 		grid-area: net;
 	}
 	.error {
-		color: var(--red-light);
+		color: var(--color-red-light);
 		margin-bottom: 8px;
 	}
 </style>

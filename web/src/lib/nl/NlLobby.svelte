@@ -334,15 +334,15 @@
 	}
 	.hero h2 {
 		font-size: var(--fs-xl);
-		color: var(--gold);
+		color: var(--color-gold);
 		text-shadow:
-			0 var(--px) 0 var(--amber-deep),
-			0 calc(2 * var(--px)) 0 var(--ink);
+			0 var(--px) 0 var(--color-amber-deep),
+			0 calc(2 * var(--px)) 0 var(--color-ink);
 	}
 	.intro,
 	.closed,
 	.short {
-		color: var(--mist);
+		color: var(--color-mist);
 	}
 	.closed {
 		padding: 6px 10px;
@@ -358,7 +358,7 @@
 		width: 100%;
 	}
 	.practice .note {
-		color: var(--mist);
+		color: var(--color-mist);
 		font-size: var(--fs-s);
 	}
 	.wallet {
@@ -367,21 +367,21 @@
 		padding: 8px 12px;
 	}
 	.wallet .label {
-		color: var(--mist);
+		color: var(--color-mist);
 	}
 	.wallet .amount {
 		display: flex;
 		align-items: center;
 		gap: 10px;
 		font-size: var(--fs-l);
-		color: var(--gold);
+		color: var(--color-gold);
 		text-shadow: var(--shadow-text);
 	}
 	.wallet strong {
 		font-weight: normal;
 	}
 	.wallet .hint {
-		color: var(--haze);
+		color: var(--color-haze);
 		font-size: var(--fs-s);
 	}
 	.links {
@@ -400,38 +400,38 @@
 	}
 	.setup-title {
 		font-size: var(--fs-l);
-		color: var(--gold);
+		color: var(--color-gold);
 		text-shadow: var(--shadow-text);
 		margin-bottom: 12px;
 	}
 	.field-note {
 		margin-top: 6px;
-		color: var(--haze);
+		color: var(--color-haze);
 		font-size: var(--fs-s);
 	}
 	.private {
 		display: flex;
 		align-items: flex-start;
 		gap: 10px;
-		color: var(--paper-shade);
+		color: var(--color-paper-shade);
 		cursor: pointer;
 	}
 	.private input {
 		width: 20px;
 		height: 20px;
 		margin-top: 2px;
-		accent-color: var(--gold);
+		accent-color: var(--color-gold);
 	}
 	.private .note {
 		display: block;
-		color: var(--mist);
+		color: var(--color-mist);
 		font-size: var(--fs-s);
 	}
 	.invite {
 		display: grid;
 		gap: 10px;
 		padding: 10px 12px 12px;
-		color: var(--ink);
+		color: var(--color-ink);
 	}
 	.invite h3 {
 		font-size: var(--fs-l);
@@ -446,11 +446,14 @@
 		padding: 0;
 		min-width: 0;
 	}
+	legend {
+		padding-inline: 2px;
+	}
 	legend,
 	.field-label {
 		display: block;
 		margin-bottom: 8px;
-		color: var(--gold);
+		color: var(--color-gold);
 		text-shadow: var(--shadow-text);
 	}
 	.choices {
@@ -478,11 +481,11 @@
 	}
 	.pick input:checked + .px-btn {
 		--btn-up: url('../art/ui/button-gold.png');
-		color: var(--ink);
-		text-shadow: 0 var(--px) 0 var(--gold-light);
+		color: var(--color-ink);
+		text-shadow: 0 var(--px) 0 var(--color-gold-light);
 	}
 	.pick input:focus-visible + .px-btn {
-		outline: var(--px) solid var(--gold-light);
+		outline: var(--px) solid var(--color-gold-light);
 		outline-offset: var(--px);
 	}
 	.bots {
@@ -502,11 +505,11 @@
 	}
 	.bot .note {
 		font-size: var(--fs-s);
-		color: var(--mist);
+		color: var(--color-mist);
 		text-shadow: none;
 	}
 	.bot input:checked + .px-btn .note {
-		color: var(--amber-deep);
+		color: var(--color-amber-deep);
 	}
 	.stakes {
 		display: grid;

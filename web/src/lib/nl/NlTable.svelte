@@ -555,14 +555,14 @@
 		flex: 1;
 		text-align: center;
 		text-transform: capitalize;
-		color: var(--mist);
+		color: var(--color-mist);
 		text-shadow: var(--shadow-text);
 	}
 	.stakes {
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		color: var(--paper-shade);
+		color: var(--color-paper-shade);
 		text-shadow: var(--shadow-text);
 		margin-left: auto;
 	}
@@ -613,7 +613,7 @@
 		min-height: 32px;
 	}
 	.pot {
-		color: var(--gold-light);
+		color: var(--color-gold-light);
 		text-shadow: var(--shadow-text);
 	}
 	.board {
@@ -622,7 +622,7 @@
 	}
 	.result {
 		min-height: 28px;
-		color: var(--gold);
+		color: var(--color-gold);
 		text-shadow: var(--shadow-text);
 	}
 	.bet {
@@ -633,7 +633,7 @@
 		gap: 6px;
 		padding: 2px 8px 2px 4px;
 		background: rgb(12 13 21 / 0.72);
-		color: var(--paper);
+		color: var(--color-paper);
 		font-size: var(--fs-s);
 		white-space: nowrap;
 		z-index: 2;
@@ -647,27 +647,27 @@
 		position: absolute;
 		transform: translate(-50%, -50%);
 		padding: 4px 10px;
-		color: var(--haze);
+		color: var(--color-haze);
 		font-size: var(--fs-s);
-		border: var(--px) dashed var(--felt-light);
+		border: var(--px) dashed var(--color-felt-light);
 		background: rgb(12 13 21 / 0.35);
 	}
 	.empty.held {
-		color: var(--amber);
-		border-color: var(--amber-dark);
+		color: var(--color-amber);
+		border-color: var(--color-amber-dark);
 	}
 	button.empty.open {
 		font: inherit;
 		font-size: var(--fs-s);
-		color: var(--gold-light);
-		border-color: var(--gold);
+		color: var(--color-gold-light);
+		border-color: var(--color-gold);
 		cursor: pointer;
 		z-index: 3;
 	}
 	button.empty.open:hover:not(:disabled),
 	button.empty.open:focus-visible {
 		background: rgb(12 13 21 / 0.7);
-		outline: var(--px) solid var(--gold-light);
+		outline: var(--px) solid var(--color-gold-light);
 	}
 	button.empty.open:disabled {
 		cursor: default;
@@ -686,13 +686,13 @@
 		display: grid;
 		gap: 8px;
 		padding: 8px;
-		color: var(--mist);
+		color: var(--color-mist);
 	}
 	.player-menu p {
 		margin: 0;
 	}
 	.who-menu strong {
-		color: var(--gold-light);
+		color: var(--color-gold-light);
 		font-weight: normal;
 	}
 	.menu-row {
@@ -703,7 +703,7 @@
 	}
 	.player-menu .hint {
 		font-size: var(--fs-s);
-		color: var(--paper-shade);
+		color: var(--color-paper-shade);
 	}
 	.reactions {
 		flex: 1 1 100%;
@@ -724,7 +724,7 @@
 		justify-items: center;
 		text-align: center;
 		padding: 10px 12px 12px;
-		color: var(--mist);
+		color: var(--color-mist);
 	}
 	.buy-in {
 		display: flex;
@@ -738,7 +738,7 @@
 		text-align: right;
 	}
 	.join .hint {
-		color: var(--haze);
+		color: var(--color-haze);
 		font-size: var(--fs-s);
 	}
 	@keyframes pop {
@@ -761,7 +761,7 @@
 		display: grid;
 		place-items: center;
 		text-align: center;
-		color: var(--mist);
+		color: var(--color-mist);
 		padding: 0 12px;
 	}
 	.refill {
@@ -770,9 +770,9 @@
 	}
 	.practice-tag {
 		padding: 2px 8px;
-		color: var(--ink);
-		background: var(--gold);
-		box-shadow: 0 var(--px) 0 var(--amber-deep);
+		color: var(--color-ink);
+		background: var(--color-gold);
+		box-shadow: 0 var(--px) 0 var(--color-amber-deep);
 		font-size: var(--fs-s);
 		white-space: nowrap;
 	}
@@ -794,7 +794,7 @@
 		text-align: right;
 	}
 	.note {
-		color: var(--green-light);
+		color: var(--color-green-light);
 		text-shadow: var(--shadow-text);
 	}
 	.log {
@@ -807,7 +807,7 @@
 	}
 	.log h2 {
 		font-size: var(--fs);
-		color: var(--gold);
+		color: var(--color-gold);
 		text-shadow: var(--shadow-text);
 		margin-bottom: 6px;
 	}
@@ -815,17 +815,17 @@
 		list-style: none;
 		margin: 0;
 		padding: 0;
-		color: var(--mist);
+		color: var(--color-mist);
 		font-size: var(--fs-s);
 		display: grid;
 		gap: 4px;
 	}
 	.log li:first-child {
-		color: var(--paper);
+		color: var(--color-paper);
 	}
 	.play-money {
 		grid-area: money;
-		color: var(--haze);
+		color: var(--color-haze);
 		font-size: var(--fs-s);
 		text-align: center;
 	}
@@ -879,7 +879,7 @@
 			padding-bottom: env(safe-area-inset-bottom);
 		}
 		.my-turn .dock {
-			background: linear-gradient(to bottom, transparent, var(--night) 12px);
+			background: linear-gradient(to bottom, transparent, var(--color-night) 12px);
 		}
 		.log {
 			max-height: 220px;

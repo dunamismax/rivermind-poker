@@ -197,7 +197,7 @@
 		text-shadow: var(--shadow-text);
 	}
 	.me .name {
-		color: var(--gold);
+		color: var(--color-gold);
 	}
 	.name.pick {
 		display: block;
@@ -212,7 +212,7 @@
 	}
 	.name.pick:hover,
 	.name.pick:focus-visible {
-		color: var(--gold-light);
+		color: var(--color-gold-light);
 		text-decoration: underline;
 	}
 	.bubble {
@@ -221,7 +221,7 @@
 		left: 50%;
 		transform: translate(-50%, 0);
 		padding: 2px 8px;
-		color: var(--ink);
+		color: var(--color-ink);
 		font-size: var(--fs-s);
 		line-height: 20px;
 		white-space: nowrap;
@@ -233,7 +233,7 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		color: var(--gold-light);
+		color: var(--color-gold-light);
 		text-shadow: var(--shadow-text);
 	}
 	.stack .chip {
@@ -264,18 +264,18 @@
 		padding: 0 6px;
 		font-size: var(--fs-s);
 		line-height: 20px;
-		background: var(--ink);
-		color: var(--mist);
+		background: var(--color-ink);
+		color: var(--color-mist);
 		white-space: nowrap;
 	}
 	.bot {
-		color: var(--violet-light);
+		color: var(--color-violet-light);
 	}
 	.status {
-		color: var(--paper-shade);
+		color: var(--color-paper-shade);
 	}
 	.status.muted {
-		color: var(--red-light);
+		color: var(--color-red-light);
 	}
 	.clock {
 		display: flex;
@@ -283,7 +283,7 @@
 		gap: 6px;
 		margin-top: 4px;
 		font-size: var(--fs-s);
-		color: var(--green-light);
+		color: var(--color-green-light);
 		text-shadow: var(--shadow-text);
 	}
 	.clock svg {
@@ -292,23 +292,23 @@
 		display: block;
 	}
 	.clock .groove {
-		fill: var(--ink);
+		fill: var(--color-ink);
 	}
 	.clock rect:not(.groove) {
-		fill: var(--deep-slate);
+		fill: var(--color-deep-slate);
 	}
 	.clock rect.on {
-		fill: var(--green-light);
+		fill: var(--color-green-light);
 	}
 	.clock.low,
 	.clock.low rect.on {
-		color: var(--gold);
-		fill: var(--gold);
+		color: var(--color-gold);
+		fill: var(--color-gold);
 	}
 	.clock.bank,
 	.clock.bank rect.on {
-		color: var(--red-light);
-		fill: var(--red-light);
+		color: var(--color-red-light);
+		fill: var(--color-red-light);
 	}
 	.won {
 		position: absolute;
@@ -316,12 +316,12 @@
 		left: 50%;
 		transform: translate(-50%, -60%);
 		font-size: var(--fs-l);
-		color: var(--gold);
+		color: var(--color-gold);
 		text-shadow:
-			0 var(--px) 0 var(--ink),
-			var(--px) 0 0 var(--ink),
-			calc(-1 * var(--px)) 0 0 var(--ink),
-			0 calc(-1 * var(--px)) 0 var(--ink);
+			0 var(--px) 0 var(--color-ink),
+			var(--px) 0 0 var(--color-ink),
+			calc(-1 * var(--px)) 0 0 var(--color-ink),
+			0 calc(-1 * var(--px)) 0 var(--color-ink);
 		animation: rise 0.6s steps(6, end);
 		z-index: 3;
 		pointer-events: none;

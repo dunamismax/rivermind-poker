@@ -138,7 +138,7 @@
 	}
 	.presets .px-btn[aria-pressed='true'] {
 		--btn-down: url('../art/ui/button-gold-down.png');
-		color: var(--ink);
+		color: var(--color-ink);
 		text-shadow: none;
 	}
 	.slider {

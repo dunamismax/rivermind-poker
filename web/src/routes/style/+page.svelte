@@ -2,12 +2,12 @@
 	// The design reference: every color, frame, button, field, card and sprite
 	// in the pixel kit, as the site draws them. See docs/design.md.
 	import { CARD_BACKS, CARD_RANKS } from '#lib/card-assets.ts';
-	import paletteCss from '#lib/art/palette.css?raw';
+	import themeCss from '#lib/art/theme.css?raw';
 	import PlayingCard from '#lib/components/PlayingCard.svelte';
 	import SiteHeader from '#lib/components/SiteHeader.svelte';
 	import type { Suit } from '#lib/protocol.ts';
 
-	const palette = [...paletteCss.matchAll(/--([a-z-]+): (#[0-9a-f]{6});/g)].map(
+	const palette = [...themeCss.matchAll(/--color-([a-z-]+): (#[0-9a-f]{6});/g)].map(
 		([, name, hex]) => ({
 			name: name.replace(/-/g, ' '),
 			hex
@@ -168,7 +168,7 @@
 	}
 	h2 {
 		font-size: var(--fs-xl);
-		color: var(--gold);
+		color: var(--color-gold);
 		text-shadow: var(--shadow-text);
 	}
 	h3 {
@@ -177,12 +177,12 @@
 		text-shadow: var(--shadow-text);
 	}
 	.lead {
-		color: var(--mist);
+		color: var(--color-mist);
 		max-width: 60ch;
 	}
 	code {
 		font-family: var(--font);
-		color: var(--gold-light);
+		color: var(--color-gold-light);
 	}
 	.palette {
 		list-style: none;
@@ -203,10 +203,10 @@
 		grid-row: span 2;
 		width: 32px;
 		height: 32px;
-		box-shadow: 0 0 0 var(--px) var(--ink);
+		box-shadow: 0 0 0 var(--px) var(--color-ink);
 	}
 	.palette code {
-		color: var(--haze);
+		color: var(--color-haze);
 	}
 	.t40 {
 		font-size: var(--fs-xl);
@@ -258,7 +258,7 @@
 		display: grid;
 		justify-items: center;
 		gap: 6px;
-		color: var(--mist);
+		color: var(--color-mist);
 	}
 	.back {
 		display: grid;
@@ -266,7 +266,7 @@
 		gap: 4px;
 		width: 120px;
 		margin: 0;
-		color: var(--mist);
+		color: var(--color-mist);
 		font-size: var(--fs-s);
 	}
 	.k1 {

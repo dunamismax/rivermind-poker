@@ -131,7 +131,8 @@ web/                             SvelteKit app (Node from web/.node-version, pnp
   drizzle/                       SQL migrations (never edit an applied one)
   scripts/                       art generator, parity and benchmark scripts, migrator, inline-code check
   e2e/                           Playwright tests against the Node table server (E2E_LEGACY=1: in front
-                                 of serve-nl); *.live.ts run against the live site
+                                 of serve-nl); *.live.ts run against the live site; visual/ holds the
+                                 screenshot comparison's scenes and its seeded test-only server
 rivermind/engine/                reference no-limit engine, fuzz, bench, differential reference writer
 rivermind/bots/                  simple bots, cards/ (card tables), blueprint/ (training, policy, bundles),
                                  match.py (evaluation), differential.py (bot parity reference)
@@ -217,6 +218,8 @@ pnpm check && pnpm lint && pnpm test && pnpm build
 pnpm e2e        # Chromium, Firefox and WebKit, desktop and phone, against the Node server and its own tables
 pnpm e2e:live   # against https://rivermindpoker.com (or LIVE_URL)
 ```
+
+`pnpm visual` and `pnpm visual:compare` capture fixed scenes and compare two commits pixel for pixel; run them for any change to styles or markup ([CONTRIBUTING.md](CONTRIBUTING.md#comparing-screenshots-p4b2)).
 
 `pnpm format` is the quickest way to satisfy the Prettier half of `pnpm lint`. Pass `--project chromium` to `pnpm e2e` for a quick run, and `E2E_LEGACY=1` to run it in front of a real `serve-nl`, as the live site is until P4B.7 (CI runs Chromium that way too).
 
@@ -308,6 +311,8 @@ Keep the `poker_ai` Python namespace and the legacy `poker_ai` command. Existing
 
 **Python socket tests.** Tests of the table server’s sockets (`test/server/test_protocol_v2.py`) run with a `ManualClock`, so nobody times out, and a `TestClient` receive has no timeout. Check the last message already received before waiting for a turn (the snapshot after joining is often one), and keep playing your own turns while waiting for a later hand, or the test hangs. Don’t move the manual clock while a bot’s thread may still be deciding; wait for the turn you expect instead.
 
+**Waits in tests.** Bound a wait by time, never only by turns of the event loop. A server saving to PostgreSQL spends the wait idle, where a turn takes microseconds: 20,000 of them passed in CI before a few dozen saves had, and the same test passed on a busy Mac, where turns are slow. The helpers in `tables.testing.ts` wait for at least their turns and at least ten seconds.
+
 **Vitest table-server tests.** `TestServer` (`web/src/lib/server/api/tables.testing.ts`) is the whole table server in one process, with seeded decks and a `ManualClock`. Nothing times out unless the test moves the clock. Call `await server.settle()` before reading a table's state after a request, and before moving the clock: it waits until the bots have stopped acting. A test that spawns `uv run … serve-nl` must start it in its own process group and kill the group, or the Python child lives on and answers on the port.
 
 **Playwright.**
@@ -316,6 +321,7 @@ Keep the `poker_ai` Python namespace and the legacy `poker_ai` command. Existing
 - The lobby lists every open table on the test server, each with its own “Sit down”, and has its own “Blinds” filter. Reach the new-table form through `newTableForm()` and a listed table through its `li[data-table]` row.
 - After an action the panel stays up, disabled, until the table answers. Decide on an enabled button and click it by its exact label, as `playUntil` does: a click on a stale decision waits and lands on the next turn’s button. Give every check of a button’s state a timeout.
 - RiverMind Easy folds to almost every raise, so a guest who shoves or folds rarely busts. The browser tests’ server runs `--practice_stack 300`, and a test that needs a bust checks or calls every turn: in a 40-seed simulation that busted every guest within 94 hands.
+- Playwright empties its output directory when a run starts. A second run with the same configuration in `web/` deletes the first one's traces, and its tests then fail on `ENOENT`. `pnpm visual` has its own directory for that reason; do not start a second `pnpm e2e` beside a running one.
 - The trace keeps DOM snapshots but not the screencast (`screenshots: false` in `playwright.config.ts`). The screencast made every WebKit action slow enough to time tests out in CI; don’t turn it back on.
 
 **The browser pane.** When the pane is hidden, the page runs in the background and CSS animations stay on their first frame, so an element with an entrance animation (a reaction bubble, a win label) looks invisible. Finish them with `document.getAnimations()` before judging a screenshot.

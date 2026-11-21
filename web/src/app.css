@@ -1,11 +1,51 @@
 /*
  * RiverMind's look: hand-drawn pixel art on a night-blue room, a felt table,
- * one pixel font. The palette (palette.css) is generated from web/art/; the
- * frames and buttons in pixel.css are nine-slice images drawn from it.
+ * one pixel font. Tailwind CSS 4 styles the pages, on a theme generated from
+ * web/art/ (lib/art/theme.css: the palette, the font, the spacing step and the
+ * text sizes, and nothing of Tailwind's own). The frames and buttons in
+ * pixel.css are nine-slice images drawn from the same palette.
  * See docs/design.md.
  */
-@import './lib/art/palette.css';
-@import './styles/pixel.css';
+@import 'tailwindcss' source(none);
+@import './lib/art/theme.css';
+@import './styles/pixel.css' layer(components);
+
+/*
+ * Only the pages and their components carry utilities: the server code and the
+ * short-deck prototype's components are never scanned. Tailwind reads every word
+ * of a source as a possible class, so the ordinary words below, which the pages
+ * say but never mean as utilities, are ruled out.
+ */
+@source './routes';
+@source './lib/nl';
+@source './lib/components/{ConnectionStatus,PlayingCard,SiteHeader}.svelte';
+@source not inline('{container,contents,filter,inline,outline,ring,static,table,transform,transition,visible}');
+
+/*
+ * The layouts' breakpoints, as the max-width queries the pages were drawn to.
+ * Later ones win, so the narrowest comes last, and the table's four come after
+ * the pages'. `phone` is also a tablet held upright, where `tab` then adjusts it.
+ */
+@custom-variant lt-800 (@media (max-width: 799px));
+@custom-variant lt-640 (@media (max-width: 639px));
+@custom-variant lt-600 (@media (max-width: 599px));
+@custom-variant lt-460 (@media (max-width: 459px));
+@custom-variant lt-360 (@media (max-width: 359px));
+@custom-variant lap (@media (max-width: 1279px));
+@custom-variant tall {
+	@media (max-width: 899px), (max-width: 1279px) and (orientation: portrait) {
+		@slot;
+	}
+}
+@custom-variant phone {
+	@media (max-width: 639px), (max-width: 1099px) and (orientation: portrait) {
+		@slot;
+	}
+}
+@custom-variant tab (@media (min-width: 640px) and (max-width: 1099px) and (orientation: portrait));
+
+/* Hover on every device, as the kit's own buttons do; Tailwind's default skips touch screens. */
+@custom-variant hover (&:hover);
 
 @font-face {
 	font-family: 'RiverMind Pixel';
@@ -13,191 +53,201 @@
 	font-display: swap;
 }
 
-:root {
-	/* One art pixel on screen. Frames, buttons and icons draw at 2x. */
-	--px: 2px;
-	/* The font is pixel-exact at multiples of 10px. */
-	--fs: 20px;
-	--fs-l: 30px;
-	--fs-xl: 40px;
-	--fs-s: 15px;
-	--font: 'RiverMind Pixel', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-
-	--bg: var(--night);
-	--surface: var(--deep-slate);
-	--surface-2: var(--slate);
-	--text: var(--paper);
-	--muted: var(--mist);
-	--accent: var(--gold);
-	--accent-text: var(--ink);
-	--danger: var(--red-light);
-	--win: var(--green-light);
-	--shadow-text: 0 var(--px) 0 var(--ink);
-	--radius: 0;
-	/* Device pixels per CSS pixel, so cards can snap to whole device pixels. */
-	--dpr: 1;
-	color-scheme: dark;
-}
-@media (min-resolution: 1.25dppx) {
+/* Under the kit and the utilities, over Tailwind's preflight. */
+@layer base {
 	:root {
-		--dpr: 1.25;
+		/* One art pixel on screen. Frames, buttons and icons draw at 2x. */
+		--px: var(--spacing);
+		/* The font is pixel-exact at multiples of 10px. */
+		--fs: var(--text-m);
+		--fs-l: var(--text-l);
+		--fs-xl: var(--text-xl);
+		--fs-s: var(--text-s);
+		--font: var(--font-pixel);
+
+		--bg: var(--color-night);
+		--surface: var(--color-deep-slate);
+		--surface-2: var(--color-slate);
+		--text: var(--color-paper);
+		--muted: var(--color-mist);
+		--accent: var(--color-gold);
+		--accent-text: var(--color-ink);
+		--danger: var(--color-red-light);
+		--win: var(--color-green-light);
+		--shadow-text: var(--text-shadow-ink);
+		--radius: 0;
+		/* Device pixels per CSS pixel, so cards can snap to whole device pixels. */
+		--dpr: 1;
+		color-scheme: dark;
 	}
-}
-@media (min-resolution: 1.5dppx) {
-	:root {
-		--dpr: 1.5;
+	@media (min-resolution: 1.25dppx) {
+		:root {
+			--dpr: 1.25;
+		}
 	}
-}
-@media (min-resolution: 1.75dppx) {
-	:root {
-		--dpr: 1.75;
+	@media (min-resolution: 1.5dppx) {
+		:root {
+			--dpr: 1.5;
+		}
 	}
-}
-@media (min-resolution: 2dppx) {
-	:root {
-		--dpr: 2;
+	@media (min-resolution: 1.75dppx) {
+		:root {
+			--dpr: 1.75;
+		}
 	}
-}
-@media (min-resolution: 2.25dppx) {
-	:root {
-		--dpr: 2.25;
+	@media (min-resolution: 2dppx) {
+		:root {
+			--dpr: 2;
+		}
 	}
-}
-@media (min-resolution: 2.5dppx) {
-	:root {
-		--dpr: 2.5;
+	@media (min-resolution: 2.25dppx) {
+		:root {
+			--dpr: 2.25;
+		}
 	}
-}
-@media (min-resolution: 2.625dppx) {
-	:root {
-		--dpr: 2.625;
+	@media (min-resolution: 2.5dppx) {
+		:root {
+			--dpr: 2.5;
+		}
 	}
-}
-@media (min-resolution: 2.75dppx) {
-	:root {
-		--dpr: 2.75;
+	@media (min-resolution: 2.625dppx) {
+		:root {
+			--dpr: 2.625;
+		}
 	}
-}
-@media (min-resolution: 3dppx) {
-	:root {
-		--dpr: 3;
+	@media (min-resolution: 2.75dppx) {
+		:root {
+			--dpr: 2.75;
+		}
 	}
-}
-@media (min-resolution: 3.5dppx) {
-	:root {
-		--dpr: 3.5;
+	@media (min-resolution: 3dppx) {
+		:root {
+			--dpr: 3;
+		}
 	}
-}
-@media (min-resolution: 4dppx) {
-	:root {
-		--dpr: 4;
+	@media (min-resolution: 3.5dppx) {
+		:root {
+			--dpr: 3.5;
+		}
 	}
-}
+	@media (min-resolution: 4dppx) {
+		:root {
+			--dpr: 4;
+		}
+	}
 
-* {
-	box-sizing: border-box;
-}
+	* {
+		box-sizing: border-box;
+	}
 
-html,
-body {
-	margin: 0;
-}
+	html,
+	body {
+		margin: 0;
+	}
 
-html {
-	background: var(--bg);
-	-webkit-text-size-adjust: 100%;
-	text-size-adjust: 100%;
-}
+	html {
+		background: var(--bg);
+		-webkit-text-size-adjust: 100%;
+		text-size-adjust: 100%;
+	}
 
-body {
-	background: var(--bg) url('./lib/art/ui/wallpaper.png') repeat;
-	background-size: calc(32 * var(--px)) calc(32 * var(--px));
-	image-rendering: pixelated;
-	color: var(--text);
-	font-family: var(--font);
-	font-size: var(--fs);
-	line-height: 1.4;
-	min-height: 100vh;
-	min-height: 100dvh;
-	padding-bottom: env(safe-area-inset-bottom);
-	-webkit-font-smoothing: none;
-	-moz-osx-font-smoothing: unset;
-	font-synthesis: none;
-	font-variant-numeric: tabular-nums;
-}
+	body {
+		background: var(--bg) url('./lib/art/ui/wallpaper.png') repeat;
+		background-size: calc(32 * var(--px)) calc(32 * var(--px));
+		image-rendering: pixelated;
+		color: var(--text);
+		font-family: var(--font);
+		font-size: var(--fs);
+		line-height: 1.4;
+		min-height: 100vh;
+		min-height: 100dvh;
+		padding-bottom: env(safe-area-inset-bottom);
+		-webkit-font-smoothing: none;
+		-moz-osx-font-smoothing: unset;
+		font-synthesis: none;
+		font-variant-numeric: tabular-nums;
+	}
 
-h1,
-h2,
-h3 {
-	font-weight: normal;
-	line-height: 1.2;
-	margin: 0;
-}
+	h1,
+	h2,
+	h3 {
+		font-weight: normal;
+		line-height: 1.2;
+		margin: 0;
+	}
 
-p {
-	margin: 0;
-}
+	p {
+		margin: 0;
+	}
 
-button,
-input,
-select {
-	font: inherit;
-	color: inherit;
-}
+	button,
+	input,
+	select {
+		font: inherit;
+		color: inherit;
+	}
 
-button {
-	cursor: pointer;
-}
+	button {
+		cursor: pointer;
+	}
 
-button:disabled {
-	cursor: default;
-}
+	button:disabled {
+		cursor: default;
+	}
 
-a {
-	color: var(--gold);
-	text-underline-offset: 4px;
-}
+	/* Checkboxes keep each browser's own margins, which differ between engines and which
+	   the forms were laid out around. */
+	input[type='checkbox'] {
+		margin: revert;
+	}
 
-:focus-visible {
-	outline: var(--px) solid var(--gold);
-	outline-offset: var(--px);
-}
+	a {
+		color: var(--color-gold);
+		text-decoration: underline;
+		text-underline-offset: 4px;
+	}
 
-::selection {
-	background: var(--gold);
-	color: var(--ink);
-}
+	:focus-visible {
+		outline: var(--px) solid var(--color-gold);
+		outline-offset: var(--px);
+	}
 
-.visually-hidden {
-	position: absolute;
-	width: 1px;
-	height: 1px;
-	margin: -1px;
-	padding: 0;
-	overflow: hidden;
-	clip-path: inset(50%);
-	white-space: nowrap;
-	border: 0;
-}
+	::selection {
+		background: var(--color-gold);
+		color: var(--color-ink);
+	}
 
-/* SvelteKit's route announcer, without its inline style (see vite.config.ts). */
-#svelte-announcer {
-	position: absolute;
-	left: 0;
-	top: 0;
-	clip-path: inset(50%);
-	overflow: hidden;
-	white-space: nowrap;
-	width: 1px;
-	height: 1px;
-}
+	.visually-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+		border: 0;
+	}
 
-@media (prefers-reduced-motion: reduce) {
-	*,
-	*::before,
-	*::after {
-		animation-duration: 0.01ms !important;
-		animation-iteration-count: 1 !important;
-		transition-duration: 0.01ms !important;
+	/* SvelteKit's route announcer, without its inline style (see vite.config.ts). */
+	#svelte-announcer {
+		position: absolute;
+		left: 0;
+		top: 0;
+		clip-path: inset(50%);
+		overflow: hidden;
+		white-space: nowrap;
+		width: 1px;
+		height: 1px;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		*,
+		*::before,
+		*::after {
+			animation-duration: 0.01ms !important;
+			animation-iteration-count: 1 !important;
+			transition-duration: 0.01ms !important;
+		}
 	}
 }

@@ -30,7 +30,7 @@
 }
 .px-paper {
 	border-image-source: url('../lib/art/ui/frame-paper.png');
-	color: var(--ink);
+	color: var(--color-ink);
 }
 .px-gold {
 	border-image-source: url('../lib/art/ui/frame-gold.png');
@@ -58,7 +58,7 @@
 	border-width: calc(3 * var(--px)) calc(3 * var(--px)) calc(5 * var(--px));
 	border-image: var(--btn-up) 3 3 5 fill stretch;
 	background: none;
-	color: var(--paper);
+	color: var(--color-paper);
 	text-shadow: var(--shadow-text);
 	line-height: 1;
 	white-space: nowrap;
@@ -76,7 +76,7 @@
 }
 .px-btn:disabled {
 	--btn-up: url('../lib/art/ui/button-slate.png');
-	color: var(--haze);
+	color: var(--color-haze);
 	text-shadow: none;
 }
 .px-btn:hover:not(:disabled) {
@@ -101,8 +101,8 @@
 .px-btn.gold {
 	--btn-up: url('../lib/art/ui/button-gold.png');
 	--btn-down: url('../lib/art/ui/button-gold-down.png');
-	color: var(--ink);
-	text-shadow: 0 var(--px) 0 var(--gold-light);
+	color: var(--color-ink);
+	text-shadow: 0 var(--px) 0 var(--color-gold-light);
 }
 .px-btn.gold:disabled,
 .px-btn.red:disabled,
@@ -111,7 +111,7 @@
 .px-btn.green:disabled {
 	--btn-up: url('../lib/art/ui/button-slate.png');
 	--btn-down: url('../lib/art/ui/button-slate-down.png');
-	color: var(--haze);
+	color: var(--color-haze);
 	text-shadow: none;
 }
 .px-btn.small {
@@ -125,7 +125,7 @@
 	border: calc(3 * var(--px)) solid transparent;
 	border-image: url('../lib/art/ui/frame-inset.png') 3 fill stretch;
 	background: none;
-	color: var(--paper);
+	color: var(--color-paper);
 	min-height: 44px;
 	padding: 0 calc(2 * var(--px));
 	border-radius: 0;
@@ -143,8 +143,8 @@ select.px-field {
 	cursor: pointer;
 }
 select.px-field option {
-	background: var(--deep-slate);
-	color: var(--paper);
+	background: var(--color-deep-slate);
+	color: var(--color-paper);
 }
 input.px-field[type='number'] {
 	-moz-appearance: textfield;
@@ -168,15 +168,15 @@ input.px-range {
 }
 input.px-range::-webkit-slider-runnable-track {
 	height: calc(5 * var(--px));
-	background: var(--ink);
-	border: var(--px) solid var(--slate);
-	border-top-color: var(--ink);
+	background: var(--color-ink);
+	border: var(--px) solid var(--color-slate);
+	border-top-color: var(--color-ink);
 }
 input.px-range::-moz-range-track {
 	height: calc(3 * var(--px));
-	background: var(--ink);
-	border: var(--px) solid var(--slate);
-	border-top-color: var(--ink);
+	background: var(--color-ink);
+	border: var(--px) solid var(--color-slate);
+	border-top-color: var(--color-ink);
 }
 input.px-range::-webkit-slider-thumb {
 	-webkit-appearance: none;
@@ -318,7 +318,7 @@ input.px-range:disabled {
 /* --- Text. ------------------------------------------------------------------- */
 
 .t-gold {
-	color: var(--gold);
+	color: var(--color-gold);
 	text-shadow: var(--shadow-text);
 }
 .t-muted {

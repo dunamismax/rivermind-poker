@@ -24,20 +24,20 @@
 	.light {
 		width: calc(5 * var(--px));
 		height: calc(5 * var(--px));
-		background: var(--haze);
+		background: var(--color-haze);
 		box-shadow:
-			0 0 0 var(--px) var(--ink),
+			0 0 0 var(--px) var(--color-ink),
 			inset var(--px) var(--px) 0 rgb(255 255 255 / 0.35);
 	}
 	[data-state='open'] .light {
-		background: var(--green);
+		background: var(--color-green);
 	}
 	[data-state='connecting'] .light {
-		background: var(--gold);
+		background: var(--color-gold);
 		animation: blink 0.8s steps(2, end) infinite;
 	}
 	[data-state='closed'] .light {
-		background: var(--red);
+		background: var(--color-red);
 		animation: blink 0.8s steps(2, end) infinite;
 	}
 	@keyframes blink {

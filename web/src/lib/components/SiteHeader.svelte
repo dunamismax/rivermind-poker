@@ -21,9 +21,9 @@
 		justify-content: space-between;
 		gap: 12px;
 		padding: 8px 16px;
-		background: var(--ink);
-		border-bottom: var(--px) solid var(--deep-slate);
-		box-shadow: 0 var(--px) 0 var(--night);
+		background: var(--color-ink);
+		border-bottom: var(--px) solid var(--color-deep-slate);
+		box-shadow: 0 var(--px) 0 var(--color-night);
 		min-height: 60px;
 	}
 	.brand {
@@ -35,15 +35,15 @@
 	}
 	h1 {
 		font-size: var(--fs-l);
-		color: var(--gold);
+		color: var(--color-gold);
 		text-shadow:
-			0 var(--px) 0 var(--amber-deep),
-			0 calc(2 * var(--px)) 0 var(--ink);
+			0 var(--px) 0 var(--color-amber-deep),
+			0 calc(2 * var(--px)) 0 var(--color-ink);
 		white-space: nowrap;
 	}
 	.poker {
-		color: var(--paper);
-		text-shadow: 0 var(--px) 0 var(--ink);
+		color: var(--color-paper);
+		text-shadow: 0 var(--px) 0 var(--color-ink);
 	}
 	.right {
 		display: flex;
