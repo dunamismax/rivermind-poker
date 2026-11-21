@@ -35,7 +35,8 @@ These settled decisions (the `D-n` table in BUILD.md) settle most design questio
 - **The server is authoritative** (D-2). It owns the deck, turns, validation and payouts, and a client sees only its own seat’s private information.
 - **Fair dealing** (D-8). Live tables shuffle with the operating system’s cryptographic randomness. Seeded generators are for tests, training and evaluation only.
 - **Guests, not accounts** (D-12). No sign-in before 1.0.
-- **Player priorities** (D-13). One-click practice, then one evaluated heads-up opponent, then replay from the table, verified together at P5.9 before more bot formats, site features or hardening. The stack migration (D-14) comes first.
+- **Player priorities** (D-13). One-click practice, then one evaluated heads-up opponent, then replay from the table, verified together at P5.9 before more bot formats, site features or hardening. The stack migration (D-14) comes first, and table voice (D-15) runs alongside, ahead of a ready Phase 5A step.
+- **Table voice is end-to-end encrypted** (D-15). The site’s headline feature: seated people talk live, and the voice server relays only frames it cannot decrypt. No unencrypted fallback, and nothing is recorded or stored. Phase 4C and [docs/voice.md](docs/voice.md) hold the plan.
 - **No third-party tracking** (Q-6) and **no free-text chat in 1.0** (Q-4).
 
 When choosing between two ways of doing something, prefer the one that is measured over the one that is assumed: engines and bots are checked against their references byte for byte, evaluations are reproducible from their recorded inputs, and performance targets are met by measurement.
@@ -319,7 +320,7 @@ The site runs on the owner’s ubuntu-vm. [CONTRIBUTING.md](CONTRIBUTING.md#depl
 - A seat view never includes another seat’s private cards, and stored hands are shown only to the players dealt into them.
 - Session cookies are signed with HMAC-SHA256, `HttpOnly`, `SameSite=Lax` and `Secure` outside loopback. Keep their format so guests stay signed in across the cutover.
 - Rate limits exist in the app and in Caddy; keep both.
-- The CSP stays as strict as it is now: no inline script or style, no third-party origins.
+- The CSP stays as strict as it is now: no inline script or style, no third-party origins. The one approved addition is `'wasm-unsafe-eval'` in `script-src`, for voice noise suppression (D-15, Q-11), once P4C.6 ships it.
 - Secrets never go in the repository. They live in root-only env files on the host.
 - Load only trusted pickle and joblib files.
 
@@ -342,6 +343,7 @@ The site runs on the owner’s ubuntu-vm. [CONTRIBUTING.md](CONTRIBUTING.md#depl
 | [docs/bots.md](docs/bots.md) | Bot design, card tables, training, evaluation and serving |
 | [docs/evaluations/](docs/evaluations/) | One report per evaluated checkpoint, with everything needed to reproduce it |
 | [docs/design.md](docs/design.md) | The pixel-art kit and its rules |
+| [docs/voice.md](docs/voice.md) | Table voice: threat model, encryption, media server, audio settings and host needs |
 | This file | Durable conventions, verified commands and recurring pitfalls |
 
 Write plainly, in short sentences. At the end of a session, you may edit this file when you find a durable convention, a verified command or a recurring pitfall that will help later sessions. Put session results, temporary workarounds and plan changes in BUILD.md instead.
