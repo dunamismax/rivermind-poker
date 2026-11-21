@@ -1,10 +1,12 @@
 import { defineConfig } from 'vite';
 
-// Bundles the custom server (server/index.ts) and the migrator
-// (scripts/db-migrate.ts) with their dependencies into build/start.js and
-// build/migrate.js, beside the adapter-node output, so a release needs no
-// node_modules: `node build/start.js` serves, and `node build/migrate.js`
-// applies the release's drizzle/ (deploy/update.sh).
+// Bundles the custom server (server/index.ts), the migrator
+// (scripts/db-migrate.ts) and the moderator's commands (scripts/moderation.ts)
+// with their dependencies into build/start.js, build/migrate.js and
+// build/moderation.js, beside the adapter-node output, so a release needs no
+// node_modules: `node build/start.js` serves, `node build/migrate.js` applies
+// the release's drizzle/ (deploy/update.sh), and `node build/moderation.js`
+// lists reports and signals.
 export default defineConfig({
 	build: {
 		ssr: true,
@@ -13,7 +15,11 @@ export default defineConfig({
 		target: 'node26',
 		minify: false,
 		rollupOptions: {
-			input: { start: 'server/index.ts', migrate: 'scripts/db-migrate.ts' },
+			input: {
+				start: 'server/index.ts',
+				migrate: 'scripts/db-migrate.ts',
+				moderation: 'scripts/moderation.ts'
+			},
 			// ws loads these native speed-ups only if they are installed.
 			external: ['bufferutil', 'utf-8-validate'],
 			output: {

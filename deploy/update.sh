@@ -20,7 +20,8 @@
 # Inside one with-deploy-lock process, as root:
 #   2. stage      the release under /srv/rivermindpoker.com/<UTC time>-<commit12>,
 #                 root-owned, with REVISION, .node-version, package.json, build/
-#                 (start.js, the server; migrate.js, the migrator), deploy/ and drizzle/
+#                 (start.js, the server; migrate.js, the migrator; moderation.js, the
+#                 moderator's commands), deploy/ and drizzle/
 #   3. migrate    dump the database to /var/backups/rivermindpoker.com, then run
 #                 the release's migrator as the service's user with migration.env
 #                 only, and check Drizzle's journal against the release's
@@ -133,7 +134,7 @@ build)
     pnpm run bots:parity
     pnpm run table:parity
     pnpm run build
-    for built in start.js migrate.js handler.js client; do
+    for built in start.js migrate.js moderation.js handler.js client; do
         [[ -e build/$built ]] || die "the build has no $built"
     done
     # Every dependency is bundled into build/, so the release needs no node_modules.

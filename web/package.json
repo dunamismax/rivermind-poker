@@ -35,7 +35,8 @@
 		"table:parity": "node scripts/table-parity.ts",
 		"bots:bench": "node scripts/bots-bench.ts",
 		"db:generate": "drizzle-kit generate",
-		"db:migrate": "node scripts/db-migrate.ts"
+		"db:migrate": "node scripts/db-migrate.ts",
+		"moderation": "node scripts/moderation.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "10.0.1",
