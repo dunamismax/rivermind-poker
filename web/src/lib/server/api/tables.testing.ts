@@ -24,14 +24,20 @@ export type TableMessage = p.TableMessage;
 export const tick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
 /**
- * Wait for something the server does on its own, such as closing a table: for at
- * least 20,000 turns of the event loop and at least ten seconds. Turns alone are not
- * enough: a server saving to PostgreSQL spends the wait idle, where a turn takes
- * microseconds, and 20,000 of them passed in CI before a few dozen saves had.
+ * A wait's patience: true for at least `turns` turns of the event loop and at
+ * least ten seconds. Turns alone are not enough: a server saving to PostgreSQL
+ * spends the wait idle, where a turn takes microseconds, and in CI 20,000 of
+ * them passed before a few dozen saves had.
  */
-export async function waitFor(condition: () => boolean, describe = ''): Promise<void> {
+function patience(turns: number): () => boolean {
 	const deadline = Date.now() + 10_000;
-	for (let i = 0; i < 20_000 || Date.now() < deadline; i++) {
+	let taken = 0;
+	return () => taken++ < turns || Date.now() < deadline;
+}
+
+/** Wait for something the server does on its own, such as closing a table. */
+export async function waitFor(condition: () => boolean, describe = ''): Promise<void> {
+	for (const patient = patience(20_000); patient();) {
 		if (condition()) return;
 		await tick();
 	}
@@ -152,7 +158,7 @@ export class TestServer {
 	/** Wait until every socket's messages are handled and every table waits on a person or the clock. */
 	async settle(): Promise<void> {
 		let quiet = 0;
-		for (let i = 0; i < 100_000 && quiet < 3; i++) {
+		for (const patient = patience(100_000); quiet < 3 && patient();) {
 			await Promise.all([...this.open].map((socket) => socket.idle()));
 			await this.tables.settled();
 			await tick();
@@ -309,7 +315,7 @@ export class Socket {
 
 	/** The next message, waiting for it if need be. */
 	async receive(): Promise<Message> {
-		for (let i = 0; i < 200_000 && !this.inbox.length; i++) {
+		for (const patient = patience(200_000); !this.inbox.length && patient();) {
 			if (this.closeCode !== null) throw new Error(`the socket closed (${this.closeCode})`);
 			await new Promise<void>((resolve) => {
 				this.waiting = resolve;
