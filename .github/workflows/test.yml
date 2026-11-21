@@ -80,6 +80,10 @@ jobs:
       - run: pnpm e2e
         env:
           E2E_SKIP_BUILD: '1'
+      # Table voice (Phase 4C): RFC 9605's test vectors on each engine's own
+      # WebCrypto, and a WebRTC call whose frames are sealed and opened in the
+      # encoded-transform worker, built as the client is and under the site's CSP.
+      - run: pnpm voice:check
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
@@ -87,4 +91,5 @@ jobs:
           path: |
             web/playwright-report/
             web/test-results/
+            web/test-results-voice-check/
           retention-days: 7

@@ -27,6 +27,7 @@
 		"e2e:live": "playwright test --config playwright.live.config.ts",
 		"visual": "playwright test --config playwright.visual.config.ts",
 		"visual:compare": "node scripts/visual-compare.ts",
+		"voice:check": "playwright test --config playwright.voice-check.config.ts",
 		"voice:proto": "playwright test --config playwright.voice.config.ts",
 		"protocol": "cd .. && uv run --locked rivermind-poker protocol-schema --typescript web/src/lib/protocol.ts",
 		"art": "node scripts/generate-pixel-art.js",

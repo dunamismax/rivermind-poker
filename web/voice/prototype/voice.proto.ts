@@ -1,17 +1,18 @@
 // The voice prototype's checks in one engine at a time (P4C.1). Each person is
 // a browser context of its own; docs/voice.md records what the results settled.
 import { expect, test } from '@playwright/test';
-import { AUDIO_LEVEL_URI } from './frame.ts';
 import {
 	everyoneHearsEveryone,
 	expectHeard,
 	expectSilence,
 	join,
 	leave,
+	refusedBy,
 	report,
 	serviceStats,
 	tapsOf
 } from './room.ts';
+import { AUDIO_LEVEL_URI } from './signalling.ts';
 
 const handlers = { chromium: 'Chrome111', firefox: 'Firefox120', webkit: 'Safari12' };
 
@@ -29,12 +30,12 @@ test('two people hear each other through the SFU, encrypted in a worker', async 
 		expect(one.senderExtensions.length).toBeGreaterThan(0);
 	}
 	// The service negotiated no audio levels, and a listener at the SFU saw none:
-	// only prototype frames it holds no key for.
+	// only SFrame ciphertexts it holds no key for.
 	const stats = await serviceStats();
 	expect(stats.producerHeaderExtensions).not.toContain(AUDIO_LEVEL_URI);
 	expect(stats.consumerHeaderExtensions).not.toContain(AUDIO_LEVEL_URI);
 	for (const tap of await tapsOf(room, 2)) {
-		expect(tap.prototypeFrames).toBe(tap.packets);
+		expect(tap.sframeFrames).toBe(tap.packets);
 		expect(tap.headerExtensionIds).not.toContain(tap.audioLevelId);
 	}
 	console.log(`[voice-proto] ${JSON.stringify({ room, reports })}`);
@@ -68,7 +69,9 @@ test('someone with the wrong key hears nothing and is not heard', async ({ brows
 		const received = theirs.transforms.filter((one) => one.direction === 'decrypt');
 		expect(received).toHaveLength(2);
 		for (const one of received) {
-			expect(one.failed).toBeGreaterThan(50);
+			// The right sender and epoch in the header, and a key that does not open it.
+			expect(one.refused.tampered).toBeGreaterThan(50);
+			expect(refusedBy(one)).toBe(one.refused.tampered);
 			expect(one.frames).toBe(0);
 		}
 		for (const one of theirs.heard) expectSilence(one, `key ${one.kid} at the outsider`);
@@ -86,7 +89,7 @@ test('someone with the wrong key hears nothing and is not heard', async ({ brows
 				'the outsider'
 			);
 			const refused = mine.transforms.find((one) => one.id === `recv-${theirs.peerId}`)!;
-			expect(refused.failed).toBeGreaterThan(50);
+			expect(refused.refused.tampered).toBeGreaterThan(50);
 			expect(refused.frames).toBe(0);
 		}
 	}).toPass({ timeout: 60_000 });
@@ -158,6 +161,14 @@ test('nine people hear each other, and the service is measured', async ({ browse
 	const kbps = (bytes: number) => Math.round((bytes * 8) / elapsed / 1000);
 	const heard = reports.flatMap((one) => one.heard);
 	const sent = reports.map((one) => one.transforms.find((t) => t.direction === 'encrypt')!);
+	const opened = reports.flatMap((one) => one.transforms.filter((t) => t.direction === 'decrypt'));
+	// What SFrame cost each page's worker, a frame: the time from a frame's
+	// arrival in the transform to its leaving, WebCrypto's promises included.
+	const micros = (tallies: typeof sent) =>
+		Math.round(
+			(1000 * tallies.reduce((sum, one) => sum + one.ms, 0)) /
+				tallies.reduce((sum, one) => sum + one.frames, 0)
+		);
 	const measured = {
 		room,
 		seconds: Math.round(elapsed),
@@ -170,6 +181,8 @@ test('nine people hear each other, and the service is measured', async ({ browse
 		receivedKbps: kbps(after.bytesReceived - before.bytesReceived),
 		sentKbps: kbps(after.bytesSent - before.bytesSent),
 		sentKbpsPerListenerPerSpeaker: kbps((after.bytesSent - before.bytesSent) / 72),
+		sealMicrosPerFrame: micros(sent),
+		openMicrosPerFrame: micros(opened),
 		opusBytesPerFrame: Math.round(
 			sent.reduce((sum, one) => sum + one.bytes, 0) / sent.reduce((sum, one) => sum + one.frames, 0)
 		),

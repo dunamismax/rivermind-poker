@@ -14,15 +14,16 @@ import { parseArgs } from 'node:util';
 import { createWorker, type types as mediasoup } from 'mediasoup';
 import { build } from 'vite';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { AUDIO_LEVEL_URI, readHeader } from './frame.ts';
-import type {
-	ClientMessage,
-	Notice,
-	PeerInfo,
-	Requests,
-	ServerMessage,
-	ServiceStats,
-	TransportInfo
+import { LAYOUT, decodeHeader, partsOf } from '../../src/lib/voice/sframe.ts';
+import {
+	AUDIO_LEVEL_URI,
+	type ClientMessage,
+	type Notice,
+	type PeerInfo,
+	type Requests,
+	type ServerMessage,
+	type ServiceStats,
+	type TransportInfo
 } from './signalling.ts';
 
 const { values: args } = parseArgs({
@@ -169,7 +170,7 @@ async function tap(room: Room, peer: Peer, producer: mediasoup.Producer): Promis
 		room: room.name,
 		kid: peer.kid,
 		packets: 0,
-		prototypeFrames: 0,
+		sframeFrames: 0,
 		headerExtensionIds: [],
 		audioLevelId:
 			consumer.rtpParameters.headerExtensions?.find(({ uri }) => uri === AUDIO_LEVEL_URI)?.id ??
@@ -179,7 +180,9 @@ async function tap(room: Room, peer: Peer, producer: mediasoup.Producer): Promis
 	consumer.on('rtp', (packet) => {
 		const { extensionIds, payload } = parseRtp(packet);
 		seen.packets += 1;
-		if (readHeader(payload)?.kid === peer.kid) seen.prototypeFrames += 1;
+		// All the listener can read is the header in the clear: who sealed the frame.
+		const header = decodeHeader(payload);
+		if (header && partsOf(LAYOUT, header.kid)?.sender === peer.kid) seen.sframeFrames += 1;
 		for (const id of extensionIds) {
 			if (!seen.headerExtensionIds.includes(id)) seen.headerExtensionIds.push(id);
 		}

@@ -2,6 +2,11 @@
 // order, and notices pushed to the room. Voice signalling v1 (P4C.4) replaces it.
 import type { types as mediasoup } from 'mediasoup';
 
+// The RTP header extension that would tell the server who is speaking.
+export const AUDIO_LEVEL_URI = 'urn:ietf:params:rtp-hdrext:ssrc-audio-level';
+
+// `kid` is the person's number in the room: it stands in for their leaf in the
+// MLS group (P4C.3), and so is the sender in their frames' SFrame key ids.
 export type PeerInfo = { peerId: string; kid: number; producerId: string | null };
 
 export type TransportInfo = {
@@ -66,7 +71,8 @@ export type ServiceStats = {
 		room: string;
 		kid: number;
 		packets: number;
-		prototypeFrames: number;
+		// Packets whose payload opens with an SFrame header naming this sender.
+		sframeFrames: number;
 		headerExtensionIds: number[];
 		audioLevelId: number | null;
 	}[];

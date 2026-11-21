@@ -16,6 +16,7 @@
 		"playwright.config.ts",
 		"playwright.live.config.ts",
 		"playwright.voice.config.ts",
+		"playwright.voice-check.config.ts",
 		"e2e",
 		"voice"
 	]

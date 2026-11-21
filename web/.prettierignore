@@ -28,3 +28,6 @@ bun.lockb
 
 # The site's extract of the model registry (rivermind-poker blueprint promote)
 /src/lib/champions.json
+
+# RFC 9605 appendix C, as the RFC prints it (scripts/sframe-vectors.ts)
+/src/lib/voice/sframe-vectors.json

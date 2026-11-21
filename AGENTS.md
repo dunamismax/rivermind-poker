@@ -133,7 +133,10 @@ web/                             SvelteKit app (Node 26.13.1 from web/.node-vers
   drizzle/                       SQL migrations (never edit an applied one)
   scripts/                       art generator, parity and benchmark scripts, migrator, moderation commands,
                                  inline-code check
-  src/lib/voice/                 table voice (Phase 4C); so far the ts-mls design check (P4C.1)
+  src/lib/voice/                 table voice (Phase 4C): SFrame (sframe.ts), its encoded-transform worker and
+                                 the page's handle on it (P4C.2), and the ts-mls design check (P4C.1)
+  voice/check/                   the voice checks' page and Playwright checks (`pnpm voice:check`, in CI):
+                                 SFrame's vectors and a call through the worker, in each browser
   voice/prototype/               the voice prototype (P4C.1): a mediasoup service, a test page and its
                                  Playwright checks (`pnpm voice:proto`); not part of the site or its build
   e2e/                           Playwright tests against the Node table server; journey.e2e.ts against one
@@ -230,6 +233,8 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 
 `pnpm visual` and `pnpm visual:compare` capture fixed scenes and compare two commits pixel for pixel; run them for any change to styles or markup ([CONTRIBUTING.md](CONTRIBUTING.md#comparing-screenshots-p4b2)).
 
+`pnpm voice:check` runs SFrame's test vectors and a WebRTC call through the encoded-transform worker in all three browsers, on a page it builds and serves itself under the site's CSP (P4C.2). CI runs it; run it before committing a change under `web/src/lib/voice/` or `web/voice/`, on a Mac, because CI's Linux WebKit cannot run the call. It has its own `test-results-voice-check`.
+
 `pnpm voice:proto` runs the voice prototype's checks (P4C.1) against a mediasoup service it starts itself; it is not part of `pnpm e2e` or CI, has its own `test-results-voice`, and is for changes under `web/voice/` ([CONTRIBUTING.md](CONTRIBUTING.md#table-voice)).
 
 `pnpm format` is the quickest way to satisfy the Prettier half of `pnpm lint`. Pass `--project chromium` to `pnpm e2e` for a quick run.
@@ -315,7 +320,12 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 
 ### Table voice
 
-[docs/voice.md](docs/voice.md) is the design, with what the P4C.1 prototype found.
+[docs/voice.md](docs/voice.md) is the design, with what the P4C.1 prototype found and how the frame encryption is built (P4C.2).
+
+- No frame passes a transform as it came. Sealing and opening go through `KeyStore` (`sframe.ts`) alone: a frame it cannot seal is dropped (`unsent`), and one it will not open is dropped under its reason. Never add a path that enqueues a frame untouched, for a missing key or anything else (D-15).
+- A key is bytes only until the page imports it. Give the worker each epoch's base key as a non-extractable `CryptoKey`, and derive AES keys with `deriveKey`, for one direction. `deriveBits` on a key is for the test vectors alone.
+- `sframe-vectors.json` is RFC 9605's appendix C as the RFC prints it, written by `node scripts/sframe-vectors.ts rfc9605.txt`. Never edit it by hand, and keep key ids and counters as hex strings: they are 64-bit.
+- `sframe.ts`, `sframe-transform.ts` and the worker follow the engine files' rule: no `#lib` imports, relative `.ts` paths and only erasable TypeScript, so the worker, the check page and Node all load them as they are.
 
 - Import ts-mls by subpath (`ts-mls/createCommit.js`), never from `'ts-mls'`: its root loads a provider that needs `@noble/hashes`, which it does not declare, and the import fails under pnpm.
 - Never call `joinGroupExternal` with `resync` set for a member whose signature key may not be in the group. ts-mls 1.6.4 finds the old leaf by signature key alone and never returns when there is none. A reloaded page joins as a newcomer, and the service proposes its stale leaf's removal.
@@ -365,7 +375,7 @@ Keep the `poker_ai` Python namespace and the legacy `poker_ai` command. Existing
 - `pnpm e2e` and `pnpm visual` build the working tree when they start (unless `E2E_SKIP_BUILD` is set). Capture every “before” run of a screenshot comparison before the first edit, or from a copy of the commit (`git archive HEAD web`, its own `pnpm install --frozen-lockfile`, `E2E_MODELS_TAG` set, and `VISUAL_OUT` as an absolute path). A second “before” run started after editing began captured the half-made change, and the comparison then passed pixels it should have flagged.
 - The trace keeps DOM snapshots but not the screencast (`screenshots: false` in `playwright.config.ts`). The screencast made every WebKit action slow enough to time tests out in CI; don’t turn it back on.
 
-**Voice in Playwright.** Each engine needs its own handling, and what it cannot do is in [docs/voice.md](docs/voice.md#testing) and `web/voice/prototype/browsers.ts`. In short: Firefox's fake microphone works from preferences; Chromium's does not work on this Mac (`getUserMedia` never settles), so a Web Audio tone stands in; Playwright's WebKit needs the `microphone` permission, one browser per person and no `AudioContext`, and connects only from a page that has captured. Firefox's ICE fails against a media address on loopback alone, so a test service also listens on the LAN address. A hung `getUserMedia` or a hung `page.evaluate` keeps a browser alive past its test: bound such experiments with a kill, and check for stray browsers afterwards.
+**Voice in Playwright.** Each engine needs its own handling, and what it cannot do is in [docs/voice.md](docs/voice.md#testing) and `web/voice/check/browsers.ts`. In short: Firefox's fake microphone works from preferences; Chromium's works on Linux but not on this Mac (`getUserMedia` never settles), where a Web Audio tone stands in; Playwright's WebKit needs the `microphone` permission, one browser per person and no `AudioContext`, and connects only from a page that has captured. On Linux, as in CI, Playwright's WebKit has no `RTCRtpScriptTransform`, and with no sound device Firefox's `AudioContext.resume()` never settles: a check that must pass there reads WebRTC's statistics instead of an analyser. Two Firefox pages connected directly hand each other's receivers padding as frames with no bytes, which the transform counts as `empty`. Firefox's ICE fails against a media address on loopback alone, so a test service also listens on the LAN address. A hung `getUserMedia` or a hung `page.evaluate` keeps a browser alive past its test: bound such experiments with a kill, and check for stray browsers afterwards.
 
 **The browser pane.** When the pane is hidden, the page runs in the background and CSS animations stay on their first frame, so an element with an entrance animation (a reaction bubble, a win label) looks invisible. Finish them with `document.getAnimations()` before judging a screenshot.
 

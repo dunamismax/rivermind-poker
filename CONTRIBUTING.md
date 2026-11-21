@@ -271,7 +271,34 @@ pnpm visual:compare ../artifacts/visual/before-1 ../artifacts/visual/before-2 ..
 
 ## Table voice
 
-Table voice is Phase 4C; [docs/voice.md](docs/voice.md) holds the design and what the prototype found. So far only the prototype exists (P4C.1), in [`web/voice/prototype/`](web/voice/prototype/). It is not part of the site, the build or `pnpm e2e`.
+Table voice is Phase 4C; [docs/voice.md](docs/voice.md) holds the design and what each step found. Nothing a player sees is built yet. What exists is the frame encryption (P4C.2) in [`web/src/lib/voice/`](web/src/lib/voice/), and the prototype (P4C.1) in [`web/voice/prototype/`](web/voice/prototype/), which is not part of the site, the build or `pnpm e2e`.
+
+### Frame encryption (P4C.2)
+
+Every Opus frame is sealed in the sender's browser and opened in each listener's with SFrame (RFC 9605), cipher suite `AES_128_GCM_SHA256_128`, over WebCrypto.
+
+| File | What it holds |
+| --- | --- |
+| [`sframe.ts`](web/src/lib/voice/sframe.ts) | The RFC: the header, the key and salt, the nonce, sealing and opening, and key ids made of an MLS sender and epoch. Then `KeyStore`, the keys one page holds: counters that never repeat, epochs added and retired, and what it refuses. |
+| [`sframe-transform.ts`](web/src/lib/voice/sframe-transform.ts) | What the worker does to each frame, and its tallies. Kept apart from the worker so Vitest can run it. |
+| [`sframe.worker.ts`](web/src/lib/voice/sframe.worker.ts) | The encoded-transform worker: one for a page's sender and all its receivers. |
+| [`sframe-client.ts`](web/src/lib/voice/sframe-client.ts) | `FrameCrypto`, the page's handle on the worker: `addEpoch`, `sendAs`, `retire`, `encrypt(sender)`, `decrypt(receiver, id, from)` and `tallies()`. |
+| [`sframe-vectors.json`](web/src/lib/voice/sframe-vectors.json) | RFC 9605's appendix C, written from the RFC's text by `node scripts/sframe-vectors.ts rfc9605.txt`. Prettier must not touch it. |
+
+```sh
+pnpm test src/lib/voice/sframe.spec.ts   # the vectors and every refusal, under Node
+pnpm voice:check                         # the same vectors and a real call through the worker, in three browsers
+pnpm voice:check --project webkit -g cost
+VOICE_DEBUG=1 pnpm voice:check -g heard  # with the page's console
+```
+
+`pnpm voice:check` (CI runs it) builds [`web/voice/check/`](web/voice/check/) with Vite, the worker a bundled module of its own, and serves it on `127.0.0.1:4391` with the site's CSP. Its page runs the vectors on the engine's own WebCrypto, then a WebRTC call between two peer connections on the one page, a speaker's and a listener's, each with a worker and key store of its own. The checks are a call that is heard, a listener with another secret, with no key and with the stream taken for another person's, a speaker with no key, a sender with no worker at all, a change of epoch and a retired one, and what SFrame costs a page in a full room. It needs no voice service: what a forwarding server does to frames is the prototype's to show, and P4C.4's.
+
+A frame that is not opened is never passed to the decoder, and a frame that cannot be sealed is never sent. Each is counted in its transform's tally under the reason: `malformed`, `unknown-key`, `stale-epoch`, `wrong-sender`, `tampered` or `replayed` on the way in, `unsent` on the way out.
+
+### The prototype (P4C.1)
+
+The prototype talks through a mediasoup service, with frames sealed by the site's own worker since P4C.2.
 
 ```sh
 pnpm voice:proto                       # every check: Chromium, Firefox, WebKit, then one room of all three
@@ -280,9 +307,9 @@ VOICE_DEBUG=1 pnpm voice:proto -g TCP  # with each page's console
 node voice/prototype/server.ts         # the service alone, at http://127.0.0.1:4390/?room=a&freq=440
 ```
 
-`pnpm voice:proto` starts the prototype service itself: one mediasoup worker with a `WebRtcServer` on UDP and TCP 44390, a Router per room, signalling on a WebSocket and the test page under the site's CSP, on `127.0.0.1:4390`. Each person is a browser context that sends one audio track through an encrypting worker and reports what it decoded from everyone else. The checks are two-person rooms, a nine-person room that also measures the service, a member with the wrong key, a control that leaves the audio-level extension in, media over TCP, and fake capture devices. Media also listens on this machine's first LAN address, because Firefox's ICE fails against a loopback address alone (`VOICE_SERVER_ARGS="--listen-ip 127.0.0.1"` shows it); nothing else is exposed.
+`pnpm voice:proto` starts the prototype service itself: one mediasoup worker with a `WebRtcServer` on UDP and TCP 44390, a Router per room, signalling on a WebSocket and the test page under the site's CSP, on `127.0.0.1:4390`. Each person is a browser context that sends one audio track through the SFrame worker and reports what it decoded from everyone else. The checks are two-person rooms, a nine-person room that also measures the service, a member with the wrong key, a control that leaves the audio-level extension in, media over TCP, and fake capture devices. Media also listens on this machine's first LAN address, because Firefox's ICE fails against a loopback address alone (`VOICE_SERVER_ARGS="--listen-ip 127.0.0.1"` shows it); nothing else is exposed.
 
-How each engine has to be started is in [`browsers.ts`](web/voice/prototype/browsers.ts): Playwright's WebKit needs a browser per person, the microphone permission and no Web Audio, and Chromium's fake microphone does not work on macOS here, so its capture check is skipped.
+How each engine has to be started is in [`browsers.ts`](web/voice/check/browsers.ts): Playwright's WebKit needs a browser per person, the microphone permission and no Web Audio, and Chromium's fake microphone does not work on macOS here, so its capture check is skipped.
 
 The group-key check is an ordinary Vitest spec, [`mls-design.spec.ts`](web/src/lib/voice/mls-design.spec.ts), and runs with `pnpm test`. Import ts-mls by subpath (`ts-mls/createCommit.js`), never from its root: the root loads a provider that needs a package ts-mls does not declare.
 

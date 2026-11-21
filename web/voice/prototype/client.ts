@@ -9,10 +9,18 @@
 // hears is judged by WebRTC's own statistics alone. Playwright's WebKit needs
 // that (see browsers.ts).
 import { Device, type types as msc } from 'mediasoup-client';
-import { AUDIO_LEVEL_URI } from './frame.ts';
+import { FrameCrypto } from '../../src/lib/voice/sframe-client.ts';
+import type { Tally } from '../../src/lib/voice/sframe-transform.ts';
+import { importBaseKey } from '../../src/lib/voice/sframe.ts';
 import type { MlsCheck } from './mls-check.ts';
-import type { ClientMessage, Method, PeerInfo, Requests, ServerMessage } from './signalling.ts';
-import type { TransformCounts, TransformOptions } from './transform.worker.ts';
+import {
+	AUDIO_LEVEL_URI,
+	type ClientMessage,
+	type Method,
+	type PeerInfo,
+	type Requests,
+	type ServerMessage
+} from './signalling.ts';
 
 export type Heard = {
 	peerId: string;
@@ -41,7 +49,7 @@ export type Report = {
 	senderExtensions: string[];
 	receiverExtensions: string[];
 	audioLevelNegotiated: boolean;
-	transforms: TransformCounts[];
+	transforms: Tally[];
 	heard: Heard[];
 };
 
@@ -73,42 +81,17 @@ const log = (line: string) => {
 	document.querySelector('#log')!.append(`${line}\n`);
 };
 
-// One worker holds every transform of this page: the sender's and each receiver's.
-const worker = new Worker(new URL('./transform.worker.ts', import.meta.url), { type: 'module' });
-let counts: TransformCounts[] = [];
-worker.onmessage = ({ data }: MessageEvent<TransformCounts[]>) => {
-	counts = data;
-};
-
-// A stand-in for the group key P4C.3 takes from MLS: every sender's key and
-// salt come from the room secret and the sender's number. The key is made
-// non-extractable here and handed to the worker in the transform's options.
-const encoder = new TextEncoder();
-const base = crypto.subtle.importKey('raw', encoder.encode(secret), 'HKDF', false, [
-	'deriveKey',
-	'deriveBits'
-]);
-async function transformOptions(
-	direction: TransformOptions['direction'],
-	kid: number,
-	id: string
-): Promise<TransformOptions> {
-	const hkdf = (label: string) => ({
-		name: 'HKDF',
-		hash: 'SHA-256',
-		salt: new Uint8Array(32),
-		info: encoder.encode(`rivermind voice prototype ${label} ${kid}`)
-	});
-	const key = await crypto.subtle.deriveKey(
-		hkdf('key'),
-		await base,
-		{ name: 'AES-GCM', length: 128 },
-		false,
-		['encrypt', 'decrypt']
-	);
-	const salt = new Uint8Array(await crypto.subtle.deriveBits(hkdf('salt'), await base, 96));
-	return { id, direction, kid, key, salt };
-}
+// The site's own SFrame worker (src/lib/voice, P4C.2): one holds every
+// transform of this page, the sender's and each receiver's. The room secret
+// stands in for the group key P4C.3 takes from MLS, as the base key of one
+// epoch, and a person's number in the room for their leaf. The key is made
+// non-extractable here and posted to the worker.
+const EPOCH = 1n;
+const frames = new FrameCrypto();
+frames.onrefused = (asked, error) => log(`the key store refused ${asked}: ${error}`);
+const keyed = importBaseKey(new TextEncoder().encode(secret)).then((key) =>
+	frames.addEpoch(EPOCH, key)
+);
 
 // What this person asks of the service: audio levels left in, or media over TCP alone.
 const asks = new URLSearchParams();
@@ -187,7 +170,6 @@ function listen(peer: PeerInfo): void {
 	const producerId = peer.producerId;
 	if (!producerId) return;
 	consuming = consuming.then(async () => {
-		const options = await transformOptions('decrypt', peer.kid, `recv-${peer.peerId}`);
 		const answer = await request('consume', {
 			transportId: recvTransport.id,
 			producerId,
@@ -201,7 +183,7 @@ function listen(peer: PeerInfo): void {
 			rtpParameters: answer.rtpParameters,
 			onRtpReceiver: (made) => {
 				receiver = made;
-				made.transform = new RTCRtpScriptTransform(worker, options);
+				frames.decrypt(made, `recv-${peer.peerId}`, peer.kid);
 			}
 		});
 		const stream = new MediaStream([consumer.track]);
@@ -253,7 +235,8 @@ async function join(): Promise<void> {
 	sendTransport = transport('send', await request('createTransport', { direction: 'send' }));
 	recvTransport = transport('recv', await request('createTransport', { direction: 'recv' }));
 
-	const options = await transformOptions('encrypt', me.kid, 'send');
+	await keyed;
+	frames.sendAs(me.kid, EPOCH);
 	await sendTransport.produce({
 		track: await track(),
 		// docs/voice.md: mono, in-band FEC, DTX, 64 kbps on average, 20 ms frames.
@@ -266,7 +249,7 @@ async function join(): Promise<void> {
 		},
 		onRtpSender: (made) => {
 			sender = made;
-			made.transform = new RTCRtpScriptTransform(worker, options);
+			frames.encrypt(made);
 		}
 	});
 	for (const peer of joined.peers) listen(peer);
@@ -342,7 +325,7 @@ async function report(listenMs = 0): Promise<Report> {
 		senderExtensions,
 		receiverExtensions,
 		audioLevelNegotiated: [...senderExtensions, ...receiverExtensions].includes(AUDIO_LEVEL_URI),
-		transforms: counts,
+		transforms: await frames.tallies(),
 		heard
 	};
 }

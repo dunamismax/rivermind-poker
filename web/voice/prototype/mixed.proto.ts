@@ -24,7 +24,7 @@ test('nine people in three engines hear each other', async () => {
 	);
 	for (const one of reports) expect(one.audioLevelNegotiated).toBe(false);
 	for (const tap of await tapsOf(room, 9)) {
-		expect(tap.prototypeFrames).toBe(tap.packets);
+		expect(tap.sframeFrames).toBe(tap.packets);
 		expect(tap.headerExtensionIds).not.toContain(tap.audioLevelId);
 	}
 	await leave(people);

@@ -2,6 +2,7 @@
 // a room, and what each of them should then hear.
 import { expect, type Browser, type Page } from '@playwright/test';
 import { ORIGIN } from './browsers.ts';
+import type { Tally } from '../../src/lib/voice/sframe-transform.ts';
 import type { Heard, Report } from './client.ts';
 import type { ServiceStats } from './signalling.ts';
 
@@ -83,9 +84,21 @@ export function expectSilence(one: Heard, label: string): void {
 	else expect(one.energy, `${label}: energy`).toBe(0);
 }
 
+// How many frames a transform refused, for whatever reason.
+export const refusedBy = (tally: Tally): number =>
+	Object.values(tally.refused).reduce((sum, count) => sum + count, 0);
+
 // Every person hears every other person, decrypted, with nothing refused.
 export async function everyoneHearsEveryone(people: Person[]): Promise<Report[]> {
 	let reports: Report[] = [];
+	const none = {
+		malformed: 0,
+		'unknown-key': 0,
+		'stale-epoch': 0,
+		'wrong-sender': 0,
+		tampered: 0,
+		replayed: 0
+	};
 	await expect(async () => {
 		// Long enough to catch a beep of a mock microphone, which is silent in between.
 		reports = await Promise.all(people.map((person) => report(person, 1200)));
@@ -103,12 +116,12 @@ export async function everyoneHearsEveryone(people: Person[]): Promise<Report[]>
 			}
 			const sent = mine.transforms.find((one) => one.direction === 'encrypt')!;
 			expect(sent.frames).toBeGreaterThan(50);
-			expect(sent.failed).toBe(0);
+			expect(sent.unsent).toBe(0);
 			const received = mine.transforms.filter((one) => one.direction === 'decrypt');
 			expect(received).toHaveLength(others.length);
 			for (const one of received) {
 				expect(one.frames).toBeGreaterThan(50);
-				expect(one.failed).toBe(0);
+				expect(one.refused, `${one.id} at key ${me.kid}`).toEqual(none);
 			}
 		}
 	}).toPass({ timeout: 60_000 });
