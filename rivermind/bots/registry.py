@@ -9,6 +9,13 @@ it, because the bundle's rounded strategy is what the site plays. It
 **failed** when some interval lies wholly below zero, and is
 **inconclusive** otherwise; either way the format keeps its champion.
 
+A **level** records the evaluation of a champion's difficulty level (P5.7):
+RiverMind Medium, the champion's served bundle mixed with RiverMind Easy a
+hand at a time (``levels.py``). It is not put to a gate, since it claims
+only what its report measured, and it belongs to the champion it was made
+from: a new champion has no Medium until its own is evaluated and recorded
+(``blueprint level``).
+
 ``docs/models.json`` is the registry and ``docs/models.md`` shows it; the
 part of the page between the two markers is generated from the JSON. A
 promoted run's checkpoint and bundle are also kept under
@@ -267,6 +274,82 @@ def decide(
     return decision
 
 
+LEVEL_OPPONENTS = ("heuristic", "calling_station", "hard")
+"""What a level's report must have played at the gate's stacks: the two gate bots and its own champion."""
+
+
+def levels(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    return list(registry.get("levels", []))
+
+
+def level_of(registry: dict[str, Any], name: str, level: str = "medium") -> dict[str, Any] | None:
+    """The newest recorded ``level`` of the model named ``name``."""
+    for entry in reversed(levels(registry)):
+        if entry["champion"] == name and entry["level"] == level:
+            return entry
+    return None
+
+
+def _hard_spec(report: dict[str, Any], champion_decision: dict[str, Any]) -> str | None:
+    """The report's name for the champion's own served bundle, the level's RiverMind Hard."""
+    for spec, described in report.get("opponents", {}).items():
+        if described.get("spec") == "bundle" and described.get("files") == champion_decision["bundle"]["files"]:
+            return str(spec)
+    return None
+
+
+def record_level(
+    registry: dict[str, Any],
+    *,
+    date: str,
+    report: dict[str, Any],
+    report_path: str,
+    report_sha256: str,
+) -> dict[str, Any]:
+    """Record a Medium evaluation for the champion it was made from, appended to ``registry``. Raises when it does not belong."""
+    from .levels import MEDIUM, MEDIUM_SHARE
+
+    fmt = _format_of(report)
+    c = report["candidate"]
+    if c.get("spec") != MEDIUM:
+        raise RegistryError("the report did not evaluate a difficulty level: evaluate with --level medium")
+    current = champion(registry, fmt)
+    if current is None:
+        raise RegistryError(f"the {fmt} format has no champion to make a level of")
+    strong = c.get("strong", {})
+    if strong.get("spec") != "bundle" or strong.get("files") != current["bundle"]["files"]:
+        raise RegistryError(f"the report's Medium is not made from the {fmt} champion's served bundle, {current['name']}")
+    if c.get("share") != MEDIUM_SHARE or c.get("weak", {}).get("spec") != "heuristic":
+        raise RegistryError(f"the report's Medium is not the site's: half its hands ({MEDIUM_SHARE}) as the champion and the rest as RiverMind Easy")
+    if any(e["sha256"] == report_sha256 for e in levels(registry)):
+        raise RegistryError("this report has already been recorded")
+    hard = _hard_spec(report, current)
+    have = {(r["opponent"], r["stack_bb"]) for r in report["results"]}
+    wanted = {"heuristic": "heuristic", "calling_station": "calling_station", "hard": hard}
+    missing = [k for k, spec in wanted.items() if spec is None or (spec, GATE_STACK_BB) not in have]
+    if missing:
+        names = {"heuristic": "RiverMind Easy", "calling_station": "the calling station", "hard": f"bundle:<{current['name']}'s bundle>"}
+        raise RegistryError(f"the report has no match at {GATE_STACK_BB} big blinds against {', '.join(names[m] for m in missing)}")
+    results = []
+    for key in LEVEL_OPPONENTS:
+        r = next(r for r in report["results"] if r["opponent"] == wanted[key] and r["stack_bb"] == GATE_STACK_BB)
+        results.append({"opponent": key, "stack_bb": GATE_STACK_BB, "bb_per_100": r["bb_per_100"], "ci95_bb_per_100": r["ci95_bb_per_100"]})
+    entry = {
+        "date": date,
+        "format": fmt,
+        "level": MEDIUM,
+        "champion": current["name"],
+        "share": MEDIUM_SHARE,
+        "report": report_path,
+        "sha256": report_sha256,
+        "deals": report["deals_per_matchup"],
+        "seed": report["seed"],
+        "results": results,
+    }
+    registry.setdefault("levels", []).append(entry)
+    return entry
+
+
 def dumps(registry: dict[str, Any]) -> str:
     return json.dumps(registry, indent=2) + "\n"
 
@@ -290,6 +373,17 @@ def _checks(evaluation: dict[str, Any]) -> str:
         lo, hi = check["ci95_bb_per_100"]
         parts.append(f"{_bb(check['bb_per_100'])} ({_bb(lo)} to {_bb(hi)}) against {_opponent(check)}")
     return "; ".join(parts)
+
+
+LEVEL_OPPONENT_NAMES = {**OPPONENT_NAMES, "hard": "RiverMind Hard, the champion itself"}
+
+
+def _level_results(entry: dict[str, Any]) -> str:
+    parts = []
+    for r in entry["results"]:
+        lo, hi = r["ci95_bb_per_100"]
+        parts.append(f"{_bb(r['bb_per_100'])} ({_bb(lo)} to {_bb(hi)}) against {LEVEL_OPPONENT_NAMES[r['opponent']]}")
+    return "; ".join(parts) + f" at {GATE_STACK_BB} big blinds"
 
 
 def _link(evaluation: dict[str, Any], text: str) -> str:
@@ -355,6 +449,12 @@ def render(registry: dict[str, Any]) -> str:
                 f" `models.json` has all {len(b['files'])} files."
             )
             lines.append(f"- **Kept in:** `{STORE}/{d['name']}/` (`checkpoint/` and `bundle/`).")
+            medium = level_of(registry, d["name"])
+            if medium is not None:
+                lines.append(
+                    f"- **RiverMind Medium:** each hand played as this served bundle with probability {medium['share']:g} and as RiverMind Easy otherwise;"
+                    f" {_level_results(medium)}, over {medium['deals']:,} duplicate deals each, seed {medium['seed']} ({_link(medium, 'report')}; recorded {medium['date']})."
+                )
             lines.append("")
     lines += ["## Decisions", ""]
     if not registry["decisions"]:
@@ -445,6 +545,40 @@ def site_data(registry: dict[str, Any], docs: str | Path) -> dict[str, Any]:
                 }
             )
         c, b = d["checkpoint"], d["bundle"]
+        site_levels: dict[str, Any] = {}
+        medium = level_of(registry, d["name"])
+        if medium is not None:
+            report = _read_report(docs / medium["report"])
+            hard = _hard_spec(report, d)
+            rows = []
+            for r in report["results"]:
+                described = report["opponents"][r["opponent"]]
+                model = described["spec"] in ("blueprint", "bundle")
+                name = _model_name(registry, described) if model else None
+                rows.append(
+                    {
+                        "opponent": "hard" if r["opponent"] == hard else "champion" if model else r["opponent"],
+                        "name": name,
+                        "stack_bb": r["stack_bb"],
+                        "hands": r["hands"],
+                        "bb_per_100": r["bb_per_100"],
+                        "ci95": r["ci95_bb_per_100"],
+                        "gate": False,
+                    }
+                )
+            site_levels["medium"] = {
+                "share": medium["share"],
+                "recorded": medium["date"],
+                "evaluation": {
+                    "candidate": "medium",
+                    "report": medium["report"].removesuffix(".json"),
+                    "deals": report["deals_per_matchup"],
+                    "seed": report["seed"],
+                    "blinds": report["game"]["blinds"],
+                    "evaluated_at": report["software"]["commit"],
+                    "results": rows,
+                },
+            }
         found.append(
             {
                 "format": fmt,
@@ -457,6 +591,7 @@ def site_data(registry: dict[str, Any], docs: str | Path) -> dict[str, Any]:
                 "checkpoint": {"manifest_sha256": c["manifest_sha256"], "files": c["files"]},
                 "bundle": {"levels": b["levels"], "table_set": b["table_set"], "files": b["files"]},
                 "evaluations": evaluations,
+                **({"levels": site_levels} if site_levels else {}),
             }
         )
     return {"format": FORMAT, "kind": SITE_KIND, "champions": found}
@@ -558,8 +693,11 @@ __all__ = [
     "describe_checkpoint",
     "dumps",
     "keep",
+    "level_of",
+    "levels",
     "load",
     "page_text",
+    "record_level",
     "render",
     "site_data",
     "verify_kept",

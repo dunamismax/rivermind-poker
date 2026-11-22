@@ -12,5 +12,8 @@ export default function globalSetup() {
 	// extract the server checks it against. The registered champion's own bundle is
 	// 450 MB and stays out of Git; Vitest loads that one where it is kept.
 	rmSync(MODELS, { recursive: true, force: true });
-	writeChampion(MODELS, [compileTree(50), compileTree(100)], { name: 'e2e-champion' });
+	writeChampion(MODELS, [compileTree(50), compileTree(100)], {
+		name: 'e2e-champion',
+		medium: true
+	});
 }

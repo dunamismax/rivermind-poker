@@ -15,11 +15,31 @@
 		random: 'Random bot',
 		min_bettor: 'Min-bet probe'
 	};
-	const champions = registry.champions;
+	interface Row {
+		opponent: string;
+		name: string | null;
+		stack_bb: number;
+		hands: number;
+		bb_per_100: number;
+		ci95: number[];
+		gate: boolean;
+	}
+	interface Level {
+		share: number;
+		recorded: string;
+		evaluation: { report: string; deals: number; seed: number; results: Row[] };
+	}
+	// A champion's difficulty levels (P5.7) are in the extract once `blueprint level` records one.
+	const champions = registry.champions.map((c) => ({
+		...c,
+		medium: ((c as { levels?: { medium?: Level } }).levels?.medium ?? null) as Level | null
+	}));
 	const opponentName = (row: { opponent: string; name: string | null }) =>
 		row.opponent === 'champion'
 			? `The champion before it${row.name ? ` (${row.name})` : ''}`
-			: (OPPONENTS[row.opponent] ?? row.opponent);
+			: row.opponent === 'hard'
+				? `RiverMind Hard${row.name ? ` (${row.name})` : ''}`
+				: (OPPONENTS[row.opponent] ?? row.opponent);
 
 	const heading = 'mt-10 mb-3 text-m text-gold-light';
 	const list = 'list-disc pl-10 [&>li+li]:mt-3';
@@ -36,7 +56,7 @@
 	<title>The bots · RiverMind Poker</title>
 	<meta
 		name="description"
-		content="The bots at RiverMind Poker’s tables, and the published evaluation behind RiverMind Hard, the trained heads-up bot."
+		content="The bots at RiverMind Poker’s tables, and the published evaluations behind RiverMind Hard, the trained heads-up bot, and RiverMind Medium."
 	/>
 </svelte:head>
 
@@ -150,7 +170,9 @@
 				<h4 class="mt-8 mb-3 text-paper">What the server checks before it plays</h4>
 				<p>
 					The table server loads the model only if every file matches the registry, so the strategy
-					at your table is the one measured above. Its strategy file’s SHA-256 is
+					at your table is the one measured above{champion.medium
+						? ', for Hard and for Medium'
+						: ''}. Its strategy file’s SHA-256 is
 					<code class="text-s break-all text-green-light">
 						{champion.bundle.files['strategy.u8']}
 					</code>
@@ -162,6 +184,66 @@
 					lists every model put to the gate, including those that did not pass.
 				</p>
 			</section>
+			{#if champion.medium}
+				{@const level = champion.medium}
+				<section aria-labelledby="medium-{champion.format}">
+					<h3 id="medium-{champion.format}" class={heading}>RiverMind Medium, {champion.format}</h3>
+					<p>
+						RiverMind Medium plays each hand either as RiverMind Hard or as RiverMind Easy: at the
+						start of a hand it picks one at random, {level.share === 0.5
+							? 'each half the time'
+							: `Hard ${Math.round(level.share * 100)}% of the time`}, and plays the whole hand that
+						way. It uses the same model as Hard,
+						<code class="text-green-light">{champion.name}</code>, and plays tables of {champion.seats}
+						seats only.
+					</p>
+					<p class="mt-5">
+						It has its own measurement, in the same duplicate matches, against the same bots and
+						against RiverMind Hard itself:
+					</p>
+					<div class="mt-5 overflow-x-auto">
+						<table class="px-inset w-full border-collapse text-s">
+							<caption class="sr-only">
+								Results of RiverMind Medium made from {champion.name}
+							</caption>
+							<thead class="text-gold-light">
+								<tr>
+									<th scope="col" class={cell}>Against, and stacks</th>
+									<th scope="col" class={wide}>Hands</th>
+									<th scope="col" class={number}>Won per 100</th>
+									<th scope="col" class={interval}>95% interval</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each level.evaluation.results as row (`${row.opponent}-${row.stack_bb}`)}
+									<tr>
+										<th scope="row" class="{cell} font-normal">
+											{opponentName(row)}
+											<span class="block text-haze">{row.stack_bb} bb</span>
+										</th>
+										<td class={wide}>{row.hands.toLocaleString('en-US')}</td>
+										<td class={number}>{winRate(row.bb_per_100)}</td>
+										<td class={interval}>{winRate(row.ci95[0])} to {winRate(row.ci95[1])}</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+					<p class="mt-3 text-s text-haze">
+						{level.evaluation.deals.toLocaleString('en-US')} deals a matchup, each played from both seats
+						({(2 * level.evaluation.deals).toLocaleString('en-US')} hands), seed {level.evaluation
+							.seed}.
+						<a
+							class="text-gold-light"
+							href="{REPOSITORY}/{level.evaluation.report}.md"
+							rel="noreferrer external"
+						>
+							The full report
+						</a>
+						has every input. What the numbers above say and do not say about Hard holds for Medium too.
+					</p>
+				</section>
+			{/if}
 		{:else}
 			<section aria-labelledby="hard-none">
 				<h3 id="hard-none" class={heading}>Trained bots</h3>

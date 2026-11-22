@@ -9,7 +9,11 @@
 //      hand records, heads-up against each of those bots and itself;
 //   3. card-bucket lookups agree on every hole-card pair for a seeded sample
 //      of boards on each street;
-//   4. the blueprint of a multiway (format 2) bundle does the same at a table
+//   4. RiverMind Medium made from that bundle (P5.7) chooses the same bot for
+//      every hand and, where it plays the blueprint, the same probabilities,
+//      with the same statistics and hand records, against each of those bots,
+//      the blueprint and itself;
+//   5. the blueprint of a multiway (format 2) bundle does the same at a table
 //      of its size with three or more dealt in, in one or more seats, against
 //      those bots and itself (P5.7).
 //
@@ -31,11 +35,13 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { BlueprintPolicy } from '../src/lib/server/bots/blueprint.ts';
 import { loadBundle } from '../src/lib/server/bots/bundle.ts';
+import { medium } from '../src/lib/server/bots/levels.ts';
 import { MultiwayBlueprintPolicy } from '../src/lib/server/bots/multiway.ts';
 import {
 	bucketReport,
 	largestDifference,
 	replayLine,
+	replayMediumLine,
 	simpleBots,
 	type TrainedPolicy
 } from '../src/lib/server/bots/parity.ts';
@@ -178,6 +184,46 @@ try {
 	);
 	report.blueprint = blueprintReport;
 
+	// 4. RiverMind Medium, made from the same bundle (checked here, while it is loaded).
+	const champion = new BlueprintPolicy(bundle);
+	const mixed = medium(champion);
+	const opponent = new BlueprintPolicy(bundle);
+	const withMedium = { ...bots, blueprint: opponent, medium: mixed };
+	let mediumDecisions = 0;
+	report.medium_hands = await lines(
+		['medium', bundlePath, '--decisions', values.decisions, '--seed', seed],
+		([metaText, record], n) => {
+			const meta = JSON.parse(metaText);
+			const result = replayMediumLine(
+				meta,
+				JSON.parse(record),
+				withMedium,
+				mixed,
+				champion,
+				opponent
+			);
+			if (JSON.stringify(result.strong) !== JSON.stringify(meta.strong)) {
+				fail(
+					`medium line ${n}: the bots chosen differ:\n  python: ${JSON.stringify(meta.strong)}\n  ts:     ${JSON.stringify(result.strong)}`
+				);
+			}
+			const gap = largestDifference(result.probabilities, meta.probabilities);
+			if (gap === null || gap > TOLERANCE) {
+				fail(`medium line ${n}: probabilities differ (${gap})`);
+			}
+			if (JSON.stringify(result.stats) !== JSON.stringify(meta.stats)) {
+				fail(
+					`medium line ${n}: statistics differ:\n  python: ${JSON.stringify(meta.stats)}\n  ts:     ${JSON.stringify(result.stats)}`
+				);
+			}
+			if (result.record !== record) {
+				fail(`medium line ${n} differs:\n  python: ${record}\n  ts:     ${result.record}`);
+			}
+			mediumDecisions += result.strong.length;
+		}
+	);
+	report.medium = { decisions: mediumDecisions, stats: mixed.stats };
+
 	// 3. Card buckets.
 	const boards = Number(values.boards);
 	const { child, exited } = python([
@@ -203,7 +249,7 @@ try {
 	if (scratch) rmSync(scratch, { recursive: true, force: true });
 }
 
-// 4. A multiway blueprint, on a real or synthetic format 2 bundle.
+// 5. A multiway blueprint, on a real or synthetic format 2 bundle.
 let multiwayScratch: string | null = null;
 let multiwayPath = values['multiway-bundle'];
 if (multiwayPath === undefined) {

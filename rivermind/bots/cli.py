@@ -350,8 +350,22 @@ def strategy_command(checkpoint: str, hole: str, board: str, history: str, depth
     multiple=True,
     help="OPPONENT@STACK_BB, such as heuristic@100, blueprint:<checkpoint>@100 or bundle:<directory>@100; repeatable (default: the P5.4 plan).",
 )
+@click.option(
+    "--level",
+    type=click.Choice(["medium"]),
+    default=None,
+    help="Evaluate a difficulty level of the model instead: medium is RiverMind Medium, half its hands as the model and half as RiverMind Easy (P5.7).",
+)
 def evaluate_command(
-    checkpoint: str, name: str, out: str, deals: int, seed: int, workers: int | None, tables_path: str | None, against: tuple[str, ...]
+    checkpoint: str,
+    name: str,
+    out: str,
+    deals: int,
+    seed: int,
+    workers: int | None,
+    tables_path: str | None,
+    against: tuple[str, ...],
+    level: str | None,
 ) -> None:
     """Evaluate a blueprint CHECKPOINT (or a run's latest) in duplicate heads-up matches (P5.4).
 
@@ -376,6 +390,8 @@ def evaluate_command(
     except (OSError, ValueError) as e:
         raise click.ClickException(f"{target} has no readable manifest.json") from e
     candidate = f"bundle:{target}" if kind == BUNDLE_KIND else f"blueprint:{target}"
+    if level is not None:
+        candidate = f"{level}:{candidate}"
     plan = []
     for item in against:
         opponent, _, stack = item.rpartition("@")
@@ -406,6 +422,8 @@ def evaluate_command(
         argv += ["--tables", tables_path]
     for opponent, stack_bb in plan:
         argv += ["--against", f"{opponent}@{stack_bb}"]
+    if level is not None:
+        argv += ["--level", level]
     command = shlex.join(argv)
     report["command"] = command
     out_dir = Path(out)
@@ -516,6 +534,41 @@ def promote_command(
     click.echo(json.dumps(shown, indent=2))
     if decision["outcome"] != "promoted":
         raise SystemExit(1)
+
+
+@blueprint.command("level")
+@click.argument("report")
+@click.option("--registry", "registry_path", default="docs/models.json", show_default=True)
+@click.option("--page", default="docs/models.md", show_default=True)
+@click.option("--site", default="web/src/lib/champions.json", show_default=True, help="The extract the site reads; empty to skip it.")
+@click.option("--date", default=None, help="The record's date (default: today).")
+def level_command(report: str, registry_path: str, page: str, site: str, date: str | None) -> None:
+    """Record REPORT (JSON), an evaluation made with --level medium, as RiverMind Medium for its champion (P5.7).
+
+    The report must evaluate the current champion's registered serving bundle
+    mixed with RiverMind Easy as the site mixes them, and have played RiverMind
+    Easy, the calling station and the champion's bundle itself at 100 big
+    blinds. The site offers Medium only for a champion with a recorded level.
+    """
+    import time
+
+    from rivermind.bots import registry as reg
+
+    report_path = Path(report)
+    try:
+        data = reg._read_report(report_path)
+        registry = reg.load(registry_path)
+        entry = reg.record_level(
+            registry,
+            date=date or time.strftime("%Y-%m-%d"),
+            report=data,
+            report_path=reg._published(report_path, Path(registry_path)),
+            report_sha256=reg._sha256(report_path),
+        )
+        reg.write(registry, registry_path, page, site or None)
+    except (reg.RegistryError, OSError) as e:
+        raise click.ClickException(str(e)) from e
+    click.echo(json.dumps({**{k: entry[k] for k in ("format", "level", "champion", "share", "report")}, "results": entry["results"]}, indent=2))
 
 
 @blueprint.command("champions")

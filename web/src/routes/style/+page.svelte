@@ -39,6 +39,7 @@
 		'avatar-heuristic',
 		'avatar-random',
 		'avatar-calling-station',
+		'avatar-medium',
 		'avatar-hard',
 		'avatar-bot'
 	];

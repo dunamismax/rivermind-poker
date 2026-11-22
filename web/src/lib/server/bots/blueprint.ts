@@ -109,7 +109,7 @@ class Real {
 	}
 }
 
-const sameRecord = (a: ActionRecord, b: ActionRecord) =>
+export const sameRecord = (a: ActionRecord, b: ActionRecord): boolean =>
 	a.seat === b.seat &&
 	a.street === b.street &&
 	a.kind === b.kind &&

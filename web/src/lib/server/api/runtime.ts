@@ -27,7 +27,9 @@
  *                              keeps them (/srv/rivermind-poker/models/champions on
  *                              the live server). With it, the heads-up champion of
  *                              the registry plays as RiverMind Hard, once its bundle
- *                              has been checked against the registry (P5.7a).
+ *                              has been checked against the registry (P5.7a), and as
+ *                              half of RiverMind Medium where the registry records
+ *                              Medium's evaluation for it (P5.7).
  *                              Without it, or if the check fails, the site runs
  *                              without that bot.
  *   RIVERMIND_CHAMPIONS        a registry extract to check bundles against instead of
@@ -47,9 +49,12 @@ import {
 	ChampionPolicy,
 	HARD,
 	loadChampion,
+	MEDIUM,
+	MediumPolicy,
 	readRegistry,
 	REGISTRY,
-	type Champion
+	type Champion,
+	type ChampionEvaluation
 } from '../bots/champions.ts';
 import { defaultBots } from '../bots/policies.ts';
 import type * as p from '../../protocol-v2.ts';
@@ -128,13 +133,32 @@ function numberFrom(env: Env, name: string, least: number): number | undefined {
 export function describeChampion(champion: Champion): p.BotChampion {
 	const served =
 		champion.evaluations.find((e) => e.candidate === 'bundle') ?? champion.evaluations[0];
-	const gate = (served?.results ?? []).filter((r) => r.gate);
+	return described(
+		champion,
+		(served?.results ?? []).filter((r) => r.gate)
+	);
+}
+
+/** The opponents a Medium's description names: the gate's two bots and its own champion. */
+const LEVEL_OPPONENTS = ['heuristic', 'calling_station', HARD];
+
+/** RiverMind Medium as `GET /api/config` describes it: its own evaluation at 100 big blinds (P5.7). */
+export function describeMedium(champion: Champion): p.BotChampion {
+	const evaluation: ChampionEvaluation | undefined = champion.levels?.medium?.evaluation;
+	const rows = (evaluation?.results ?? []).filter((r) => r.stack_bb === 100);
+	return described(
+		champion,
+		LEVEL_OPPONENTS.flatMap((kind) => rows.filter((r) => r.opponent === kind))
+	);
+}
+
+function described(champion: Champion, rows: ChampionEvaluation['results']): p.BotChampion {
 	return {
 		name: champion.name,
 		promoted: champion.promoted,
 		iterations: champion.iterations,
-		stack_bb: gate[0]?.stack_bb ?? 100,
-		results: gate.map((r) => ({
+		stack_bb: rows[0]?.stack_bb ?? 100,
+		results: rows.map((r) => ({
 			opponent: r.opponent,
 			label:
 				r.opponent === 'champion'
@@ -172,6 +196,11 @@ export function loadTrained(env: Env = process.env, log: Log = consoleLog): Trai
 		}
 		const started = performance.now();
 		const bundle = loadChampion(models, champion);
+		// Medium first, so the bots are offered from the easiest up.
+		if (MediumPolicy.recorded(champion)) {
+			found.bots[MEDIUM] = new MediumPolicy(champion, bundle);
+			found.trained[MEDIUM] = { seats: [champion.seats], champion: describeMedium(champion) };
+		}
 		found.bots[HARD] = new ChampionPolicy(champion, bundle);
 		found.trained[HARD] = { seats: [champion.seats], champion: describeChampion(champion) };
 		const seconds = ((performance.now() - started) / 1000).toFixed(1);
@@ -179,6 +208,15 @@ export function loadTrained(env: Env = process.env, log: Log = consoleLog): Trai
 			`${BOT_LABELS[HARD]} plays ${champion.name}: bundle ${bundle.path} checked against the registry in ${seconds} s ` +
 				`(strategy.u8 ${champion.bundle.files['strategy.u8']}, table set ${champion.bundle.table_set})`
 		);
+		if (MEDIUM in found.bots) {
+			log.info(
+				`${BOT_LABELS[MEDIUM]} plays half its hands as ${champion.name} and half as ${BOT_LABELS.heuristic}`
+			);
+		} else {
+			log.info(
+				`${BOT_LABELS[MEDIUM]} is not offered: the registry records no evaluation of it for ${champion.name}`
+			);
+		}
 	} catch (error) {
 		log.error(
 			`Could not load the champion from ${models}; ${BOT_LABELS[HARD]} is not offered`,

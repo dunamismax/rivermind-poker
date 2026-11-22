@@ -109,6 +109,40 @@ test('a guest practises against RiverMind Hard and changes opponents between han
 	expect(cspViolations).toEqual([]);
 });
 
+test('a guest practises against RiverMind Medium, offered before Hard with its own result', async ({
+	page,
+	cspViolations
+}) => {
+	test.setTimeout(120_000);
+	await page.goto('/');
+	const groups = page.locator('.trained');
+	await expect(groups).toHaveCount(2);
+	await expect(groups.first()).toHaveAttribute('aria-label', 'RiverMind Medium');
+	const medium = page.getByRole('group', { name: 'RiverMind Medium' });
+	await expect(medium).toContainText(
+		'plays half its hands as RiverMind Hard and half as RiverMind Easy. Over 40,000 hands it won +29.4 big blinds per 100 hands against RiverMind Easy (95% interval +20.1 to +38.7).'
+	);
+	await noOverflow(page);
+	await medium.getByRole('button', { name: 'Practice vs RiverMind Medium' }).click();
+	await expect(seated(page)).toBeVisible();
+	await expect(bot(page)).toContainText('RiverMind Medium');
+	await expect(bot(page).locator('.avatar-medium')).toHaveCount(1);
+	await playToHand(page, 3);
+	// The table's own control offers all three, from the easiest up.
+	await page.getByRole('button', { name: 'Opponent', exact: true }).click();
+	const choices = page.getByRole('group', { name: 'Practice opponent' });
+	await expect(choices.getByRole('button')).toHaveText([
+		'RiverMind Easy',
+		'RiverMind Medium',
+		'RiverMind Hard'
+	]);
+	await choices.getByRole('button', { name: 'RiverMind Hard', exact: true }).click();
+	const changed = await handNumber(page);
+	await playToHand(page, changed + 1);
+	await expect(bot(page)).toContainText('RiverMind Hard');
+	expect(cspViolations).toEqual([]);
+});
+
 test('RiverMind Hard takes a two-seat table and no other', async ({ page, cspViolations }) => {
 	await page.goto('/');
 	await expect(page.getByText('Looking for tables…')).toHaveCount(0);

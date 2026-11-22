@@ -16,6 +16,12 @@ ports in ``web/src/lib/server/bots`` must reproduce:
     ``--decisions`` decisions. Each line also lists the probabilities of
     every blueprint decision (``null`` where it had no data) and its
     statistics so far.
+``medium``
+    Heads-up hands of RiverMind Medium made from a serving bundle (P5.7)
+    against each of the simple bots, the blueprint and itself, in the same
+    form as ``blueprint``, with which bot Medium chose for each of its
+    decisions (``strong``) and the blueprint's probabilities where it chose
+    the blueprint.
 ``multiway``
     Hands of a multiway bundle's blueprint at a table of its size with three
     or more dealt in, the blueprint in at least one seat and the simple bots
@@ -146,6 +152,46 @@ def write_blueprint(out: TextIO, bundle_path: Path, decisions: int, seed: int) -
     return hands
 
 
+def write_medium(out: TextIO, bundle_path: Path, decisions: int, seed: int) -> int:
+    """Heads-up hands of RiverMind Medium, until it has made ``decisions`` decisions."""
+    from .blueprint.bundle import ServingBundle
+    from .levels import medium
+
+    bundle = ServingBundle(bundle_path)
+    mixed = medium(bundle.policy())
+    blueprint = bundle.policy()
+    bots: dict[str, Policy] = {**simple_bots(), "blueprint": blueprint, "medium": mixed}
+    deals = random.Random(seed)
+    made = 0
+    hands = 0
+    while made < decisions:
+        opponent = deals.choice((*SIMPLE, "blueprint", "medium"))
+        seats = ["medium", opponent] if deals.random() < 0.5 else [opponent, "medium"]
+        config = HandConfig(50, 100) if deals.random() < 0.8 else HandConfig(*sorted((deals.randint(1, 200), deals.randint(1, 200))))
+        big = config.big_blind
+        stacks = [deals.randint(10 * big, 250 * big) for _ in range(2)]
+        button = deals.randrange(2)
+        deck = list(range(52))
+        deals.shuffle(deck)
+        bot_seed = deals.getrandbits(64)
+        strong: list[bool | None] = []
+        probabilities: list[list[float] | None] = []
+
+        def record(policy: Policy, strong: list[bool | None] = strong, probabilities: list[list[float] | None] = probabilities) -> None:
+            if policy is mixed:
+                strong.append(mixed.last_strong)
+                probabilities.append(mixed.strong.last_probabilities if mixed.last_strong else None)  # type: ignore[attr-defined]
+
+        mixed.new_hand()
+        blueprint.new_hand()
+        final = play(start_hand(config, stacks, button, deck=deck), seats, bots, random.Random(bot_seed), record)
+        made += len(strong)
+        hands += 1
+        meta = {"bots": seats, "seed": str(bot_seed), "strong": strong, "probabilities": probabilities, "stats": dict(sorted(mixed.stats.items()))}
+        out.write(f"{json.dumps(meta, separators=(',', ':'), sort_keys=True)}\t{dumps(hand_record(final))}\n")
+    return hands
+
+
 def write_multiway(out: TextIO, bundle_path: Path, decisions: int, seed: int) -> int:
     """Hands of a multiway bundle's blueprint at its table, until it has made ``decisions`` decisions."""
     from .blueprint.bundle import ServingBundle
@@ -243,6 +289,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     bp.add_argument("bundle")
     bp.add_argument("--decisions", type=int, default=2_000)
     bp.add_argument("--seed", type=int, default=0)
+    md = commands.add_parser("medium", help="write heads-up hands of RiverMind Medium made from a bundle")
+    md.add_argument("bundle")
+    md.add_argument("--decisions", type=int, default=2_000)
+    md.add_argument("--seed", type=int, default=0)
     mw = commands.add_parser("multiway", help="write hands of a multiway bundle's blueprint at its table")
     mw.add_argument("bundle")
     mw.add_argument("--decisions", type=int, default=2_000)
@@ -262,6 +312,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         write_policies(sys.stdout, args.hands, parse_seats(args.seats), args.seed)
     elif args.command == "blueprint":
         write_blueprint(sys.stdout, Path(args.bundle), args.decisions, args.seed)
+    elif args.command == "medium":
+        write_medium(sys.stdout, Path(args.bundle), args.decisions, args.seed)
     elif args.command == "multiway":
         write_multiway(sys.stdout, Path(args.bundle), args.decisions, args.seed)
     elif args.command == "buckets":

@@ -20,10 +20,12 @@ import type { SeatView } from '../engine/view.ts';
 import builtIn from '../../champions.json' with { type: 'json' };
 import { BlueprintPolicy } from './blueprint.ts';
 import { BundleError, loadBundle, type Bundle } from './bundle.ts';
+import { medium, MEDIUM, MEDIUM_SHARE, type MixedPolicy } from './levels.ts';
 import type { BotRandom, Policy } from './policies.ts';
 
 /** The bot kind that plays a format's champion. */
 export const HARD = 'hard';
+export { MEDIUM };
 export const REGISTRY_KIND = 'rivermind-site-champions';
 
 export interface ChampionResult {
@@ -39,7 +41,7 @@ export interface ChampionResult {
 }
 
 export interface ChampionEvaluation {
-	candidate: 'bundle' | 'checkpoint';
+	candidate: 'bundle' | 'checkpoint' | 'medium';
 	/** The report under docs/, without its extension. */
 	report: string;
 	deals: number;
@@ -60,6 +62,16 @@ export interface Champion {
 	checkpoint: { manifest_sha256: string; files: Record<string, string> };
 	bundle: { levels: number; table_set: string; files: Record<string, string> };
 	evaluations: ChampionEvaluation[];
+	/** The champion's difficulty levels with a recorded evaluation (`blueprint level`, P5.7). */
+	levels?: { medium?: ChampionLevel };
+}
+
+/** A difficulty level made from a champion, and its own published evaluation. */
+export interface ChampionLevel {
+	/** The share of hands played as the champion; the rest are RiverMind Easy's. */
+	share: number;
+	recorded: string;
+	evaluation: ChampionEvaluation;
 }
 
 export interface ChampionRegistry {
@@ -133,5 +145,38 @@ export class ChampionPolicy implements Policy {
 	/** A policy with its own memory of hands, for one table. */
 	forTable(): BlueprintPolicy {
 		return new BlueprintPolicy(this.bundle, { name: HARD });
+	}
+}
+
+/**
+ * RiverMind Medium for a loaded champion (P5.7): each hand played as the
+ * champion or as RiverMind Easy, half and half, as `levels.ts` mixes them. It
+ * is offered only for a champion whose Medium has a recorded evaluation made
+ * with the site's share, so its label links to a measurement of what it plays.
+ */
+export class MediumPolicy implements Policy {
+	readonly name = MEDIUM;
+	readonly champion: Champion;
+	readonly bundle: Bundle;
+	private readonly shared: MixedPolicy;
+
+	constructor(champion: Champion, bundle: Bundle) {
+		this.champion = champion;
+		this.bundle = bundle;
+		this.shared = this.forTable();
+	}
+
+	/** Whether the registry records a Medium for `champion` that this server plays. */
+	static recorded(champion: Champion): boolean {
+		return champion.levels?.medium?.share === MEDIUM_SHARE;
+	}
+
+	act(view: SeatView, rng: BotRandom): Action {
+		return this.shared.act(view, rng);
+	}
+
+	/** A Medium with its own memory of hands, the champion's included, for one table. */
+	forTable(): MixedPolicy {
+		return medium(new BlueprintPolicy(this.bundle, { name: HARD }));
 	}
 }

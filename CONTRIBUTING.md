@@ -214,6 +214,18 @@ PORT=3000 RIVERMIND_API=1 RIVERMIND_MODELS=../artifacts/models ORIGIN=http://127
 - **A missing bot.** A saved table whose bot the server does not run, which is RiverMind Hard after its bundle went missing, plays on against RiverMind Easy under that label. Seats, stacks and the hand in progress are kept.
 - **Tests.** [`champion.spec.ts`](web/src/lib/server/api/champion.spec.ts) writes a small champion and its registry extract, and also loads the registered bundle from `artifacts/models` when it is there. The browser tests' server gets one from `e2e/global-setup.ts` through `RIVERMIND_MODELS` and `RIVERMIND_CHAMPIONS`, a registry extract to use instead of the built-in one; that variable is for tests only.
 
+### RiverMind Medium: a difficulty level (P5.7)
+
+**RiverMind Medium** is the champion mixed with RiverMind Easy a hand at a time: at its first decision in a hand it draws one number from the bot generator and plays the whole hand as the champion when it is below one half, and as RiverMind Easy otherwise ([`levels.ts`](web/src/lib/server/bots/levels.ts), a port of [`rivermind/bots/levels.py`](rivermind/bots/levels.py); `pnpm bots:parity` checks the two draw for draw). The server offers it, at two seats and in practice, only for a champion whose Medium has an evaluation in `champions.json`, made with the site's share; a new champion has no Medium until its own is evaluated and recorded.
+
+```sh
+uv run --locked rivermind-poker blueprint evaluate artifacts/models/<champion>/bundle --level medium --name <champion>-medium \
+  --against heuristic@100 --against calling_station@100 --against random@100 --against bundle:artifacts/models/<champion>/bundle@100
+uv run --locked rivermind-poker blueprint level docs/evaluations/<champion>-medium.json
+```
+
+`blueprint level` checks that the report's Medium is made from the champion's registered bundle and has played RiverMind Easy, the calling station and the champion itself at 100 big blinds, then records it in `docs/models.json` and writes `docs/models.md` and `champions.json`. `GET /api/config` lists `medium` before `hard`, with `champion` describing Medium's own results; the lobby shows each trained bot with its result against RiverMind Easy, and `/bots` shows Medium's evaluation under its champion.
+
 ## SvelteKit client
 
 The browser client lives in [`web/`](web/). It is a SvelteKit app (Svelte 5, strict TypeScript) built with `adapter-node` and served by a small Node server of its own (P4B.1, D-14). The pages are client-rendered (`ssr = false` in the root layout). Use Node 26.13.1, as [`web/.node-version`](web/.node-version) and `engines` say (mise reads the file), and pnpm 12.18.0, as `packageManager` says; `web/pnpm-workspace.yaml` sets `saveExact` and `engineStrict`, so a wrong Node fails the install. On ubuntu-vm run each command through `node-26`, which puts the host's pinned Node and pnpm first on `PATH`. Every dependency is pinned to an exact version: add one with `pnpm add --save-exact`. Run these from `web/`.

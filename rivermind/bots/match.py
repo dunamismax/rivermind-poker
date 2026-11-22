@@ -69,6 +69,9 @@ def _bundle(path: str) -> Any:
 def make_policy(spec: str, tables: str | None = None) -> Policy:
     """A policy from its name, ``blueprint:<checkpoint>`` for a trained blueprint or ``bundle:<directory>`` for a serving bundle.
 
+    ``medium:`` before either is RiverMind Medium for it: that model mixed with
+    RiverMind Easy, a hand at a time (``levels.py``, P5.7).
+
     A bundle plays its own ``uint8`` strategy on its own card-table arrays,
     which is what the site serves (P4B.6), so ``tables`` does not apply to it.
     """
@@ -81,7 +84,11 @@ def make_policy(spec: str, tables: str | None = None) -> Policy:
     if spec.startswith("bundle:"):
         policy: Policy = _bundle(spec.split(":", 1)[1]).policy()
         return policy
-    raise ValueError(f"unknown policy {spec!r}; use one of {', '.join(SIMPLE)}, blueprint:<checkpoint> or bundle:<directory>")
+    if spec.startswith("medium:"):
+        from .levels import medium
+
+        return medium(make_policy(spec.split(":", 1)[1], tables))
+    raise ValueError(f"unknown policy {spec!r}; use one of {', '.join(SIMPLE)}, blueprint:<checkpoint>, bundle:<directory> or medium:<either>")
 
 
 @dataclass(frozen=True)
@@ -286,6 +293,18 @@ def run_matchup(matchup: Matchup, workers: int = 1) -> Result:
 
 def describe_policy(spec: str) -> dict[str, Any]:
     """What a report records about a policy: its source's hash, or a checkpoint's identity."""
+    if spec.startswith("medium:"):
+        from .levels import MEDIUM_SHARE
+
+        levels = Path(__file__).with_name("levels.py").read_bytes()
+        return {
+            "spec": "medium",
+            "share": MEDIUM_SHARE,
+            "strong": describe_policy(spec.split(":", 1)[1]),
+            "weak": describe_policy("heuristic"),
+            "source": "rivermind/bots/levels.py",
+            "source_sha256": hashlib.sha256(levels).hexdigest(),
+        }
     if spec.startswith("blueprint:"):
         from .blueprint import read_manifest
 
@@ -331,6 +350,8 @@ def matchup_record(matchup: Matchup) -> dict[str, Any]:
 
 def policy_seats(spec: str) -> int:
     """The table size a policy is for: a blueprint's or a bundle's abstraction says; the simple bots play any, so 2."""
+    if spec.startswith("medium:"):
+        return policy_seats(spec.split(":", 1)[1])
     if not spec.startswith(("blueprint:", "bundle:")):
         return 2
     import json
@@ -413,7 +434,16 @@ def evaluate(
 
 def render_markdown(report: dict[str, Any], *, name: str, command: str) -> str:
     c = report["candidate"]
-    if c["spec"] == "bundle":
+    if c["spec"] == "medium":
+        strong = c["strong"]
+        model = f"the serving bundle `{strong['bundle']}`" if strong["spec"] == "bundle" else f"`{strong.get('checkpoint', strong['spec'])}`"
+        candidate = (
+            f"Candidate: RiverMind Medium, which plays each hand as {model}"
+            + (f" ({strong['iteration']:,} iterations, `strategy.u8` `{strong['files']['strategy.u8'][:8]}…`)" if strong["spec"] == "bundle" else "")
+            + f" with probability {c['share']:g} and as RiverMind Easy (the heuristic) otherwise, drawn once a hand (`rivermind/bots/levels.py`)."
+            " “Trained data” counts the model’s decisions only."
+        )
+    elif c["spec"] == "bundle":
         iterations = f", {c['iteration']:,} iterations" if c.get("iteration") else ""
         candidate = (
             f"Candidate: the serving bundle `{c['bundle']}`{iterations}: the strategy the site serves,"

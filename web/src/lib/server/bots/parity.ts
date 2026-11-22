@@ -7,6 +7,7 @@ import { apply, isOver, startHand, type HandState } from '../engine/state.ts';
 import { seatView } from '../engine/view.ts';
 import type { Stats } from './blueprint.ts';
 import { STREETS, type CardTables } from './bundle.ts';
+import type { MixedPolicy } from './levels.ts';
 import { PythonRandom } from './mt.ts';
 import {
 	CallingStationPolicy,
@@ -94,6 +95,51 @@ export function replayLine(
 		? Object.fromEntries(Object.entries(blueprint.stats).sort(([a], [b]) => (a < b ? -1 : 1)))
 		: {};
 	return { record: dumps(handRecord(final)), probabilities, stats };
+}
+
+const sortedStats = (stats: Stats): Stats =>
+	Object.fromEntries(Object.entries(stats).sort(([a], [b]) => (a < b ? -1 : 1)));
+
+export interface MediumLineResult extends LineResult {
+	/** Which bot RiverMind Medium chose at each of its decisions. */
+	readonly strong: (boolean | null)[];
+}
+
+/**
+ * Play the deal of one `differential medium` line: RiverMind Medium (`mixed`,
+ * whose strong bot is `champion`) against the line's other bot, which may be
+ * `blueprint`, a second copy of the champion, or Medium itself.
+ */
+export function replayMediumLine(
+	meta: LineMeta,
+	record: Json,
+	bots: Record<string, Policy>,
+	mixed: MixedPolicy,
+	champion: TrainedPolicy,
+	blueprint: TrainedPolicy
+): MediumLineResult {
+	const history = historyFromDict(record);
+	const probabilities: (number[] | null)[] = [];
+	const strong: (boolean | null)[] = [];
+	mixed.newHand();
+	blueprint.newHand();
+	const final = play(
+		startHand(history.config, history.startingStacks, history.button, { deck: history.deck }),
+		meta.bots,
+		bots,
+		new PythonRandom(BigInt(meta.seed)),
+		(policy) => {
+			if (policy !== mixed) return;
+			strong.push(mixed.lastStrong);
+			probabilities.push(mixed.lastStrong ? champion.lastProbabilities : null);
+		}
+	);
+	return {
+		record: dumps(handRecord(final)),
+		probabilities,
+		strong,
+		stats: sortedStats(mixed.stats)
+	};
 }
 
 /** The largest difference between two lists of probability vectors, or null if their shapes differ. */

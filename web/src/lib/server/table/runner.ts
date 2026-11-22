@@ -51,6 +51,7 @@ export const BOT_LABELS: Readonly<Record<string, string>> = {
 	random: 'Random bot',
 	calling_station: 'Calling bot',
 	heuristic: 'RiverMind Easy',
+	medium: 'RiverMind Medium',
 	hard: 'RiverMind Hard'
 };
 /** The bot that stands in for one this server does not run. */

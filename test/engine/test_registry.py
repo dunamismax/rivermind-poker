@@ -300,6 +300,60 @@ def test_a_bundle_can_be_evaluated_and_be_an_opponent(candidates: tuple[Candidat
     assert exact["candidate"]["spec"] == "blueprint" and exact["candidate"]["files"]["strategy.npy"] == c["exported_from"]["strategy_sha256"]
 
 
+# Difficulty levels (P5.7)
+
+
+def test_medium_is_recorded_for_the_champion_it_was_made_from(site: Site, candidates: tuple[Candidate, Candidate]) -> None:
+    first, second = candidates
+    level = ["blueprint", "level", "--registry", str(site.registry), "--page", str(site.page), "--site", str(site.site), "--date", "2026-11-23"]
+    medium = {"heuristic": (5.0, 25.0), "calling_station": (40.0, 80.0), f"bundle:{first.bundle}": (-40.0, -10.0)}
+    report = site.report(f"medium:bundle:{first.bundle}", medium)
+    refused = CliRunner().invoke(cli, [*level, str(report)])
+    assert refused.exit_code != 0 and "no champion" in refused.output
+    assert site.promote_both(first, GOOD).exit_code == 0
+    recorded = CliRunner().invoke(cli, [*level, str(report)])
+    assert recorded.exit_code == 0, recorded.output
+    registry = reg.load(site.registry)
+    entry = reg.level_of(registry, "first")
+    assert entry is not None and entry["champion"] == "first" and entry["share"] == 0.5
+    assert [r["opponent"] for r in entry["results"]] == ["heuristic", "calling_station", "hard"]
+    assert entry["results"][2]["ci95_bb_per_100"] == [-40.0, -10.0]
+    assert "**RiverMind Medium:**" in site.page.read_text()
+    champion = json.loads(site.site.read_text())["champions"][0]
+    rows = champion["levels"]["medium"]["evaluation"]["results"]
+    assert [(r["opponent"], r["name"], r["gate"]) for r in rows] == [("heuristic", None, False), ("calling_station", None, False), ("hard", "first", False)]
+    again = CliRunner().invoke(cli, [*level, str(report)])
+    assert again.exit_code != 0 and "already been recorded" in again.output
+    # A Medium of another model, a plain report or one that never played the champion is refused.
+    for wrong, why in (
+        (site.report(f"medium:bundle:{second.bundle}", {**medium, f"bundle:{second.bundle}": (1.0, 2.0)}), "not made from"),
+        (site.report(f"bundle:{first.bundle}", GOOD), "difficulty level"),
+        (site.report(f"medium:bundle:{first.bundle}", GOOD), "bundle:<first's bundle>"),
+    ):
+        result = CliRunner().invoke(cli, [*level, str(wrong)])
+        assert result.exit_code != 0 and why in result.output, result.output
+    # A new champion has no Medium until its own is recorded.
+    replace = {**GOOD, f"blueprint:{first.checkpoint}": (1.0, 9.0)}
+    assert site.promote_both(second, replace, {**GOOD, f"bundle:{first.bundle}": (1.0, 9.0)}).exit_code == 0
+    assert "levels" not in json.loads(site.site.read_text())["champions"][0]
+    assert "**RiverMind Medium:**" not in site.page.read_text()
+
+
+def test_a_medium_report_describes_both_bots(candidates: tuple[Candidate, Candidate], tmp_path: Path) -> None:
+    first, _ = candidates
+    args = ["--deals", "4", "--workers", "1", "--out", str(tmp_path), "--against", "heuristic@100", "--level", "medium"]
+    result = CliRunner().invoke(cli, ["blueprint", "evaluate", str(first.bundle), "--name", "medium", *args])
+    assert result.exit_code == 0, result.output
+    report = json.loads((tmp_path / "medium.json").read_text())
+    c = report["candidate"]
+    assert c["spec"] == "medium" and c["share"] == 0.5 and c["source"] == "rivermind/bots/levels.py"
+    assert c["strong"] == describe_policy(f"bundle:{first.bundle}") and c["weak"] == describe_policy("heuristic")
+    stats = report["results"][0]["candidate_decisions"]
+    assert stats["hands_strong"] + stats["hands_weak"] > 0
+    assert report["command"].endswith("--level medium")
+    assert "RiverMind Medium" in (tmp_path / "medium.md").read_text()
+
+
 # The published registry
 
 
@@ -338,5 +392,19 @@ def test_the_published_decisions_follow_from_their_reports() -> None:
         else:
             assert ("failed" if "failed" in outcomes else "inconclusive") == decision["outcome"]
         replayed["decisions"].append(decision)
+
+
+def test_the_published_levels_follow_from_their_reports() -> None:
+    registry = reg.load(ROOT / reg.REGISTRY)
+    by_name = {d["name"]: d for d in registry["decisions"] if d["outcome"] == "promoted"}
+    for entry in reg.levels(registry):
+        path = ROOT / "docs" / entry["report"]
+        assert reg._sha256(path) == entry["sha256"], f"{path} changed after it was recorded"
+        assert path.with_suffix(".md").exists()
+        report = json.loads(path.read_text())
+        decision = by_name[entry["champion"]]
+        replayed = {**reg.empty(), "decisions": [decision]}
+        found = reg.record_level(replayed, date=entry["date"], report=report, report_path=entry["report"], report_sha256=entry["sha256"])
+        assert found == entry
     for fmt, current in reg.champions(registry).items():
         assert current["format"] == fmt and current["bundle"]["table_set"] == current["checkpoint"]["cards"]["table_set"]

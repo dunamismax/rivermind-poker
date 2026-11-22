@@ -359,6 +359,9 @@ input.px-range:disabled {
 .avatar-calling-station {
 	background-image: url('../lib/art/ui/avatar-calling-station.png');
 }
+.avatar-medium {
+	background-image: url('../lib/art/ui/avatar-medium.png');
+}
 .avatar-hard {
 	background-image: url('../lib/art/ui/avatar-hard.png');
 }

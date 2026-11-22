@@ -4,6 +4,7 @@ import type { BotChampion } from '../protocol-v2.ts';
 
 const BOT_LABELS: Record<string, string> = {
 	heuristic: 'RiverMind Easy',
+	medium: 'RiverMind Medium',
 	hard: 'RiverMind Hard',
 	random: 'Random',
 	calling_station: 'Calling'
@@ -11,6 +12,7 @@ const BOT_LABELS: Record<string, string> = {
 
 const BOT_AVATARS: Record<string, string> = {
 	heuristic: 'avatar-heuristic',
+	medium: 'avatar-medium',
 	hard: 'avatar-hard',
 	random: 'avatar-random',
 	calling_station: 'avatar-calling-station'

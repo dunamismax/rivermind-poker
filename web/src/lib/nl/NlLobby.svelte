@@ -74,14 +74,20 @@
 
 	const BOT_NOTES: Record<string, string> = {
 		heuristic: 'Plays its cards with a plan.',
+		medium: 'Half Hard, half Easy. Two seats only.',
 		hard: 'Trained by self-play. Two seats only.',
 		calling_station: 'Calls almost anything.',
 		random: 'Does whatever it likes.'
 	};
-	/** The trained bot to practise against: the one that plays two seats. */
+	/** The trained bots to practise against: those that play two seats, from the easiest up. */
 	const trained = $derived(
-		config?.bots.find((b) => b.champion && (!b.seats || b.seats.includes(2))) ?? null
+		(config?.bots ?? []).filter((b) => b.champion && (!b.seats || b.seats.includes(2)))
 	);
+	/** What a trained bot is, before its published result (D-7). */
+	const TRAINED_NOTES: Record<string, string> = {
+		medium: 'plays half its hands as RiverMind Hard and half as RiverMind Easy.',
+		hard: 'is a trained bot.'
+	};
 	/** The bots that play a table of the chosen size. */
 	const offered = $derived((config?.bots ?? []).filter((b) => !b.seats || b.seats.includes(seats)));
 	// A bot that does not play the chosen size gives way to RiverMind Easy.
@@ -216,16 +222,17 @@
 				).toLocaleString('en-US')} practice chips. Your wallet is not touched, and you get a fresh stack
 				whenever you run out.
 			</p>
-			{#if trained?.champion}
-				<div class="trained px-inset grid gap-4 px-5 py-4" role="group" aria-label={trained.label}>
+			{#each trained as bot (bot.kind)}
+				<div class="trained px-inset grid gap-4 px-5 py-4" role="group" aria-label={bot.label}>
 					<div class="flex items-start gap-5">
 						<span
-							class="sprite avatar {avatarClass({ kind: 'bot', bot: trained.kind, name: '' })}"
+							class="sprite avatar {avatarClass({ kind: 'bot', bot: bot.kind, name: '' })}"
 							aria-hidden="true"
 						></span>
 						<p class="note text-s text-mist">
-							<strong class="text-gold text-shadow-ink">{trained.label}</strong>
-							is a trained bot. {championLine(trained.champion)}
+							<strong class="text-gold text-shadow-ink">{bot.label}</strong>
+							{TRAINED_NOTES[bot.kind] ?? TRAINED_NOTES.hard}
+							{bot.champion ? championLine(bot.champion) : ''}
 							<a class="text-gold-light" href={resolve('/bots')}>How it was measured</a>
 						</p>
 					</div>
@@ -233,12 +240,12 @@
 						type="button"
 						class="px-btn blue practice-trained w-full"
 						disabled={practising}
-						onclick={() => practice(trained.kind)}
+						onclick={() => practice(bot.kind)}
 					>
-						Practice vs {trained.label}
+						Practice vs {bot.label}
 					</button>
 				</div>
-			{/if}
+			{/each}
 			{#if practiceError}<p class="error text-red-light" role="alert">{practiceError}</p>{/if}
 		</section>
 		{#if balance !== null}

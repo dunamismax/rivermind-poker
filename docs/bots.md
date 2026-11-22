@@ -278,9 +278,19 @@ ssh root@ubuntu-vm 'cd /srv/rivermind-poker/models/champions/NAME && sha256sum c
 
 Once the host’s checkout has the registry, `rivermind-poker blueprint champions --verify /srv/rivermind-poker/models/champions` does that comparison there.
 
+## Difficulty levels (P5.7)
+
+Each format serves three levels: **Easy** is the heuristic, **Hard** the format's champion, and **Medium** the two mixed. Medium ([`levels.py`](../rivermind/bots/levels.py), [`levels.ts`](../web/src/lib/server/bots/levels.ts)) plays each hand as one bot or the other: at its first decision in a hand it draws one number from the bot's generator and plays the whole hand as the champion's served bundle when the draw is below one half, and as RiverMind Easy otherwise. A hand is told from the next as `BlueprintPolicy` tells them, by the seat, its cards, the blinds, the starting stacks and the button, and by whether the actions seen so far still begin the view's actions.
+
+**Why a hand at a time.** Mixing by decision would play lines neither bot would: the heuristic's open, then the champion's continuation from a history it never trained on. A hand played by one bot is always a line that bot plays, so the champion's mapping never has to account for actions of its own seat that it did not choose. Neither bot adapts to its opponent, so Medium's expected win rate against any fixed opponent is the same mix of the two bots' rates, halfway between them; its own evaluation measures that rather than assuming it.
+
+**Its evaluation.** `blueprint evaluate <bundle> --level medium` plays Medium as the candidate, and `blueprint level <report.json>` records the report under the champion it was made from, after checking that its Medium is made from that champion's registered bundle, with the site's share, and that it played RiverMind Easy, the calling station and the champion itself at 100 big blinds. Medium is not put to a gate: it claims only what its report measured. A new champion has no Medium until its own is evaluated and recorded, and the site offers Medium only for a champion whose Medium is recorded (`MediumPolicy.recorded`).
+
+**Parity.** `pnpm bots:parity` plays Medium made from the bundle in both languages, heads-up against the simple bots, the blueprint and itself, and compares which bot it chose at every decision, the blueprint's probabilities, the statistics and the hand records. On 2026-11-22 with the champion `hu-m1-s0-1024m`’s bundle (`--decisions 20000`): 20,001 Medium decisions in 9,137 hands, identical.
+
 ## 6-max and 9-max
 
-Six seats first (P5.6). The heads-up pipeline carries over: trees compiled from the engine, the same card abstraction, external-sampling MCCFR in deterministic batches, duplicate matches and the promotion gate. Three things change. The betting tree becomes a graph of merged betting states, because six seats' histories are too many to hold; the card tables get 200 buckets a street; and the bot has to find its seat at a real table, which may have fewer than six players, short stacks and side pots. The code is built and tested. **No six-seat blueprint has been trained yet**: the owner put training on this Mac on hold on 2026-11-22, so what follows is the design, what was measured in building it, and the estimates for the run.
+Six seats first (P5.6). The heads-up pipeline carries over: trees compiled from the engine, the same card abstraction, external-sampling MCCFR in deterministic batches, duplicate matches and the promotion gate. Three things change. The betting tree becomes a graph of merged betting states, because six seats' histories are too many to hold; the card tables get 200 buckets a street; and the bot has to find its seat at a real table, which may have fewer than six players, short stacks and side pots. The code is built and tested, and the first six-seat run started on 2026-11-22; what follows is the design, what was measured in building it, and the estimates and settings for the run.
 
 ### The format: `6max-s1`
 
@@ -339,7 +349,7 @@ uv run --locked rivermind-poker tables build --out artifacts/tables/c200 --name 
   --flop_buckets 200 --turn_buckets 200 --river_buckets 200
 ```
 
-Built on 2026-11-22 from `3888572` (whose card code the build used unchanged) with ten workers in 181 s, with a peak of 3.1 GB summed over processes, at a load average near 30: 401 MB in 16 files. `preflop.npy` is `hu-m1`’s (`a0a6e5ed…`); `flop.npy` is `b245fe1e…916929ee`, `turn.npy` `2765327c…f2bfacee` and `river.npy` `2c89cf94…4f16ae3a`. A second build to compare byte for byte waits for the training hold to end.
+Built on 2026-11-22 from `3888572` (whose card code the build used unchanged) with ten workers in 181 s, with a peak of 3.1 GB summed over processes, at a load average near 30: 401 MB in 16 files. `preflop.npy` is `hu-m1`’s (`a0a6e5ed…`); `flop.npy` is `b245fe1e…916929ee`, `turn.npy` `2765327c…f2bfacee` and `river.npy` `2c89cf94…4f16ae3a`. A second build from `ca7965d` with six workers (218 s, 2.1 GB peak) gave byte-identical files on 2026-11-22.
 
 ### Training six seats
 
@@ -356,14 +366,29 @@ Built on 2026-11-22 from `3888572` (whose card code the build used unchanged) wi
 
 **Estimate.** The first heads-up champion had about 90 updates an info set (128 million iterations, 13.9 updates each, 17 million info sets). The same average here is 198 million × 90 / 5 ≈ 3.6 billion iterations: **about 43 hours at the probe’s rate**, on a Mac shared as it was that day. An idle Mac should be faster, by how much is not measured; heads-up lost a factor of two to load and another once strategies were trained, and gained some back from pruning. The run can be put to the gate at any checkpoint on the way. If two days is too long, the 100 big blind class alone is two thirds of the work, and candidate A a fifth of it.
 
-**Settings to use.** A run this long keeps Pluribus’s proportions as `hu-m1` did: a linear-CFR discount every 4,000,000 iterations until 160,000,000, and pruning from 80,000,000. The pruning threshold cannot be set from here. An info set is updated about thirty times less often than heads-up at the same iteration, so regrets grow that much more slowly and `hu-m1`’s −10,000,000 might prune nothing; P5.3 chose its threshold from a probe on a partly trained run, and this one needs the same: train a few tens of millions of iterations, scale the regrets to the middle of the run and time chunks at several thresholds. That probe is the first thing to do when training may start again.
+**Settings.** A run this long keeps Pluribus’s proportions as `hu-m1` did: a linear-CFR discount every 4,000,000 iterations until 160,000,000, and pruning from 80,000,000.
+
+**The pruning threshold**, from a probe as for P5.3 (2026-11-22). A scratch run trained 24,000,000 iterations with the schedule above on eight workers (19,175 a second at a load average near 100, 12.9 GB peak summed over processes). Its regrets were then scaled to their size later in the run and 16,000 iterations were played with pruning in every one, at several thresholds. With a linear-CFR discount every *P* iterations, an action losing *r* chips an iteration has regret *rP·D*/2 after *D* discounts, so the checkpoint holds about 12 million *r*; at iteration *T* after the last discount it is 80 million *r* plus *r*(*T* − 160 million). That gives the scales 3.3 (80 million, where pruning starts), 27 (400 million), 143 (1.8 billion, mid-run) and 293 (3.6 billion). The probe’s regrets were already larger than expected: the most negative was −9.4 million, and 1% of negative slots were below −189,000, since six-seat pots are larger and every folded hand is a loss to someone. Decision nodes visited per iteration (39.6 unpruned):
+
+| Threshold | at 80 million | 400 million | 1.8 billion | 3.6 billion |
+| --- | --- | --- | --- | --- |
+| −1,000,000 | 24.8 | 12.8 | 8.7 | 8.2 |
+| −10,000,000 (`hu-m1`’s) | 38.0 | 26.3 | 16.0 | 12.5 |
+| −30,000,000 | 39.0 | 32.6 | 22.8 | 18.3 |
+| **−60,000,000** | **39.6** | **35.9** | **27.1** | **22.7** |
+| −100,000,000 | 39.6 | 38.5 | 30.0 | 25.7 |
+| −300,000,000 | 39.6 | 39.6 | 36.0 | 32.3 |
+
+`hu-m1`’s threshold cut 31% of visits at its mid-run; −60,000,000 cuts 32% at this run’s, nothing where pruning starts and 43% by the end, so it is the choice, with the floor 10% beyond it as before. The probe’s scaling assumes a losing action keeps losing at the same rate, which pruning itself stops; it sets an order of magnitude, as P5.3’s did. Its script and output are kept in `artifacts/blueprints/` (`prune_probe.py`, `prune_probe.out`).
 
 ```sh
 nice -n 19 uv run --locked rivermind-poker blueprint train artifacts/blueprints/6max-s1-s0 \
   --abstraction 6max-s1 --tables artifacts/tables/c200 --iterations 3600000000 \
   --discount_every 4000000 --discount_until 160000000 --prune_after 80000000 \
-  --prune_threshold THRESHOLD --regret_floor FLOOR --checkpoint_every 100000000 --keep 4
+  --prune_threshold -60000000 --regret_floor -66000000 --checkpoint_every 100000000 --keep 4 --workers 8
 ```
+
+The run `artifacts/blueprints/6max-s1-s0` started with that command on 2026-11-22 from `ca7965d`.
 
 ### Playing at a real table
 

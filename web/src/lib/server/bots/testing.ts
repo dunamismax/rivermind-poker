@@ -135,12 +135,17 @@ export function strategySize(
 /**
  * A models directory holding one heads-up champion called `name`, as
  * `rivermind-poker blueprint promote` keeps one (`<models>/<name>/bundle`),
- * and the registry extract a server checks it against.
+ * and the registry extract a server checks it against. With `medium`, the
+ * extract also records an evaluation of its RiverMind Medium (P5.7).
  */
 export function writeChampion(
 	models: string,
 	trees: readonly Tree[],
-	{ name = 'test-champion', strategy }: { name?: string; strategy?: Uint8Array } = {}
+	{
+		name = 'test-champion',
+		strategy,
+		medium = false
+	}: { name?: string; strategy?: Uint8Array; medium?: boolean } = {}
 ): { champion: Champion; registry: ChampionRegistry; bundle: TestBundle } {
 	const bundle = writeBundle(join(models, name, 'bundle'), trees, {
 		strategy: strategy ?? randomStrategy(strategySize(trees))
@@ -184,6 +189,29 @@ export function writeChampion(
 			}
 		]
 	};
+	if (medium) {
+		champion.levels = {
+			medium: {
+				share: 0.5,
+				recorded: '2026-11-23',
+				evaluation: {
+					candidate: 'medium',
+					report: `evaluations/${name}-medium`,
+					deals: 20_000,
+					seed: 0,
+					blinds: [50, 100],
+					evaluated_at: '0'.repeat(40),
+					results: [
+						{ ...result('heuristic', 29.4, 20.1, 38.7), gate: false },
+						{ ...result('calling_station', 190.2, 172.5, 207.9), gate: false },
+						{ ...result('random', 180.0, 160.0, 200.0), gate: false },
+						{ ...result('hard', -30.5, -41.2, -19.8), name, gate: false },
+						{ ...result('heuristic', 20.0, 12.0, 28.0), stack_bb: 40, gate: false }
+					]
+				}
+			}
+		};
+	}
 	const registry: ChampionRegistry = { format: 1, kind: REGISTRY_KIND, champions: [champion] };
 	writeFileSync(join(models, 'champions.json'), JSON.stringify(registry, null, 2));
 	return { champion, registry, bundle };
