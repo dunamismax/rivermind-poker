@@ -37,6 +37,11 @@ export const MAX_MESSAGE_BYTES = 32 * 1024;
 // An MLS message or GroupInfo, as base64 (RFC 4648 section 4, with padding).
 export type Base64 = string;
 
+// What `POST /api/tables/{id}/voice` answers a seated person (P4C.5): a token
+// for `hello`, good for one socket within a minute, and the path of the voice
+// service on the site's own origin.
+export type VoiceTokenResponse = { table: string; seat: number; token: string; url: string };
+
 // Someone else in the room, as the service knows them: a name for their
 // socket, the leaf they hold in the group once they are in it, and their
 // audio once they send it. Who a leaf is, a page reads from its own copy of
@@ -129,11 +134,14 @@ export type VoiceError =
 	| 'unsupported-version'
 	// The token is not genuine, is for another table, has expired or was used.
 	| 'bad-token'
+	// The table does not have this person in that seat now (P4C.5).
+	| 'not-seated'
 	// Something the request names that this socket does not have.
 	| 'unknown'
 	// More of something than a person may have: transports, producers, consumers.
 	| 'too-many'
-	// Sending audio before joining the group, or with the audio-level extension.
+	// Sending audio before joining the group, or with the audio-level extension,
+	// or hearing someone either of you blocked.
 	| 'not-allowed'
 	// The room is gone, or the media server could not do what was asked.
 	| 'failed'
@@ -177,7 +185,10 @@ export const CLOSE = {
 	// The same seat joined again from another socket.
 	replaced: 4409,
 	// The group removed this page's leaf.
-	removed: 4410
+	removed: 4410,
+	// The table no longer has this person in voice: they stood up, went bust or
+	// left, the table closed, or nobody else is seated (P4C.5).
+	unseated: 4403
 } as const;
 
 // Base64 both ways, in the browser and in Node.

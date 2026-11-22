@@ -43,6 +43,7 @@ import { clientAddress, REACTIONS } from './safety.ts';
 import { STAKES, type Site } from './site.ts';
 import { parseCookies } from './socket.ts';
 import type { Tables } from './tables.ts';
+import { VOICE_PATH, type VoiceTokenResponse } from '../../voice/signalling.ts';
 import { Invalid, parseJson, type Schema } from './validate.ts';
 import { handDetail, handSummary, tableSummary } from './views.ts';
 import { PLAY_MONEY_NOTICE } from './wallet.ts';
@@ -311,6 +312,8 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 		if (!(await site.removeRelation(player.playerId, ref))) {
 			throw new HttpError(404, 'You have not muted or blocked that player.');
 		}
+		// An unblock lets two people at a table hear each other again (P4C.5).
+		await tables?.voiceRefresh(player.playerId);
 		return relationsResponse(player.playerId);
 	};
 
@@ -442,7 +445,19 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 			const runner = tables.lobbyRunner(asked.table_id, player.playerId);
 			const target = tables.personAt(runner, asked.seat, player.playerId);
 			await site.setRelation(player.playerId, target, asked.kind);
+			// A block stops the two hearing each other in voice at once (P4C.5).
+			if (asked.kind === 'block') await tables.voiceRefresh(player.playerId);
 			return relationsResponse(player.playerId);
+		};
+
+		/** A voice token for the person in a seat at this table (P4C.5, Q-10). */
+		const voiceToken: Route = async (request, [tableId]) => {
+			const player = await playerOf(request);
+			if (tables.voice === null) throw new HttpError(503, 'Voice is not available here.');
+			const runner = tables.lobbyRunner(tableId, player.playerId);
+			const { token, seat } = await tables.voice.token(runner, player.playerId);
+			const response: VoiceTokenResponse = { table: tableId, seat, token, url: VOICE_PATH };
+			return json(response);
 		};
 
 		routes.find((r) => r.pattern.source === '^\\/api\\/relations$')!.methods.PUT = setRelation;
@@ -459,7 +474,8 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 			},
 			{ pattern: /^\/api\/quick-seat$/, methods: { POST: quickSeat } },
 			{ pattern: /^\/api\/practice$/, methods: { POST: practice } },
-			{ pattern: /^\/api\/reports$/, methods: { POST: report } }
+			{ pattern: /^\/api\/reports$/, methods: { POST: report } },
+			{ pattern: /^\/api\/tables\/([^/]+)\/voice$/, methods: { POST: voiceToken } }
 		);
 	}
 

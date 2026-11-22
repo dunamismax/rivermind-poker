@@ -37,6 +37,9 @@ Environment=SHUTDOWN_TIMEOUT=10
 # The TypeScript API and table server (P4B.5a, P4B.5b). Hand pause, bot delay
 # and the table limit keep their defaults (3 s, 0.6 s, 200).
 Environment=RIVERMIND_API=1
+# Table voice (P4C.5): seated people get voice tokens, and each table's list of
+# who is in voice goes to rivermind-poker-voice on loopback as it changes.
+Environment=RIVERMIND_VOICE_URL=http://127.0.0.1:4323
 # The promoted models (P5.7a, docs/models.md). The heads-up champion plays as
 # RiverMind Hard once every file of its bundle here matches the registry this
 # release was built with; deploy/update.sh checks that before the site changes.

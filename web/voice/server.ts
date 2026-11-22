@@ -28,14 +28,17 @@
 //
 // /healthz answers {"status":"ok","revision":"<commit>","media":"ok","address":"ok"},
 // and 503 when the media worker is gone or the announced name never resolved.
+// POST /seats takes the table server's list of who may be in a table's room,
+// signed with the voice key (src/lib/server/voice/seats.ts, P4C.5): 204, or 401.
 import { existsSync, readFileSync } from 'node:fs';
-import { createServer, type IncomingMessage } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { resolve } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { AddressWatch } from '../src/lib/server/voice/address.ts';
 import { consoleLog } from '../src/lib/server/voice/log.ts';
 import { Media } from '../src/lib/server/voice/media.ts';
+import { MAX_SEATS_BYTES, SEATS_PATH, readSeats } from '../src/lib/server/voice/seats.ts';
 import { VoiceService } from '../src/lib/server/voice/service.ts';
 import { voiceKey } from '../src/lib/server/voice/tokens.ts';
 import { CLOSE, MAX_MESSAGE_BYTES, VOICE_PATH } from '../src/lib/voice/signalling.ts';
@@ -128,8 +131,48 @@ media.ondied = () => {
 watch?.start();
 
 const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
+// The table server's seat lists. Only it holds the voice key they are signed with.
+function seats(request: IncomingMessage, response: ServerResponse): void {
+	const chunks: Buffer[] = [];
+	let size = 0;
+	request.on('data', (chunk: Buffer) => {
+		size += chunk.length;
+		if (size > MAX_SEATS_BYTES) request.destroy();
+		else chunks.push(chunk);
+	});
+	request.on('end', () => {
+		const header = (name: string) => {
+			const value = request.headers[name];
+			return Array.isArray(value) ? undefined : value;
+		};
+		const list = readSeats(
+			key,
+			Buffer.concat(chunks).toString('utf8'),
+			header('x-voice-time'),
+			header('x-voice-signature'),
+			Date.now()
+		);
+		if (!list) {
+			log('refused a seat list that was not signed with the voice key');
+			response.writeHead(401).end();
+			return;
+		}
+		service.seats(list).then(
+			() => response.writeHead(204).end(),
+			(error: unknown) => {
+				log(`a seat list failed: ${error instanceof Error ? error.message : error}`);
+				response.writeHead(500).end();
+			}
+		);
+	});
+}
+
 const http = createServer((request, response) => {
 	const path = (request.url ?? '/').split('?')[0];
+	if (path === SEATS_PATH && request.method === 'POST') {
+		seats(request, response);
+		return;
+	}
 	if (path !== '/healthz') {
 		response.writeHead(404, { 'content-type': 'text/plain' }).end('not found\n');
 		return;

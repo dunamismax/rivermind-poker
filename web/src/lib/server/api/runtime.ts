@@ -11,6 +11,9 @@
  *                              the tables themselves, which are then restored at
  *                              start-up; without one everything lives in memory.
  *   RIVERMIND_ALLOWED_ORIGINS  other origins whose pages may use the API, comma-separated.
+ *   RIVERMIND_VOICE_URL        the voice service on loopback, such as http://127.0.0.1:4323
+ *                              (P4C.5): with it, seated people get voice tokens and the
+ *                              voice service hears who each table has in voice.
  *   RIVERMIND_PRACTICE_STACK   the chips a practice table gives (10,000).
  *   RIVERMIND_HAND_PAUSE       seconds between hands (3).
  *   RIVERMIND_BOT_DELAY        seconds a bot waits before acting (0.6).
@@ -60,6 +63,8 @@ import type { Secret } from './auth.ts';
 import { Site, type TrainedBot } from './site.ts';
 import { createSocketServer, type SocketServer } from './socket.ts';
 import { Tables } from './tables.ts';
+import { Voice, httpVoiceLink } from './voice.ts';
+import { voiceKey } from '../voice/tokens.ts';
 
 export const SECRET_ENV = 'RIVERMIND_SECRET';
 export const SECRET_FILE_ENV = 'RIVERMIND_SECRET_FILE';
@@ -202,11 +207,22 @@ export function createRuntime(env: Env = process.env): Runtime {
 	const botDelay = numberFrom(env, 'RIVERMIND_BOT_DELAY', 0);
 	if (handPause !== undefined) runner.handPause = handPause;
 	if (botDelay !== undefined) runner.botDelay = botDelay;
+	const log = consoleLog;
+	const voice = env.RIVERMIND_VOICE_URL
+		? new Voice({
+				secret,
+				link: httpVoiceLink(env.RIVERMIND_VOICE_URL, voiceKey(secret), log),
+				blocksOf: (playerId) => site.safety.blocksInvolving(playerId),
+				now: () => Date.now() / 1000,
+				log
+			})
+		: null;
 	const tables = new Tables(site, {
 		bots: { ...defaultBots(), ...trainedBots },
 		runner,
 		maxTables: numberFrom(env, 'RIVERMIND_MAX_TABLES', 1),
-		store: db ? new TableStore(db) : null
+		store: db ? new TableStore(db) : null,
+		voice
 	});
 	const checks: Record<string, () => Promise<boolean>> = {};
 	if (pool) checks.database = async () => (await pool.query('select 1 as ok')).rows[0]?.ok === 1;

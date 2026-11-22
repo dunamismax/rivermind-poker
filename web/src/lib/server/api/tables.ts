@@ -32,6 +32,7 @@
  * until they rejoin.
  */
 import { randomBytes } from 'node:crypto';
+import type { Voice } from './voice.ts';
 import type * as p from '../../protocol-v2.ts';
 import { defaultBots } from '../bots/policies.ts';
 import { FormatError } from '../engine/history.ts';
@@ -149,6 +150,8 @@ export interface TablesOptions {
 	inviteCodes?: () => string;
 	/** Called with each new or restored table before its loop starts, to listen to it from its first change. */
 	onTable?: (runner: TableRunner) => void;
+	/** Table voice (P4C.5): told who each table has in voice whenever that changes. */
+	voice?: Voice | null;
 	log?: Log;
 }
 
@@ -174,6 +177,7 @@ export class Tables {
 	private signalled = new Set<string>();
 	private readonly inviteCodes: () => string;
 	private readonly onTable: ((runner: TableRunner) => void) | null;
+	readonly voice: Voice | null;
 	private readonly log: Log;
 	private started = false;
 
@@ -187,6 +191,7 @@ export class Tables {
 		this.store = options.store ?? null;
 		this.inviteCodes = options.inviteCodes ?? (() => randomBytes(12).toString('base64url'));
 		this.onTable = options.onTable ?? null;
+		this.voice = options.voice ?? null;
 		this.manager = new TableManager(
 			this.bots,
 			this.options,
@@ -208,6 +213,14 @@ export class Tables {
 		await this.manager.shutdown();
 	}
 
+	/** Send voice the lists of every table `playerId` sits at again, as after a block (P4C.5). */
+	async voiceRefresh(playerId: string): Promise<void> {
+		if (this.voice === null) return;
+		for (const runner of [...this.manager.tables.values()]) {
+			if (runner.table.seatOf(playerId) !== null) await this.voice.refresh(runner);
+		}
+	}
+
 	/** Resolves once every table being closed has closed (for tests). */
 	async settled(): Promise<void> {
 		while (this.closing.size) await Promise.allSettled([...this.closing.values()]);
@@ -222,6 +235,7 @@ export class Tables {
 			runner.beforePublish.push((r) => this.rememberHands(r));
 		}
 		runner.listeners.push((r, events) => this.watchTable(r, events));
+		this.voice?.watch(runner);
 		this.onTable?.(runner);
 	}
 
@@ -820,6 +834,7 @@ export class Tables {
 		await Promise.resolve();
 		const runner = this.manager.get(tableId);
 		await this.manager.close(tableId);
+		void this.voice?.closed(tableId);
 		// Anyone still seated (an idle table is evicted) gets their chips back.
 		const credits = runner === null ? [] : seatedChips(runner);
 		if (this.store !== null) {

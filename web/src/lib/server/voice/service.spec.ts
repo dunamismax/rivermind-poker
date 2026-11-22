@@ -3,6 +3,8 @@
 // in, how it carries the group, how it carries audio, and what it logs.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { guestName, publicRef } from '../api/auth.ts';
+import { Player, SECRET, TestServer, quietLog } from '../api/tables.testing.ts';
+import { Voice } from '../api/voice.ts';
 import { Member, type Identity } from '../../voice/group.ts';
 import {
 	CLOSE,
@@ -78,8 +80,8 @@ class Page {
 	#noticeWaiters: (() => void)[] = [];
 	session: Session;
 
-	constructor(service: VoiceService, seat: number) {
-		this.identity = who(seat);
+	constructor(service: VoiceService, seat: number, identity: Identity = who(seat)) {
+		this.identity = identity;
 		this.session = service.open({
 			send: (text) => {
 				const message = JSON.parse(text) as ServerMessage;
@@ -562,11 +564,15 @@ describe('audio, through the room', () => {
 		await a.ok('producer.pause', {});
 		await a.ok('producer.resume', {});
 
-		// a leaves: b's consumer of a's audio ends.
+		// a leaves: b's consumer of a's audio ends, then b hears a has gone.
 		a.leave();
 		const notices = await b.notices(2);
-		expect(notices).toContainEqual({ notice: 'consumer.closed', consumer: consumed.consumer });
-		expect(notices).toContainEqual({ notice: 'left', peer: a.welcome!.peer });
+		expect(notices.slice(0, 2)).toEqual([
+			{ notice: 'consumer.closed', consumer: consumed.consumer },
+			{ notice: 'left', peer: a.welcome!.peer }
+		]);
+		await settle();
+		expect(b.pending().filter(({ notice }) => notice === 'consumer.closed')).toEqual([]);
 		b.leave();
 	});
 
@@ -591,6 +597,158 @@ describe('audio, through the room', () => {
 		expect(a.member!.epoch).toBe(0n);
 		await media.announce(null);
 		a.leave();
+	});
+});
+
+describe("the table's word on who is in voice (P4C.5)", () => {
+	const listOf = (at: number, seats: number[], blocks: [number, number][] = []) => ({
+		table: TABLE,
+		at,
+		seats: seats.map((seat) => ({ seat, player: who(seat).player })),
+		blocks: blocks.map(([a, b]) => [who(a).player, who(b).player] as [string, string])
+	});
+
+	it('lets in only who the table lists, and takes out at once whoever leaves the list', async () => {
+		const voice = service();
+		const [a, b, c] = [new Page(voice, 0), new Page(voice, 1), new Page(voice, 2)];
+		for (const page of [a, b, c]) {
+			await page.hello();
+			await page.joinGroup();
+			for (const other of [a, b, c])
+				if (other !== page && other.member) await other.apply(other.pending());
+		}
+		await settle();
+		for (const page of [a, b, c]) await page.apply(page.pending());
+		const before = await agree([a, b, c]);
+		expect(await voice.seats(listOf(1, [0, 1, 2]))).toBe(true);
+		// Someone the list does not name is refused, though their token is genuine.
+		const stranger = new Page(voice, 5);
+		expect(await stranger.hello()).toEqual({ id: 1, ok: false, error: 'not-seated' });
+		expect(stranger.closed?.code).toBe(CLOSE.unseated);
+		// c stands up: the table's next list leaves them out, and they are taken out.
+		expect(await voice.seats(listOf(2, [0, 1]))).toBe(true);
+		expect(c.closed?.code).toBe(CLOSE.unseated);
+		for (const page of [a, b]) {
+			const rest = await page.apply(await page.notices(2));
+			expect(rest).toEqual([{ notice: 'left', peer: c.welcome!.peer }]);
+		}
+		expect((await a.commit()).ok).toBe(true);
+		await b.apply(await b.notices());
+		const after = await agree([a, b]);
+		expect(after).not.toBe(before);
+		expect(hex(await c.member!.baseKey())).not.toBe(after);
+		// An older list changes nothing.
+		expect(await voice.seats(listOf(1, [0, 1, 2]))).toBe(false);
+		const again = new Page(voice, 2);
+		expect(await again.hello()).toMatchObject({ ok: false, error: 'not-seated' });
+		// The list that empties the room takes out everyone.
+		expect(await voice.seats(listOf(3, []))).toBe(true);
+		expect([a.closed?.code, b.closed?.code]).toEqual([CLOSE.unseated, CLOSE.unseated]);
+		await settle();
+		expect(voice.counts).toEqual({ rooms: 0, people: 0 });
+		expect(lines).toContain('refused a socket: not seated');
+	});
+
+	it('never lets two people hear each other once either has blocked the other', async () => {
+		const voice = service();
+		await voice.seats(listOf(clock * 1000, [0, 1, 2]));
+		const [a, b, c] = [new Page(voice, 0), new Page(voice, 1), new Page(voice, 2)];
+		const producers: string[] = [];
+		const receivers: string[] = [];
+		for (const page of [a, b, c]) {
+			await page.hello();
+			await page.joinGroup();
+			const send = await page.ok('transport.create', { direction: 'send' });
+			producers.push(
+				(
+					await page.ok('produce', {
+						transport: send.transport,
+						rtpParameters: OPUS(7000 + page.identity.seat) as never
+					})
+				).producer
+			);
+			receivers.push((await page.ok('transport.create', { direction: 'recv' })).transport);
+		}
+		const consume = (page: Page, index: number, from: number) =>
+			page.ask('consume', {
+				transport: receivers[index],
+				producer: producers[from],
+				rtpCapabilities: page.welcome!.routerRtpCapabilities
+			});
+		const heard = (await consume(b, 1, 0)) as unknown as { consumer: string };
+		expect((await consume(c, 2, 0)).ok).toBe(true);
+		b.pending();
+		// b blocks a: b stops hearing a at once, and neither can hear the other again.
+		expect(await voice.seats(listOf(clock * 1000 + 1, [0, 1, 2], [[1, 0]]))).toBe(true);
+		expect(b.pending()).toContainEqual({ notice: 'consumer.closed', consumer: heard.consumer });
+		expect(await consume(b, 1, 0)).toMatchObject({ ok: false, error: 'not-allowed' });
+		expect(await consume(a, 0, 1)).toMatchObject({ ok: false, error: 'not-allowed' });
+		// Everyone else hears both, and nobody left the room.
+		expect((await consume(c, 2, 1)).ok).toBe(true);
+		expect((await consume(a, 0, 2)).ok).toBe(true);
+		expect([a, b, c].map((page) => page.closed)).toEqual([null, null, null]);
+		for (const page of [a, b, c]) page.leave();
+	});
+});
+
+describe('the table server and the voice service together (P4C.5)', () => {
+	it('takes someone who stands up out of the room within a second, and the rest move on', async () => {
+		const voice = new VoiceService({
+			key: voiceKey(SECRET),
+			media,
+			log: (line) => lines.push(line),
+			now: () => clock
+		});
+		let server: TestServer | null = null;
+		const tableVoice = new Voice({
+			secret: SECRET,
+			link: { send: async (list) => void (await voice.seats(list)) },
+			blocksOf: (playerId) => server!.site.safety.blocksInvolving(playerId),
+			now: () => clock,
+			log: quietLog()
+		});
+		server = await new TestServer({ tables: { voice: tableVoice } }).start();
+		const players = [
+			await Player.create(server),
+			await Player.create(server),
+			await Player.create(server)
+		];
+		const tableId = await players[0].newTable(3, null);
+		for (const seat of [1, 2]) {
+			const response = await players[seat].request('POST', `/api/tables/${tableId}/seat`, { seat });
+			expect(response.status).toBe(200);
+		}
+		await server.settle();
+		const pages: Page[] = [];
+		for (const [seat, player] of players.entries()) {
+			const response = await player.request('POST', `/api/tables/${tableId}/voice`);
+			const { token } = (await response.json()) as { token: string };
+			const page = new Page(voice, seat, { seat, player: publicRef(player.playerId) });
+			expect((await page.hello(token, tableId)).ok).toBe(true);
+			await page.joinGroup();
+			for (const other of pages) await other.apply(other.pending());
+			pages.push(page);
+		}
+		await settle();
+		for (const page of pages) await page.apply(page.pending());
+		const before = await agree(pages);
+		// The third person stands up.
+		const started = performance.now();
+		await server.runner(tableId).leave(players[2].playerId);
+		await server.settle();
+		await tableVoice.settled();
+		expect(pages[2].closed?.code).toBe(CLOSE.unseated);
+		expect(performance.now() - started).toBeLessThan(1000);
+		const [a, b] = pages;
+		for (const page of [a, b]) await page.apply(await page.notices(2));
+		expect((await a.commit()).ok).toBe(true);
+		await b.apply(await b.notices());
+		expect(await agree([a, b])).not.toBe(before);
+		// A token for the seat they left is no use to them now.
+		const late = await players[2].request('POST', `/api/tables/${tableId}/voice`);
+		expect(late.status).toBe(403);
+		for (const page of [a, b]) page.leave();
+		await server.stop();
 	});
 });
 

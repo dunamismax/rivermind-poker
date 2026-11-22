@@ -31,6 +31,7 @@ import {
 } from '../../voice/signalling.ts';
 import { redact, type Log } from './log.ts';
 import { AUDIO_LEVEL_URI, type Media } from './media.ts';
+import type { SeatList } from './seats.ts';
 import { TokenLedger, readToken } from './tokens.ts';
 
 // A room holds at most one socket a seat, and a table has nine.
@@ -87,6 +88,14 @@ type Peer = {
 };
 
 type Accepted = Extract<Outcome, { accepted: true }>;
+
+// Who a table lets into its voice room, from its last seat list (seats.ts).
+type Allowed = { at: number; seats: Set<string>; blocks: Set<string> };
+const seatKey = ({ seat, player }: Identity) => `${seat}:${player}`;
+const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+// A list that empties a room is kept this long, so a token issued just before
+// it cannot open the room again.
+const EMPTY_KEPT_MS = 120_000;
 type Request = Exclude<ClientMessage, { type: 'hello' }>;
 type Reply = (result: object) => void;
 
@@ -180,6 +189,7 @@ export class VoiceService {
 	#ledger = new TokenLedger();
 	#rooms = new Map<string, Room>();
 	#opening = new Map<string, Promise<Room>>();
+	#allowed = new Map<string, Allowed>();
 	#roomsOpened = 0;
 	#closing = false;
 
@@ -253,8 +263,15 @@ export class VoiceService {
 					answer({ ...welcome, id: message.id, ok: true });
 				} catch (error) {
 					refuse(message.id, error);
-					const unauthorised = error instanceof Failure && error.code === 'bad-token';
-					shut(unauthorised ? CLOSE.unauthorised : CLOSE.protocol, 'hello refused');
+					const code = error instanceof Failure ? error.code : 'failed';
+					shut(
+						code === 'bad-token'
+							? CLOSE.unauthorised
+							: code === 'not-seated'
+								? CLOSE.unseated
+								: CLOSE.protocol,
+						'hello refused'
+					);
 				}
 				return;
 			}
@@ -357,6 +374,13 @@ export class VoiceService {
 			const room = await this.#roomFor(token.table);
 			const entered = await room.serial(async () => {
 				if (this.#rooms.get(token.table) !== room) return null;
+				// The table has the last word on who is seated. Before it has said
+				// (the voice service has just started), the token alone admits.
+				const allowed = this.#allowed.get(token.table);
+				if (allowed && !allowed.seats.has(seatKey(identity))) {
+					this.#log('refused a socket: not seated');
+					fail('not-seated');
+				}
 				// One socket a seat: a page that comes back, or a new holder of the seat,
 				// takes the place of whoever had it.
 				for (const other of [...room.peers.values()]) {
@@ -404,6 +428,18 @@ export class VoiceService {
 	async #depart(room: Room, peer: Peer): Promise<void> {
 		if (room.peers.get(peer.id) !== peer) return;
 		room.peers.delete(peer.id);
+		// Their audio ends for everyone now, before anyone hears they left, rather
+		// than whenever mediasoup reports the producer closed.
+		if (peer.producer) {
+			for (const other of room.peers.values()) {
+				for (const consumer of [...other.consumers.values()]) {
+					if (consumer.producerId !== peer.producer.id) continue;
+					other.consumers.delete(consumer.id);
+					consumer.close();
+					room.tell(other, { notice: 'consumer.closed', consumer: consumer.id });
+				}
+			}
+		}
 		peer.send?.close();
 		peer.recv?.close();
 		room.tellAll({ notice: 'left', peer: peer.id });
@@ -512,6 +548,8 @@ export class VoiceService {
 				if (!isId(message.producer)) fail('bad-request');
 				const owner = [...room.peers.values()].find((one) => one.producer?.id === message.producer);
 				if (!owner || owner === peer) fail('unknown');
+				// Either of two people who blocked the other never hears the other (P4.5).
+				if (this.#blocked(room, peer, owner)) fail('not-allowed');
 				if (peer.consumers.size >= MAX_PEERS) fail('too-many');
 				for (const one of peer.consumers.values()) {
 					if (one.producerId === message.producer) fail('too-many');
@@ -528,7 +566,8 @@ export class VoiceService {
 				});
 				peer.consumers.set(consumer.id, consumer);
 				consumer.on('producerclose', () => {
-					peer.consumers.delete(consumer.id);
+					// Unless the service closed it first, as a departure or a block does.
+					if (!peer.consumers.delete(consumer.id)) return;
 					if (room.peers.get(peer.id) === peer) {
 						room.tell(peer, { notice: 'consumer.closed', consumer: consumer.id });
 					}
@@ -593,6 +632,50 @@ export class VoiceService {
 				}
 			}
 		}
+	}
+
+	#blocked(room: Room, a: Peer, b: Peer): boolean {
+		const allowed = this.#allowed.get(room.table);
+		return allowed?.blocks.has(pairKey(a.identity.player, b.identity.player)) ?? false;
+	}
+
+	// The table server's list of who may be in a table's voice room (seats.ts).
+	// Anyone in the room the list no longer names is taken out at once, and the
+	// group is asked to remove their leaf; anyone now blocked by or blocking
+	// someone stops hearing them. False when the list is older than one applied.
+	async seats(list: SeatList): Promise<boolean> {
+		const known = this.#allowed.get(list.table);
+		if (known && list.at <= known.at) return false;
+		const allowed: Allowed = {
+			at: list.at,
+			seats: new Set(list.seats.map(seatKey)),
+			blocks: new Set(list.blocks.map(([a, b]) => pairKey(a, b)))
+		};
+		this.#allowed.set(list.table, allowed);
+		for (const [table, one] of this.#allowed) {
+			if (one.seats.size === 0 && one.at < list.at - EMPTY_KEPT_MS) this.#allowed.delete(table);
+		}
+		const room = this.#rooms.get(list.table);
+		if (!room) return true;
+		await room.serial(async () => {
+			for (const peer of [...room.peers.values()]) {
+				if (allowed.seats.has(seatKey(peer.identity))) continue;
+				peer.transport.close(CLOSE.unseated, 'not seated at the table');
+				await this.#depart(room, peer);
+			}
+			for (const peer of room.peers.values()) {
+				for (const consumer of [...peer.consumers.values()]) {
+					const owner = [...room.peers.values()].find(
+						(one) => one.producer?.id === consumer.producerId
+					);
+					if (!owner || !this.#blocked(room, peer, owner)) continue;
+					consumer.close();
+					peer.consumers.delete(consumer.id);
+					room.tell(peer, { notice: 'consumer.closed', consumer: consumer.id });
+				}
+			}
+		});
+		return true;
 	}
 
 	// The media server started again: every transport, producer and consumer is gone.
