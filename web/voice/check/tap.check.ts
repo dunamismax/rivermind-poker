@@ -30,7 +30,11 @@ const tapped = async (): Promise<TapCapture[]> =>
 	(await fetch(`http://127.0.0.1:${TAP_READ_PORT}/tap`)).json();
 
 // One frame the listener kept, with what its SFrame header says in the clear.
-type Frame = { producer: string; sender: number; epoch: number; payload: string };
+// `silent` is a frame whose sealed part is empty: what an encoder sends for
+// silence (DTX), as Chromium does between its fake microphone's beeps on
+// Linux. It is a frame like any other, a header and a tag over nothing, and
+// opens only under its epoch's key; there is no sound in it to decode.
+type Frame = { producer: string; sender: number; epoch: number; payload: string; silent: boolean };
 
 function framesOf(captures: TapCapture[]): Frame[] {
 	return captures.flatMap(({ producer, packets }) =>
@@ -42,8 +46,9 @@ function framesOf(captures: TapCapture[]): Frame[] {
 				producer,
 				// -1 where the payload is not an SFrame frame at all.
 				sender: parts?.sender ?? -1,
-				epoch: header && bytes.length > header.length + TAG_BYTES ? (parts?.slot ?? -1) : -1,
-				payload
+				epoch: header && bytes.length >= header.length + TAG_BYTES ? (parts?.slot ?? -1) : -1,
+				payload,
+				silent: header !== null && bytes.length === header.length + TAG_BYTES
 			};
 		})
 	);
@@ -188,7 +193,7 @@ test('a listener at the SFU with no key gets every frame and hears none; who arr
 		for (const sender of [0, 1, 2]) {
 			const run = frames
 				.map((frame, index) => ({ frame, index }))
-				.filter(({ frame }) => frame.sender === sender && frame.epoch === 2);
+				.filter(({ frame }) => frame.sender === sender && frame.epoch === 2 && !frame.silent);
 			const middle = run.slice(Math.max(0, Math.floor(run.length / 2) - 75)).slice(0, 150);
 			const raw = middle.map(({ frame }) => frame.payload);
 			const plain = middle.map(({ index }) => opened.get(b)![index]!);
@@ -205,12 +210,19 @@ test('a listener at the SFU with no key gets every frame and hears none; who arr
 			);
 			expect(heardThem.decoder).toBe(true);
 			expect(heardThem.failed).toBe(0);
-			expect(heardThem.prominence!, `sender ${sender}: a tone, opened`).toBeGreaterThan(20);
-			// Whatever the decoder makes of the copy, there is no tone in it.
+			// A steady tone stands 27 to 74 dB out. Chromium's fake microphone on
+			// Linux beeps, and its beep stands 16 dB out of a stretch that holds
+			// only part of one.
+			expect(heardThem.prominence!, `sender ${sender}: a tone, opened`).toBeGreaterThan(12);
+			// Whatever the decoder makes of the copy, there is no tone in it: nothing
+			// stands out at that pitch, and what opens stands well clear of it.
 			if (tappedThem.failed < raw.length) expect(tappedThem.samples).toBeGreaterThan(4800);
-			expect(tappedThem.prominenceAt ?? 0, `sender ${sender}: the tone, as tapped`).toBeLessThan(
-				10
-			);
+			const copy = tappedThem.prominenceAt ?? 0;
+			expect(copy, `sender ${sender}: the tone, as tapped`).toBeLessThan(10);
+			expect(
+				heardThem.prominence! - copy,
+				`sender ${sender}: opened against tapped`
+			).toBeGreaterThan(10);
 		}
 		await ownBrowser?.close();
 		for (const person of [a, b, c]) await person.page.context().close();

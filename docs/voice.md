@@ -506,7 +506,7 @@ How the network change is checked: a UDP relay ([`relay.ts`](../web/voice/check/
 
 ### Capacity
 
-**The uplink.** Voice leaves the host over the home line. This Mac is on the same line (it reaches the internet from the address `rivermindpoker.com` resolves to), and from it 200 MB went up to Cloudflare's speed-test endpoint at 556, 578 and 686 Mbps, with 776 Mbps coming down and 11 ms to the nearest edge. That is the line; whether ubuntu-vm's own path to it (a VM on a Windows host) is as fast is still to measure there.
+**The uplink.** Voice leaves the host over the home line. This Mac is on the same line (it reaches the internet from the address `rivermindpoker.com` resolves to), and from it 200 MB went up to Cloudflare's speed-test endpoint at 556, 578 and 686 Mbps, with 776 Mbps coming down and 11 ms to the nearest edge. That is the line. From ubuntu-vm itself (a VM on a Windows host), once it could be reached, the same 200 MB went up at 385, 477 and 484 Mbps.
 
 **What a room costs.** `pnpm voice:load` fills a mediasoup worker, set up as the service sets its own, with rooms of nine whose audio arrives encrypted and is forwarded, encrypted again, to the other eight: the work of a call without the browsers. On this Mac (Apple M5, load 5 to 10), fifteen seconds each:
 
@@ -522,17 +522,31 @@ How the network change is checked: a UDP relay ([`relay.ts`](../web/voice/check/
 | 8 | 16 | 11.1% | 41 MB | 11.6 Mbps |
 | 16 | 32 | 21.4% | 84 MB | 23.1 Mbps |
 
-One room with everyone talking reads as P4C.1's nine real browsers did (6.6 Mbps, 6 to 12% of a core, 14 MB), so the tool stands in for them. “Sent” is as mediasoup counts it; the UDP and IP headers add an eighth, 7.4 Mbps on the wire for a room with all nine talking and 1.6 Mbps with two. A room where two people talk at once, which is what a table sounds like, costs a quarter of one where all nine do. Memory follows the streams in flight, about 14 MB a room at the worst.
+The same on ubuntu-vm (AMD Ryzen 7 5800H, six cores given to the VM, Linux x64, load 0.4), from the tree the deploy of `28fd8d2` had built, beside the live services:
 
-**The limit.** The voice service takes `VOICE_MAX_ROOMS` and `VOICE_MAX_PEOPLE`. At either, a hello is refused with `full` and the socket closed with 4503; the table says “Table voice is full right now” and offers to try again, and plays on. Someone coming back to their own seat is not counted twice, a room nobody is in is closed at once and frees its place, and a room that comes back after a restart to find no place is told the same, not left trying. The live unit sets **8 rooms and 72 people**, which on these figures is cautious:
+| Rooms of nine | Talking at once | Worker, of one core | Worker memory | Sent |
+| --- | --- | --- | --- | --- |
+| 1 | all 9 | 7.4% | 26 MB | 6.5 Mbps |
+| 2 | all 18 | 13.1% | 39 MB | 13.0 Mbps |
+| 4 | all 36 | 23.6% | 65 MB | 26.0 Mbps |
+| 8 | all 72 | 44.5% | 118 MB | 52.1 Mbps |
+| 16 | all 144 | 81.1% | 224 MB | 104.1 Mbps |
+| 1 | 2 | 2.7% | 17 MB | 1.4 Mbps |
+| 4 | 8 | 7.5% | 31 MB | 5.8 Mbps |
+| 8 | 16 | 12.7% | 46 MB | 11.6 Mbps |
+| 16 | 32 | 23.5% | 79 MB | 23.1 Mbps |
+
+The host's core does the work at about half this Mac's speed, and its memory is the same. One room with everyone talking reads as P4C.1's nine real browsers did (6.6 Mbps, 6 to 12% of a core, 14 MB), so the tool stands in for them. “Sent” is as mediasoup counts it; the UDP and IP headers add an eighth, 7.4 Mbps on the wire for a room with all nine talking and 1.6 Mbps with two. A room where two people talk at once, which is what a table sounds like, costs a quarter of one where all nine do. Memory follows the streams in flight, about 14 MB a room at the worst.
+
+**The limit.** The voice service takes `VOICE_MAX_ROOMS` and `VOICE_MAX_PEOPLE`. At either, a hello is refused with `full` and the socket closed with 4503; the table says “Table voice is full right now” and offers to try again, and plays on. Someone coming back to their own seat is not counted twice, a room nobody is in is closed at once and frees its place, and a room that comes back after a restart to find no place is told the same, not left trying. The live unit sets **8 rooms and 72 people**, which the host's own figures bear out:
 
 | | 8 rooms, all 72 talking | 8 rooms, two talking in each | The host's limit |
 | --- | --- | --- | --- |
-| Uplink | 59 Mbps | 13 Mbps | 70% of the line, about 390 Mbps of 556 |
-| Worker memory | 117 MB, beside 75 to 100 MB of Node | 41 MB | `MemoryHigh=256M` |
-| Worker CPU, this Mac | 28% of a core | 11% | one core; ubuntu-vm's is unmeasured |
+| Uplink | 59 Mbps | 13 Mbps | 70% of what the host uploads, about 270 Mbps of 385 |
+| Worker memory | 118 MB, beside 40 to 100 MB of Node | 46 MB | `MemoryHigh=256M` |
+| Worker CPU, on ubuntu-vm | 45% of a core | 13% | one core |
 
-The uplink leaves room for six times that. What holds the number down is what has not been measured: ubuntu-vm's own CPU and its own path to the line. With `pnpm voice:load` run there, and the memory limit raised to match, the limit can follow; nothing on the site needs more yet.
+The uplink would carry four times that. What decides the number is the media worker's one core and the unit's memory: sixteen rooms with everyone talking would take 81% of the core and, with Node, more than `MemoryHigh`. Eight leaves half the core free in the worst case, which no table reaches (everyone at every table talking at once), and nothing on the site needs more yet. To go past it, raise `MemoryHigh` with the limit, and past sixteen or so, give the service a second worker.
 
 **The media port.** P4C.8's review asked for a limit on TCP connections to 3478 from one address, sized here. A person holds two (a send and a receive transport) when their network blocks UDP, and none otherwise; a household or an office behind one address might be a full table, so 9 people and 18 connections. A limit of **32 TCP connections to 3478 per address** leaves that room and stops one address holding hundreds. It is the owner's to apply (P4C.8's Remaining).
 
