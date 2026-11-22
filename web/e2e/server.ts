@@ -11,7 +11,7 @@ import { join, resolve } from 'node:path';
 const WEB = resolve(import.meta.dirname, '..');
 
 /** One child process, started in its own group so a kill reaches everything under it. */
-class Child {
+export class Child {
 	#process: ChildProcess | null = null;
 	#output = '';
 
@@ -93,6 +93,23 @@ const VOICE_SECRET = 'the browser tests of table voice';
 const lan = Object.values(networkInterfaces())
 	.flat()
 	.find((address) => address?.family === 'IPv4' && !address.internal)?.address;
+
+/**
+ * The site with seeded decks and bots (e2e/seeded-server.ts): its first table
+ * deals from `seed`, so a test that plays it the same way sees the same hands.
+ */
+export function seededServer(port: number, seed: number): { url: string; server: Child } {
+	const url = `http://127.0.0.1:${port}`;
+	const server = new Child(
+		'the seeded test site',
+		`${url}/healthz`,
+		process.execPath,
+		['e2e/seeded-server.ts'],
+		WEB,
+		{ ...process.env, PORT: String(port), SEED: String(seed), PRACTICE_STACK }
+	);
+	return { url, server };
+}
 
 export class TableServer {
 	/** The site's origin: the Node server. */

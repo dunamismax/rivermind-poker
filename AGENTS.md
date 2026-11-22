@@ -159,7 +159,9 @@ web/                             SvelteKit app (Node 26.13.1 from web/.node-vers
                                  Playwright checks (`pnpm voice:proto`); not part of the site or its build
   e2e/                           Playwright tests against the Node table server; journey.e2e.ts against one
                                  on PostgreSQL; *.live.ts run against the live site; visual/ holds the
-                                 screenshot comparison's scenes and its seeded test-only server
+                                 screenshot comparison's scenes and its seeded test-only server;
+                                 seeded-server.ts is the site with seeded decks, for a test that needs a
+                                 hand to go one way
 rivermind/engine/                reference no-limit engine, fuzz, bench, differential reference writer
 rivermind/bots/                  simple bots, cards/ (card tables), blueprint/ (training, policy, bundles),
                                  match.py (evaluation), differential.py (bot parity reference)
@@ -418,7 +420,7 @@ Keep the `poker_ai` Python namespace and the legacy `poker_ai` command. Existing
 - The lobby lists every open table on the test server, each with its own “Sit down”, and has its own “Blinds” filter. Reach the new-table form through `newTableForm()` and a listed table through its `li[data-table]` row.
 - After an action the panel stays up, disabled, until the table answers. Decide on an enabled button and click it by its exact label, as `playUntil` does: a click on a stale decision waits and lands on the next turn’s button. Give every check of a button’s state a timeout.
 - `playUntil` acts between two looks at its condition, so never use it to wait for our own turn: it can act on a panel that came up after it looked, and then report the turn that action ended. `ourTurn` in `e2e/review.ts` waits without acting.
-- RiverMind Easy folds to almost every raise, so a guest who shoves or folds rarely busts. The browser tests’ server runs `--practice_stack 300`, and a test that needs a bust checks or calls every turn: in a 40-seed simulation that busted every guest within 94 hands.
+- RiverMind Easy folds to almost every raise, so a guest who shoves or folds rarely busts, and it often folds to a short stack's blind, so one who folds everything can trade blinds with it for minutes. On live random cards a guest who checks or calls every turn busts in 3 to 72 seconds, and now and then not within any limit. A test that needs a bust therefore runs against a site of its own whose table is seeded (`seededServer` in `e2e/server.ts`, which starts `e2e/seeded-server.ts`), where the same play busts in the same hand every run; `practice.e2e.ts` says how to pick a seed again after a change to the engine or the bot.
 - Playwright empties its output directory when a run starts. A second run with the same configuration in `web/` deletes the first one's traces, and its tests then fail on `ENOENT`. `pnpm visual` has its own directory for that reason; do not start a second `pnpm e2e` beside a running one.
 - `pnpm e2e` and `pnpm visual` build the working tree when they start (unless `E2E_SKIP_BUILD` is set). Capture every “before” run of a screenshot comparison before the first edit, or from a copy of the commit (`git archive HEAD web`, its own `pnpm install --frozen-lockfile`, `E2E_MODELS_TAG` set, and `VISUAL_OUT` as an absolute path). A second “before” run started after editing began captured the half-made change, and the comparison then passed pixels it should have flagged.
 - The trace keeps DOM snapshots but not the screencast (`screenshots: false` in `playwright.config.ts`). The screencast made every WebKit action slow enough to time tests out in CI; don’t turn it back on.
