@@ -53,6 +53,9 @@ export type VoiceRoomOptions = {
 	track: MediaStreamTrack | null;
 	// Who the table shows seated, for the check of the group's members (group-keys.ts).
 	seated: Identity[];
+	// The public references of the people this person has muted (P4.5): their
+	// audio stays paused at the voice service from the start, never sent here.
+	muted?: string[];
 	commitTurnMs?: number;
 	onepoch?: (epoch: Epoch) => void;
 	// A stream was added, or ended.
@@ -62,10 +65,14 @@ export type VoiceRoomOptions = {
 	log?: (line: string) => void;
 };
 
-// One person this page hears.
+// One person this page hears, or would but for a mute.
 export type Heard = {
 	peer: string;
 	leaf: number;
+	// Who the leaf is, by this page's own copy of the group.
+	player: string | null;
+	// Paused at the voice service, so none of their audio reaches this page.
+	muted: boolean;
 	consumer: msc.Consumer;
 	receiver: RTCRtpReceiver | null;
 	track: MediaStreamTrack;
@@ -84,6 +91,7 @@ export class VoiceRoom {
 	#recv: msc.Transport | null = null;
 	#producer: msc.Producer | null = null;
 	#heard = new Map<string, Heard>();
+	#muted: Set<string>;
 	// What the room knows of everyone else.
 	#peers = new Map<string, PeerInfo>();
 	// Group changes, notices and media changes, one at a time, in order.
@@ -102,6 +110,7 @@ export class VoiceRoom {
 		this.#socket = socket;
 		this.#welcome = welcome;
 		this.#identity = { player: welcome.player, seat: welcome.seat };
+		this.#muted = new Set(options.muted ?? []);
 		this.#keys = new EpochKeys(this.#frames);
 		this.#keys.seats(options.seated);
 		this.#frames.onrefused = (asked, error) => this.refused.push(`${asked}: ${error}`);
@@ -147,6 +156,21 @@ export class VoiceRoom {
 
 	tallies(): Promise<Tally[]> {
 		return this.#frames.tallies();
+	}
+
+	// Mute or unmute someone, by public reference. A mute pauses their audio at
+	// the voice service, which then sends this page none of it.
+	mute(player: string, muted: boolean): Promise<void> {
+		return this.#later(async () => {
+			if (muted) this.#muted.add(player);
+			else this.#muted.delete(player);
+			for (const heard of this.#heard.values()) {
+				if (heard.player !== player || heard.muted === muted) continue;
+				const type = muted ? 'consumer.pause' : 'consumer.resume';
+				await this.#socket.request(type, { consumer: heard.consumer.id });
+				heard.muted = muted;
+			}
+		});
 	}
 
 	// The table's seats changed.
@@ -285,9 +309,21 @@ export class VoiceRoom {
 				this.#frames.decrypt(made, `recv-${peer.peer}`, leaf);
 			}
 		});
-		const heard: Heard = { peer: peer.peer, leaf, consumer, receiver, track: consumer.track };
+		const player =
+			this.#member?.roster().find((one) => one.leaf === leaf)?.identity?.player ?? null;
+		const muted = player !== null && this.#muted.has(player);
+		const heard: Heard = {
+			peer: peer.peer,
+			leaf,
+			player,
+			muted,
+			consumer,
+			receiver,
+			track: consumer.track
+		};
 		this.#heard.set(peer.peer, heard);
-		await this.#socket.request('consumer.resume', { consumer: consumer.id });
+		// Consumers start paused at the service; a muted person's stays so.
+		if (!muted) await this.#socket.request('consumer.resume', { consumer: consumer.id });
 		this.#options.onheard?.(heard);
 	}
 

@@ -54,9 +54,16 @@ function joining(engine: string, table: string, seat: number, seated: number[]):
 	};
 }
 
-async function join(browser: Browser, table: string, seat: number, seated: number[]) {
+async function join(
+	browser: Browser,
+	table: string,
+	seat: number,
+	seated: number[],
+	muted: number[] = []
+) {
 	const page = await open(browser);
 	const options = joining(browser.browserType().name(), table, seat, seated);
+	options.muted = muted.map((one) => identity(one).player);
 	await page.evaluate((given) => window.room.join(given), options);
 	return { page, seat };
 }
@@ -176,6 +183,43 @@ test('on a network that blocks UDP, people talk over TCP on the same port', asyn
 		expect(path.recv).toMatch(/^tcp .*:\d+$/);
 	}
 	await browser.close();
+});
+
+test('a mute stops that person’s audio at the service, from the start and when it changes', async ({
+	browser
+}) => {
+	const table = newTable();
+	const seated = [0, 1, 2];
+	const a = await join(browser, table, 0, seated);
+	const b = await join(browser, table, 1, seated);
+	// c has muted b before: b's audio never reaches c's page.
+	const c = await join(browser, table, 2, seated, [1]);
+	const packets = async (listener: Person, from: Person) => {
+		const mine = await report(listener);
+		const leaf = (await report(from)).leaf;
+		return mine.heard.find((one) => one.leaf === leaf)!;
+	};
+	await expect(async () => {
+		expect((await packets(a, b)).packetsReceived).toBeGreaterThan(50);
+		expect((await packets(c, a)).packetsReceived).toBeGreaterThan(50);
+	}).toPass({ timeout: 30_000 });
+	const muted = await packets(c, b);
+	expect(muted).toMatchObject({ player: identity(1).player, muted: true, packetsReceived: 0 });
+	// a mutes b: the service stops sending b's audio to a, and a's count stops.
+	await a.page.evaluate((player) => window.room.mute(player, true), identity(1).player);
+	await a.page.waitForTimeout(300);
+	const stopped = (await packets(a, b)).packetsReceived;
+	await a.page.waitForTimeout(1500);
+	expect((await packets(a, b)).packetsReceived - stopped).toBeLessThan(5);
+	expect((await packets(c, b)).packetsReceived).toBe(0);
+	// Unmuted, b is heard again by each.
+	await a.page.evaluate((player) => window.room.mute(player, false), identity(1).player);
+	await c.page.evaluate((player) => window.room.mute(player, false), identity(1).player);
+	await expect(async () => {
+		expect((await packets(a, b)).packetsReceived - stopped).toBeGreaterThan(25);
+		expect((await packets(c, b)).packetsReceived).toBeGreaterThan(25);
+	}).toPass({ timeout: 30_000 });
+	for (const person of [a, b, c]) await person.page.context().close();
 });
 
 test('a page with a token that is not genuine gets no voice', async ({ browser }) => {

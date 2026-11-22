@@ -349,6 +349,8 @@ RIVERMIND_SECRET=dev VOICE_ORIGINS=http://127.0.0.1:4391 VOICE_LISTEN_IPS=127.0.
 node build/voice/voice.js derive-key < secret   # the voice key for a site secret
 ```
 
+The table server's side (P4C.5) is [`api/voice.ts`](web/src/lib/server/api/voice.ts): `POST /api/tables/{id}/voice` issues a seated person's token, and every change in who a table has in voice sends the voice service a signed list ([`server/voice/seats.ts`](web/src/lib/server/voice/seats.ts)) at `POST /seats`. Both are on when the Node server has `RIVERMIND_VOICE_URL` (the live unit sets `http://127.0.0.1:4323`); without it the token route answers 503 and nothing is sent.
+
 The voice service takes its settings from the environment (the comment at the top of `voice/server.ts` lists them). Locally, `RIVERMIND_SECRET` stands in for the live unit's `VOICE_KEY_FILE`. `pnpm voice:check` starts it from the source on `127.0.0.1:4392`, with media on loopback and this machine's first LAN address (for Firefox) and a secret of the checks' own, and its room checks sign their tokens with the same secret. With `VOICE_REMOTE=1` it starts no service and the room checks talk to whatever answers on 4392, such as a service on ubuntu-vm through `ssh -N -L 4392:127.0.0.1:4323 root@ubuntu-vm`, with media over the host's public address (how P4C.4 was checked; docs/voice.md has the host setup).
 
 ### The prototype (P4C.1)

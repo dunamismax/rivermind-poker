@@ -319,6 +319,18 @@ One JSON text frame a message, 32 KiB at most. A page's requests carry an `id`, 
 - **Recovery** (P4C.7): a restart, a dead worker or a changed address now costs a room its transports or its group, and pages start again by hand; P4C.7 makes it automatic and measures it.
 - **The prototype** keeps its keyless listener at the SFU and its audio-level control until P4C.8 moves them into a test build of this service.
 
+## Voice at the table (P4C.5)
+
+The table server decides who is in a table's voice, and tells the voice service.
+
+- **Who.** The people seated at a table that is not a practice table, when two or more are: never a spectator, someone holding a seat they have not sat in, a bot (D-7), or someone gone bust (no chips, no rebuy coming, not in the hand). `voicePeople` in [`api/voice.ts`](../web/src/lib/server/api/voice.ts) is the rule.
+- **Tokens.** `POST /api/tables/{id}/voice` answers that person `{ table, seat, token, url }` (`VoiceTokenResponse` in `signalling.ts`): a token for `hello`, good once within a minute, and `/voice`. A spectator or a practice table gets 403, someone alone or bust 409, a server without a voice service 503. The table's list goes to the voice service before the token is issued, so a voice service that has just started knows the room's people before anyone reaches it.
+- **Seat lists.** Each change at a table that alters who is in voice (someone sits, stands up, busts, leaves, blocks or unblocks another) sends the voice service the whole list, signed with the voice key ([`seats.ts`](../web/src/lib/server/voice/seats.ts)) and ordered by when it was made; a change of stacks or turns sends nothing. A table that closes sends an empty one. The voice service lets in only someone the list names (`not-seated` otherwise, and the socket closed with 4403), and takes out at once anyone who leaves it (4403), asking the group to remove their leaf, so the rest move to a new epoch. In Vitest, on the whole table server with its manual clock and a real voice service, a person who stood up was out of the room in well under a second, and the two who stayed agreed on a new key the leaver could not derive. A list older than one applied is ignored. Until the first list after the voice service starts, a token alone admits.
+- **Blocks.** A list names the pairs at the table either of whom blocked the other. The voice service never makes either a consumer of the other's audio and closes any it had made; each stays in the room for everyone else, and no new epoch starts. Removing a blocked person from the room would let anyone silence anyone for the whole table, and taking them out of the group adds nothing: the people at a table are not who voice protects against.
+- **Mutes** stay the listener's own business: `VoiceRoom` takes the public references a person has muted (`muted`), and a muted person's consumer stays paused at the voice service from the start, so none of their audio reaches the page; `mute(player, on)` pauses or resumes it.
+
+**Left for later in P4C.5:** restarts. A deploy of the web service leaves voice alone by design, but a restarted voice service, or a dead worker, ends every room: `VoiceRoom` must then fetch a new token and join a new group within 5 seconds, keeping its mutes. A new group starts again at epoch 0, which a page's key store refuses to go back to, so each rejoin needs a new `FrameCrypto` and new transforms.
+
 ## Tools considered
 
 | Option | Verdict |

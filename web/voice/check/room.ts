@@ -17,10 +17,15 @@ export type JoinOptions = {
 	freq: number;
 	// Off, the page makes no AudioContext and judges what it hears by WebRTC's statistics.
 	webAudio: boolean;
+	// Public references this person has muted.
+	muted?: string[];
 };
 
 export type Heard = {
 	leaf: number;
+	player: string | null;
+	muted: boolean;
+	packetsReceived: number;
 	rms: number | null;
 	peakHz: number | null;
 	energy: number;
@@ -46,6 +51,7 @@ export type RoomCheck = {
 	join(options: JoinOptions): Promise<void>;
 	report(listenMs?: number): Promise<RoomReport>;
 	seats(seated: Identity[]): void;
+	mute(player: string, muted: boolean): Promise<void>;
 	leave(): void;
 };
 
@@ -123,6 +129,7 @@ window.room = {
 			table: options.table,
 			token: options.token,
 			seated: options.seated,
+			muted: options.muted,
 			track: await track(options),
 			onheard: heard,
 			onended: (stream) => {
@@ -154,6 +161,9 @@ window.room = {
 			);
 			heard.push({
 				leaf: stream.leaf,
+				player: stream.player,
+				muted: stream.muted,
+				packetsReceived: inbound?.packetsReceived ?? 0,
 				...(best.get(stream.peer) ?? { rms: null, peakHz: null }),
 				energy: inbound?.totalAudioEnergy ?? 0,
 				totalSamplesReceived: inbound?.totalSamplesReceived ?? 0,
@@ -185,6 +195,9 @@ window.room = {
 	},
 	seats(seated) {
 		room?.seats(seated);
+	},
+	mute(player, muted) {
+		return room!.mute(player, muted);
 	},
 	leave() {
 		room?.close();
