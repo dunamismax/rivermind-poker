@@ -368,7 +368,7 @@ RIVERMIND_API=1 RIVERMIND_SECRET=dev PORT=8000 ORIGIN=http://127.0.0.1:8000 \
   RIVERMIND_VOICE_PROXY=http://127.0.0.1:4323 node build/start.js
 ```
 
-Two people need two browsers (or a private window): voice is offered only to someone seated with another person. `window.rivermindVoice()` on a table page returns what the page knows of voice (its phase, how it plays sound, each voice's gain and pan, the voice code), never a key. `pnpm e2e` runs [`voice.e2e.ts`](web/e2e/voice.e2e.ts) against a server of its own with a voice service from the source (`TableServer`'s `voicePort`, on 8860 and 8880 upwards), each person a browser started with the engine's fake microphone.
+Two people need two browsers (or a private window): voice is offered only to someone seated with another person. `pnpm voice:check` includes RNNoise's check (`denoise.check.ts`), which prints what it measured in each engine. `window.rivermindVoice()` on a table page returns what the page knows of voice (its phase, how it plays sound, each voice's gain and pan, the voice code), never a key. `pnpm e2e` runs [`voice.e2e.ts`](web/e2e/voice.e2e.ts) against a server of its own with a voice service from the source (`TableServer`'s `voicePort`, on 8860 and 8880 upwards), each person a browser started with the engine's fake microphone.
 
 ### The prototype (P4C.1)
 

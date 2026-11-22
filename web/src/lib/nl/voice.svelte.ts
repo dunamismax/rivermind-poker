@@ -104,6 +104,8 @@ export class TableVoice {
 	// Push-to-talk held.
 	talking = $state(false);
 	micProblem = $state<string | null>(null);
+	// Why the stronger noise suppression (RNNoise) is not running though it is on.
+	denoiseProblem = $state<string | null>(null);
 	failure = $state<string | null>(null);
 	code = $state<string[] | null>(null);
 	// The group holds someone who is not seated here, so this page sends nothing.
@@ -378,6 +380,7 @@ export class TableVoice {
 			case 'echoCancellation':
 			case 'noiseSuppression':
 			case 'autoGainControl':
+			case 'denoise':
 				if (this.#mic) void this.#reopenMic();
 				return;
 			case 'output':
@@ -424,6 +427,7 @@ export class TableVoice {
 	diagnostics(): {
 		phase: Phase;
 		mode: 'talk' | 'listen';
+		denoising: boolean;
 		micProblem: string | null;
 		output: string | null;
 		heard: { seat: number | null; gain: number | null; pan: number | null; speaking: boolean }[];
@@ -434,6 +438,7 @@ export class TableVoice {
 		return {
 			phase: this.phase,
 			mode: this.mode,
+			denoising: this.#mic?.denoising ?? false,
 			micProblem: this.micProblem,
 			output: this.#playback?.mode ?? null,
 			heard: Object.values(this.#heard).map((heard) => ({
@@ -521,7 +526,15 @@ export class TableVoice {
 			}
 			this.#closeMic();
 			this.#mic = mic;
+			this.denoiseProblem = mic.denoiseProblem;
 			mic.meter(this.#playback?.context ?? null);
+			// RNNoise stopped: send the microphone as the browser gives it.
+			mic.ontrack = (track) => {
+				if (this.#mic !== mic) return;
+				this.denoiseProblem = mic.denoiseProblem;
+				mic.meter(this.#playback?.context ?? null);
+				void this.#room?.setTrack(track);
+			};
 			mic.track.addEventListener('ended', () => {
 				if (this.#mic === mic && !document.hidden) void this.#micEnded();
 			});
@@ -555,6 +568,7 @@ export class TableVoice {
 	#closeMic(): void {
 		this.#mic?.close();
 		this.#mic = null;
+		this.denoiseProblem = null;
 		this.level = 0;
 		this.#mySpeaking = false;
 	}

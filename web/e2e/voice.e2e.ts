@@ -85,6 +85,7 @@ const voiceOf = (page: Page, seat: string) => seatAt(page, seat).locator('.voice
 
 type Diagnostics = {
 	phase: string;
+	denoising: boolean;
 	output: string | null;
 	heard: { seat: number | null; gain: number | null; pan: number | null; speaking: boolean }[];
 	code: string[] | null;
@@ -171,6 +172,8 @@ test.describe('table voice', () => {
 				expect(a.code).toHaveLength(4);
 				expect(b.code).toEqual(a.code);
 			}).toPass({ timeout: 60_000 });
+			// Alice's microphone goes through RNNoise first, where the engine can run it here.
+			if (speakerEngine !== 'webkit') expect((await diagnostics(alice.page)).denoising).toBe(true);
 			await openPanel(alice.page);
 			const words = (await diagnostics(alice.page)).code!.join(' · ');
 			await expect(card(alice.page).locator('.voice-code')).toHaveText(words);

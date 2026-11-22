@@ -411,6 +411,18 @@
 							/>
 							Automatic gain
 						</label>
+						<label class="flex items-center gap-3">
+							<input
+								type="checkbox"
+								class="size-10 accent-gold"
+								checked={voice.settings.denoise}
+								onchange={(e) => voice.set('denoise', e.currentTarget.checked)}
+							/>
+							Stronger noise suppression (RNNoise)
+						</label>
+						{#if voice.settings.denoise && voice.denoiseProblem}
+							<p class="text-paper-shade" role="status">{voice.denoiseProblem}</p>
+						{/if}
 					</fieldset>
 					<label class="grid gap-1">
 						Quality

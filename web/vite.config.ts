@@ -54,7 +54,8 @@ export default defineConfig({
 					'default-src': ['self'],
 					'img-src': ['self', 'data:'],
 					'style-src': ['self'],
-					'script-src': ['self'],
+					// WebAssembly for table voice's noise suppression (Q-11, P4C.6), and nothing else.
+					'script-src': ['self', 'wasm-unsafe-eval'],
 					'connect-src': ['self'],
 					'object-src': ['none'],
 					'frame-ancestors': ['none'],
@@ -65,9 +66,10 @@ export default defineConfig({
 		})
 	],
 	build: {
-		// The CSP allows data: images but not data: fonts, so the font is
-		// always its own hashed file.
-		assetsInlineLimit: (file) => (file.endsWith('.woff') ? false : undefined)
+		// The CSP allows data: images but not data: fonts or scripts, so the font,
+		// and voice's noise suppression worklet and its WebAssembly, are always
+		// their own hashed files.
+		assetsInlineLimit: (file) => (/\.(woff|js|wasm)$/.test(file) ? false : undefined)
 	},
 	server: { proxy },
 	preview: { proxy },

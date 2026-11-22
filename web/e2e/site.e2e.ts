@@ -12,7 +12,9 @@ test('serves pages and assets with the site headers', async ({ page, request, cs
 	expect(headers['x-content-type-options']).toBe('nosniff');
 	expect(headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
 	const policy = headers['content-security-policy'];
-	expect(policy).toMatch(/script-src 'self' 'sha256-[^']+';/);
+	// WebAssembly is allowed for voice's noise suppression (Q-11), and no other script.
+	expect(policy).toMatch(/script-src 'self' 'wasm-unsafe-eval' 'sha256-[^']+';/);
+	expect(headers['permissions-policy']).toBe('camera=(), microphone=(self), geolocation=()');
 	expect(policy).toContain("style-src 'self';");
 	expect(policy).toMatch(/connect-src 'self' ws:\/\/127\.0\.0\.1:\d+;/);
 	expect((await request.get('/some/route')).status()).toBe(404);

@@ -1,12 +1,15 @@
 // The microphone for table voice (P4C.6): asked for only once the person has
 // chosen to join (D-15), with the device and the browser's processing they
 // chose, and a level for the meter. A refusal is explained in plain words, and
-// the person stays in voice to listen.
+// the person stays in voice to listen. With `denoise`, what the page sends is
+// the microphone after RNNoise (denoise.ts), and the raw microphone if RNNoise
+// cannot run or stops.
+import type { Denoiser } from './denoise.ts';
 import type { VoiceSettings } from './settings.ts';
 
 export type MicSettings = Pick<
 	VoiceSettings,
-	'input' | 'echoCancellation' | 'noiseSuppression' | 'autoGainControl'
+	'input' | 'echoCancellation' | 'noiseSuppression' | 'autoGainControl' | 'denoise'
 >;
 
 // Why there is no microphone.
@@ -65,7 +68,7 @@ export function problemOf(error: unknown): MicProblem {
 
 // The constraints for `getUserMedia`: the chosen device if there is one, mono,
 // and the browser's processing as chosen.
-export function constraintsFor(settings: MicSettings): MediaTrackConstraints {
+export function constraintsFor(settings: Omit<MicSettings, 'denoise'>): MediaTrackConstraints {
 	return {
 		...(settings.input ? { deviceId: { ideal: settings.input } } : {}),
 		channelCount: { ideal: 1 },
@@ -78,12 +81,26 @@ export function constraintsFor(settings: MicSettings): MediaTrackConstraints {
 // How long a page waits for `getUserMedia` before giving up on it: some
 // browsers never settle when no prompt can be shown.
 const ASK_MS = 30_000;
+// RNNoise's context has stopped when its clock has not moved for this long while
+// it says it runs, or when it has not run at all for twice as long.
+const STALLED_MS = 1500;
+
+export const DENOISE_UNAVAILABLE =
+	'This browser cannot run the stronger noise suppression, so it uses its own.';
+export const DENOISE_STOPPED =
+	'The stronger noise suppression stopped, so the browser’s own is used.';
 
 export class Microphone {
 	readonly stream: MediaStream;
+	// Why RNNoise is not running though it was asked for; null when it runs or was not asked for.
+	denoiseProblem: string | null = null;
+	// The track to send changed: RNNoise stopped, and the raw microphone took its place.
+	ontrack: ((track: MediaStreamTrack) => void) | null = null;
+	#denoiser: Denoiser | null = null;
 	#analyser: AnalyserNode | null = null;
-	#source: MediaStreamAudioSourceNode | null = null;
+	#source: AudioNode | null = null;
 	#samples = new Float32Array(1024);
+	#watch: ReturnType<typeof setInterval> | null = null;
 
 	private constructor(stream: MediaStream) {
 		this.stream = stream;
@@ -102,7 +119,9 @@ export class Microphone {
 				})
 			]);
 			if (!stream.getAudioTracks().length) throw new MicError('no-device');
-			return new Microphone(stream);
+			const mic = new Microphone(stream);
+			if (settings.denoise) await mic.#denoise();
+			return mic;
 		} catch (error) {
 			throw error instanceof MicError ? error : new MicError(problemOf(error), error);
 		} finally {
@@ -123,33 +142,95 @@ export class Microphone {
 		}
 	}
 
-	get track(): MediaStreamTrack {
+	// The microphone as the browser gives it.
+	get raw(): MediaStreamTrack {
 		return this.stream.getAudioTracks()[0];
+	}
+
+	// What the page sends: after RNNoise while it runs.
+	get track(): MediaStreamTrack {
+		return this.#denoiser?.track ?? this.raw;
+	}
+
+	get denoising(): boolean {
+		return this.#denoiser !== null;
 	}
 
 	// The device the browser gave, for the settings' list.
 	get device(): string | null {
-		return this.track.getSettings().deviceId ?? null;
+		return this.raw.getSettings().deviceId ?? null;
 	}
 
 	get live(): boolean {
-		return this.track.readyState === 'live';
+		return this.raw.readyState === 'live';
 	}
 
-	// Measure the input on this context, for the meter and this person's own ring.
+	// Measure what is sent, for the meter and this person's own ring: on RNNoise's
+	// own context while it runs, else on `context`.
 	meter(context: AudioContext | null): void {
-		this.#source?.disconnect();
+		// Only the tap to the old analyser goes: RNNoise's output also feeds what is sent.
+		if (this.#source && this.#analyser) {
+			try {
+				this.#source.disconnect(this.#analyser);
+			} catch {
+				// Already apart.
+			}
+		}
 		this.#source = null;
 		this.#analyser = null;
-		if (!context) return;
+		const on = this.#denoiser?.context ?? context;
+		if (!on) return;
 		try {
-			this.#source = context.createMediaStreamSource(this.stream);
-			this.#analyser = new AnalyserNode(context, { fftSize: 1024, smoothingTimeConstant: 0 });
+			this.#source = this.#denoiser?.output ?? on.createMediaStreamSource(this.stream);
+			this.#analyser = new AnalyserNode(on, { fftSize: 1024, smoothingTimeConstant: 0 });
 			this.#source.connect(this.#analyser);
 		} catch {
 			this.#source = null;
 			this.#analyser = null;
 		}
+	}
+
+	async #denoise(): Promise<void> {
+		try {
+			// Loaded only when asked for: the library defines its node on import.
+			const { Denoiser } = await import('./denoise.ts');
+			this.#denoiser = await Denoiser.start(this.raw);
+		} catch {
+			this.denoiseProblem = DENOISE_UNAVAILABLE;
+			return;
+		}
+		const context = this.#denoiser.context;
+		let clock = { time: context.currentTime, at: performance.now() };
+		const started = performance.now();
+		this.#watch = setInterval(() => {
+			const now = performance.now();
+			if (context.currentTime !== clock.time) {
+				clock = { time: context.currentTime, at: now };
+				return;
+			}
+			if (document.hidden) {
+				clock.at = now;
+				return;
+			}
+			const stalled =
+				context.state === 'running'
+					? now - clock.at > STALLED_MS
+					: now - Math.max(started, clock.at) > STALLED_MS * 2;
+			if (stalled) this.#stopDenoise(DENOISE_STOPPED);
+		}, 250);
+	}
+
+	#stopDenoise(why: string): void {
+		if (this.#watch) clearInterval(this.#watch);
+		this.#watch = null;
+		const denoiser = this.#denoiser;
+		if (!denoiser) return;
+		this.#denoiser = null;
+		this.#source = null;
+		this.#analyser = null;
+		denoiser.close();
+		this.denoiseProblem = why;
+		this.ontrack?.(this.raw);
 	}
 
 	// The input's level now, 0 to 1; null with nothing to measure it on.
@@ -162,7 +243,11 @@ export class Microphone {
 	}
 
 	close(): void {
-		this.#source?.disconnect();
+		if (this.#watch) clearInterval(this.#watch);
+		this.#watch = null;
+		if (this.#source && this.#analyser) this.#source.disconnect(this.#analyser);
+		this.#denoiser?.close();
+		this.#denoiser = null;
 		for (const track of this.stream.getTracks()) track.stop();
 	}
 }

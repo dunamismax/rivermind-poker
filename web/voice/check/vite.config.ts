@@ -19,7 +19,7 @@ const csp = [
 	"default-src 'self'",
 	"img-src 'self' data:",
 	"style-src 'self'",
-	"script-src 'self'",
+	"script-src 'self' 'wasm-unsafe-eval'",
 	`connect-src 'self' ws://127.0.0.1:${VOICE_PORT} ws://127.0.0.1:${RESTART_PORT}`,
 	"object-src 'none'",
 	"frame-ancestors 'none'",
@@ -55,7 +55,8 @@ export default defineConfig({
 		rollupOptions: {
 			input: {
 				index: path.resolve(import.meta.dirname, 'index.html'),
-				room: path.resolve(import.meta.dirname, 'room.html')
+				room: path.resolve(import.meta.dirname, 'room.html'),
+				denoise: path.resolve(import.meta.dirname, 'denoise.html')
 			}
 		},
 		minify: false,

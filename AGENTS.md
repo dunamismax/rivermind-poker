@@ -142,14 +142,16 @@ web/                             SvelteKit app (Node 26.13.1 from web/.node-vers
                                  delivery rules (delivery.ts), each epoch's keys (group-keys.ts) and the
                                  voice code (P4C.3); voice signalling v1 (signalling.ts), shared with the
                                  service, and a page's side of it (signalling-client.ts, room.ts: P4C.4);
-                                 the ts-mls design check (P4C.1); a page's microphone, playback and kept
-                                 settings (microphone.ts, playback.ts, settings.ts: P4C.6); and, in
+                                 the ts-mls design check (P4C.1); a page's microphone, RNNoise, playback
+                                 and kept settings (microphone.ts, denoise.ts, playback.ts, settings.ts:
+                                 P4C.6); and, in
                                  mls-vectors/, the MLS working group's test vectors against ts-mls
   voice/server.ts                the voice service's entry point, bundled into build/voice/ with mediasoup's
                                  worker by vite.voice.config.ts (P4C.4)
   voice/check/                   the voice checks' pages and Playwright checks (`pnpm voice:check`, in CI):
                                  SFrame's vectors and a call through the worker, and people in a room on
-                                 the voice service (room.check.ts), in each browser
+                                 the voice service (room.check.ts), and RNNoise under the site's CSP
+                                 (denoise.check.ts), in each browser
   voice/prototype/               the voice prototype (P4C.1): a mediasoup service, a test page and its
                                  Playwright checks (`pnpm voice:proto`); not part of the site or its build
   e2e/                           Playwright tests against the Node table server; journey.e2e.ts against one
@@ -360,6 +362,7 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 - Pages offer voice only where `GET /api/voice` says so (`RIVERMIND_VOICE_OFFER=1` with a voice service). Leave it off on the live unit until P4C.9 routes `/voice` in Caddy, and never set `RIVERMIND_VOICE_PROXY` there: it is for development and the browser tests, and a web deploy would cut every conversation it carried.
 - Chromium echo-cancels only what it plays from a peer connection, so in Chromium the voice mix goes through `Playback`'s local loopback into an audio element (`playback.ts`). Never play voice straight from Web Audio there. Tell Chromium apart by `navigator.userAgentData`, never the user agent string: Playwright gives every engine its project's string, and a Firefox page claiming Chrome took the loopback.
 - A page sends `status` only to a service whose welcome says `statuses: true`; a service from before P4C.6 closes a socket that sends a request it does not know.
+- RNNoise's worklet starts its WebAssembly asynchronously and plays silence until it has, so an `OfflineAudioContext` render must wait for it (`suspend` at the first block, or a lead of unmeasured audio in Firefox, which has no `suspend`); `voice/check/denoise.ts` does both. Import `denoise.ts` only dynamically: the library defines an `AudioWorkletNode` subclass on import, which Node and any page without voice have no use for.
 - A seat's voice glyph sits on an ink tag or plate, so every part of a voice sprite has a face colour inside its outline: a stand drawn in ink alone vanished.
 - mediasoup's install script downloads its worker binary from GitHub for the platform, the architecture and, on Linux, the kernel's major version. `allowBuilds` in `web/pnpm-workspace.yaml` permits it. A release carries no `node_modules`, so a bundled service needs the binary beside it and `MEDIASOUP_WORKER_BIN` naming it (`web/voice/prototype/bundle.ts` shows how).
 
@@ -427,7 +430,7 @@ The site runs on the owner’s ubuntu-vm under the web platform contract (`/home
 - A seat view never includes another seat’s private cards, and stored hands are shown only to the players dealt into them.
 - Session cookies are signed with HMAC-SHA256, `HttpOnly`, `SameSite=Lax` and `Secure` outside loopback. Keep their format so guests stay signed in across the cutover.
 - Rate limits exist in the app and in Caddy; keep both.
-- The CSP stays as strict as it is now: no inline script or style, no third-party origins. The one approved addition is `'wasm-unsafe-eval'` in `script-src`, for voice noise suppression (D-15, Q-11), once P4C.6 ships it.
+- The CSP stays as strict as it is now: no inline script or style, no third-party origins. The one approved addition, `'wasm-unsafe-eval'` in `script-src` for voice's noise suppression (D-15, Q-11), is in since P4C.6; nothing else joins it.
 - Secrets never go in the repository. They live in root-only env files on the host.
 - The voice service gets the voice key, derived from the session secret, and never the secret (P4C.4). Voice tokens live 60 seconds, name one table and seat, and are admitted once.
 - Load only trusted pickle and joblib files.

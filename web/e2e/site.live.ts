@@ -43,7 +43,7 @@ test('serves the client with the site headers', async ({ page, request }) => {
 	expect(html.headers()['cache-control']).toBe('no-cache');
 	// The page's own policy: 'self' plus the hash of SvelteKit's start-up script.
 	const policy = html.headers()['content-security-policy'];
-	expect(policy).toMatch(/script-src 'self' 'sha256-[^']+';/);
+	expect(policy).toMatch(/script-src 'self'( 'wasm-unsafe-eval')? 'sha256-[^']+';/);
 	// A reload's 304 must not bring a different policy: Chromium would apply it to
 	// the cached page and block the start-up script.
 	const again = await request.get('/', { headers: { 'if-none-match': html.headers()['etag'] } });
