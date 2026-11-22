@@ -9,8 +9,8 @@
 //
 // A browser Playwright does not drive, such as Safari on a phone or in the iOS
 // Simulator, runs the same checks by hand: `/?run` runs the vectors, the key
-// check and the cost at once, and the button adds a call through the
-// microphone. Each result is shown on the page and posted to the server that
+// check and the cost at once, and the buttons add a call through the
+// microphone or with a Web Audio tone. Each result is shown on the page and posted to the server that
 // serves it, which prints it (vite.config.ts beside this).
 import { Delivery } from '../../src/lib/voice/delivery.ts';
 import { EpochKeys, type Epoch } from '../../src/lib/voice/group-keys.ts';
@@ -388,16 +388,13 @@ async function runAlone(): Promise<void> {
 	});
 }
 
-async function runCall(): Promise<void> {
+async function runCall(source: CallOptions['source']): Promise<void> {
 	await tell({
+		source,
 		call: await attempt(
 			'call',
 			async () => {
-				await within(
-					'starting the call',
-					call({ source: 'capture', webAudio: true, from: 3 }),
-					30_000
-				);
+				await within('starting the call', call({ source, webAudio: true, from: 3 }), 30_000);
 				await window.check.key('listener', 1, 'the table');
 				await window.check.key('speaker', 1, 'the table');
 				await window.check.sendAs(3, 1);
@@ -409,6 +406,7 @@ async function runCall(): Promise<void> {
 	});
 }
 
-document.querySelector('#call')!.addEventListener('click', () => void runCall());
+document.querySelector('#call')!.addEventListener('click', () => void runCall('capture'));
+document.querySelector('#tone')!.addEventListener('click', () => void runCall('tone'));
 if (new URLSearchParams(location.search).has('run')) void runAlone();
 document.body.setAttribute('data-check', 'ready');

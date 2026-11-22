@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The site's smoke check: its main routes, a 404, /healthz and the headers it
-# promises. deploy/update.sh runs it against the release candidate, the live
+# The site's smoke check: its main routes, a 404, /healthz, the headers it
+# promises and that it offers table voice. deploy/update.sh runs it against the release candidate, the live
 # port and the public site; it is also the quick check of the live site.
 #
 #   deploy/smoke.sh [--candidate] [--revision COMMIT] BASE_URL
@@ -66,6 +66,9 @@ status=$(fetch /)
 [[ $(header x-content-type-options) == nosniff ]] || fail "/ lacks X-Content-Type-Options"
 [[ $(header x-frame-options) == DENY ]] || fail "/ lacks X-Frame-Options"
 [[ $(header referrer-policy) == strict-origin-when-cross-origin ]] || fail "/ lacks Referrer-Policy"
+# The microphone for the site's own pages, for table voice, and nothing else (P4C.9).
+[[ $(header permissions-policy) == 'camera=(), microphone=(self), geolocation=()' ]] ||
+    fail "/ sends Permissions-Policy: $(header permissions-policy)"
 ((public)) && { [[ $(header strict-transport-security) == max-age=* ]] || fail "/ lacks HSTS"; }
 grep -q 'RiverMind' "$work/body" || fail "/ does not name RiverMind"
 
@@ -87,10 +90,21 @@ if ((!candidate)); then
     [[ $status == 200 ]] || fail "/api/config answered $status"
     grep -q '"seat_counts":' "$work/body" || fail "/api/config has no seat counts"
     grep -q '"kind":"hard"' "$work/body" || fail "/api/config does not offer RiverMind Hard"
+    # Table voice is offered (P4C.9): RIVERMIND_VOICE_OFFER=1 with a voice service.
+    status=$(fetch /api/voice)
+    [[ $status == 200 ]] || fail "/api/voice answered $status"
+    grep -q '"offered":true' "$work/body" || fail "/api/voice does not offer table voice: $(head -c 100 "$work/body")"
 fi
 
 if ((public)); then
     status=$(curl -sS --max-time 20 -o /dev/null -w '%{http_code} %{redirect_url}' https://www.rivermindpoker.com/fairness || true)
     [[ $status == '301 https://rivermindpoker.com/fairness' ]] || fail "www answered $status"
+    # /voice reaches the voice service (P4C.9): it is what refuses a page from
+    # another origin with 403. The Node server would drop the handshake instead.
+    status=$(curl -sS --http1.1 --max-time 20 -o /dev/null -w '%{http_code}' \
+        -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
+        -H 'Sec-WebSocket-Key: cml2ZXJtaW5kLXNtb2tlIQ==' -H 'Origin: https://elsewhere.invalid' \
+        "$base/voice" || true)
+    [[ $status == 403 ]] || fail "/voice from another origin answered $status, not the voice service's 403"
 fi
 echo "smoke: $base ok"

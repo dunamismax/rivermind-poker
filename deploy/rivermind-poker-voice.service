@@ -12,13 +12,15 @@
 # platform contract, which D-15 makes. And conversations outlast site deploys:
 # update.sh restarts this unit only when build/voice/ or this file changed.
 # Signalling listens on loopback only, on 127.0.0.1:4323, where Caddy carries
-# wss://rivermindpoker.com/voice (from P4C.9).
+# wss://rivermindpoker.com/voice (since P4C.9).
 #
 # update.sh starts a copy of this file as rivermind-poker-voice-candidate
 # before every deploy: it rewrites the release path, PORT, VOICE_MEDIA_PORT and
 # the SocketBindAllow= lines to free candidate ports, and VOICE_LISTEN_IPS to
-# loopback. Keep HOST and PORT on one Environment= line, the media settings on
-# another, and name the release only as /srv/rivermindpoker.com/current.
+# loopback, and leaves out the ExecStartPre= line, so a candidate never touches
+# the live port's firewall table. Keep HOST and PORT on one Environment= line,
+# the media settings on another, the firewall on one ExecStartPre= line, and
+# name the release only as /srv/rivermindpoker.com/current.
 [Unit]
 Description=RiverMind Poker table voice (rivermindpoker.com)
 Documentation=https://github.com/dunamismax/rivermind-poker
@@ -34,6 +36,11 @@ DynamicUser=yes
 User=rivermind-poker-voice
 Group=rivermind-poker-voice
 WorkingDirectory=/srv/rivermindpoker.com/current
+# The cap on TCP connections to the media port from one address
+# (deploy/voice-firewall.nft): loaded as root before the service starts, so it
+# is there after a reboot. The `+` lifts this unit's sandbox for that one
+# command; the service itself runs with none of root's powers.
+ExecStartPre=+/usr/sbin/nft -f /srv/rivermindpoker.com/current/deploy/voice-firewall.nft
 ExecStart=/opt/node-26/bin/node /srv/rivermindpoker.com/current/build/voice/voice.js
 Environment=NODE_ENV=production HOST=127.0.0.1 PORT=4323
 Environment=VOICE_ORIGINS=https://rivermindpoker.com
@@ -81,6 +88,15 @@ LockPersonality=true
 SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 CapabilityBoundingSet=
+# Beyond the web unit's sandbox (P4C.8's review, tried at P4C.9 with calls from
+# three browsers over UDP and TCP and a media worker killed and replaced): only
+# the system calls a service needs, no view of other processes or of /proc
+# beyond its own, and a user namespace in which it is nobody on the host.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectProc=invisible
+ProcSubset=pid
+PrivateUsers=yes
 # Binds its signalling port and the media port, and nothing else.
 SocketBindAllow=tcp:4323
 SocketBindAllow=udp:3478

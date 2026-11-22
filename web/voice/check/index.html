@@ -6,9 +6,11 @@
 		<title>RiverMind voice checks</title>
 	</head>
 	<body>
-		<!-- A test page for `pnpm voice:check`, not part of the site. The button is for a
-		     browser run by hand: a call needs a gesture and the microphone. -->
+		<!-- A test page for `pnpm voice:check`, not part of the site. The buttons are for a
+		     browser run by hand: a call needs a gesture, and one call a page load. The tone
+		     tells a silent microphone (the iOS Simulator's) from a transform that never ran. -->
 		<button id="call" type="button">Call through the microphone</button>
+		<button id="tone" type="button">Call with a tone</button>
 		<pre id="log"></pre>
 		<script type="module" src="./page.ts"></script>
 	</body>

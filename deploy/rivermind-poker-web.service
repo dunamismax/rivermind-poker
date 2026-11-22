@@ -40,6 +40,11 @@ Environment=RIVERMIND_API=1
 # Table voice (P4C.5): seated people get voice tokens, and each table's list of
 # who is in voice goes to rivermind-poker-voice on loopback as it changes.
 Environment=RIVERMIND_VOICE_URL=http://127.0.0.1:4323
+# Pages offer table voice (P4C.9): GET /api/voice says so, and a page reaches
+# the voice service at wss://rivermindpoker.com/voice, which Caddy routes
+# (deploy/rivermindpoker.com.caddy). Never RIVERMIND_VOICE_PROXY here: a deploy
+# of this server would then cut every conversation.
+Environment=RIVERMIND_VOICE_OFFER=1
 # The promoted models (P5.7a, docs/models.md). The heads-up champion plays as
 # RiverMind Hard once every file of its bundle here matches the registry this
 # release was built with; deploy/update.sh checks that before the site changes.

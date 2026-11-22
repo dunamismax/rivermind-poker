@@ -33,7 +33,8 @@
 #                 then deploy/smoke.sh against it, and stop it; the same for the
 #                 voice service (rivermind-poker-voice-candidate, on loopback and
 #                 free ports in 4400-4499), with the voice key derived from the
-#                 session secret into /var/lib/rivermind-poker/voice-key
+#                 session secret into /var/lib/rivermind-poker/voice-key; and
+#                 nft's own check of the release's firewall table
 #   5. switch     install the unit if it changed, point `current` at the release
 #                 and restart rivermind-poker-web, which saves nothing on the way
 #                 down that it had not saved already and restores every open
@@ -41,12 +42,15 @@
 #   6. verify     /healthz reports the commit, deploy/smoke.sh passes on the live
 #                 port, and the running process is the release on /opt/node-26
 #   7. voice      install rivermind-poker-voice's unit if it changed, allow its
-#                 media port (3478, UDP and TCP) in ufw, and restart it only if
-#                 its unit, its key or build/voice/ changed or it is not running,
-#                 so a site deploy leaves conversations alone; then /healthz on
-#                 127.0.0.1:4323 and the origin check
+#                 media port (3478, UDP and TCP) in ufw, load the cap on TCP
+#                 connections to it from one address (deploy/voice-firewall.nft)
+#                 if it changed or is not loaded, and restart the service only
+#                 if its unit, its key or build/voice/ changed or it is not
+#                 running, so a site deploy leaves conversations alone; then
+#                 /healthz on 127.0.0.1:4323 and the origin check
 #   8. caddy      caddy-apply the site's fragment, only if it changed
-#   9. record     log "rivermindpoker.com <commit> live" and smoke the public site
+#   9. record     log "rivermindpoker.com <commit> live" and smoke the public
+#                 site, the route to the voice service included
 #
 # The release name keeps the <time>-<commit12> form the host backup expects
 # (config/applications.json in ubuntu-vm-backup); REVISION holds the full commit.
@@ -74,6 +78,9 @@ ENV_DIR=/etc/web-apps/$DB
 MODELS=/srv/rivermind-poker/models/champions
 SECRET=/var/lib/rivermind-poker/secret
 VOICE_KEY=/var/lib/rivermind-poker/voice-key
+# The cap on TCP connections to the media port, a table of this site's own.
+VOICE_FIREWALL=deploy/voice-firewall.nft
+VOICE_FIREWALL_TABLE='inet rivermind_voice'
 NODE=/opt/node-26/bin/node
 NODE_REAL=/opt/node-v26.13.1-linux-x64/bin/node
 UV=/home/sawyer/.local/bin/uv
@@ -161,6 +168,7 @@ voice_candidate() {
         -e "s|^SocketBindAllow=tcp:$VOICE_PORT$|SocketBindAllow=tcp:$vport|" \
         -e "s|^SocketBindAllow=udp:$VOICE_MEDIA_PORT$|SocketBindAllow=udp:$mport|" \
         -e "s|^SocketBindAllow=tcp:$VOICE_MEDIA_PORT$|SocketBindAllow=tcp:$mport|" \
+        -e '/^ExecStartPre=/d' \
         -e "s|^SyslogIdentifier=.*|SyslogIdentifier=$voice_candidate_unit|" \
         -e "s|^Restart=.*|Restart=no|" \
         "$release/deploy/$VOICE_UNIT.service" > "$voice_candidate_file"
@@ -169,7 +177,7 @@ voice_candidate() {
         grep -qx "SocketBindAllow=tcp:$vport" "$voice_candidate_file" &&
         grep -qx "SocketBindAllow=udp:$mport" "$voice_candidate_file" &&
         grep -qx "SocketBindAllow=tcp:$mport" "$voice_candidate_file" &&
-        ! grep -q "/srv/$SITE/current\|PORT=$VOICE_PORT\b\|:$VOICE_MEDIA_PORT$" "$voice_candidate_file" ||
+        ! grep -q "/srv/$SITE/current\|PORT=$VOICE_PORT\b\|:$VOICE_MEDIA_PORT$\|^ExecStartPre=" "$voice_candidate_file" ||
         die "could not make the voice candidate unit from $release/deploy/$VOICE_UNIT.service"
     systemctl daemon-reload
     systemctl start "$voice_candidate_unit.service"
@@ -347,6 +355,9 @@ activate)
     voice_key_changed=
     derive_voice_key "$release"
     voice_candidate "$release" "$candidate_port"
+    # The candidate leaves the firewall table alone, so nft checks the file itself.
+    nft -c -f "$release/$VOICE_FIREWALL" ||
+        die "nft refuses $VOICE_FIREWALL; the previous release is still serving"
 
     step "5. switch to the release and restart"
     unit_file=/etc/systemd/system/$UNIT.service
@@ -356,6 +367,7 @@ activate)
         systemctl daemon-reload
         echo "installed $unit_file"
     fi
+    previous=$(readlink -f "$RELEASES/current" 2>/dev/null || true)
     ln -sfn "$release" "$RELEASES/current.next"
     mv -Tf "$RELEASES/current.next" "$RELEASES/current"
     systemctl enable --quiet "$UNIT.service"
@@ -411,6 +423,15 @@ activate)
             fi
         done
     fi
+    # The cap on TCP connections to it from one address. Loading the table again
+    # forgets the connections it has counted, so only when it changed or is gone;
+    # a restart of the service loads it too (the unit's ExecStartPre=).
+    # shellcheck disable=SC2086
+    if ! nft list table $VOICE_FIREWALL_TABLE >/dev/null 2>&1 ||
+        ! cmp -s "$release/$VOICE_FIREWALL" "$previous/$VOICE_FIREWALL"; then
+        nft -f "$release/$VOICE_FIREWALL"
+        echo "loaded $VOICE_FIREWALL"
+    fi
     systemctl enable --quiet "$VOICE_UNIT.service"
     if [[ -n $restart_voice ]]; then
         echo "restarting $VOICE_UNIT: $restart_voice"
@@ -432,6 +453,9 @@ activate)
         echo "$VOICE_UNIT is unchanged: left running from $voice_from"
     fi
     voice_check "$VOICE_PORT" || die "$VOICE_UNIT fails its checks: fix it in a new commit"
+    # shellcheck disable=SC2086
+    nft list table $VOICE_FIREWALL_TABLE | grep -q "tcp dport $VOICE_MEDIA_PORT .* ct count over" ||
+        die "the cap on TCP connections to $VOICE_MEDIA_PORT is not loaded: fix it in a new commit"
     IFS=$'\t' read -r _ exe cwd revision _ < <("$WEB_LIVE" "$VOICE_UNIT.service")
     [[ $exe == "$NODE_REAL" && $cwd == "$voice_from" ]] ||
         die "the voice process is $exe in $cwd, not $voice_from on Node 26"

@@ -1,15 +1,19 @@
 # rivermindpoker.com: installed as /etc/caddy/sites/rivermindpoker.com.caddy by
 # deploy/update.sh and loaded by the host Caddyfile (`import /etc/caddy/sites/*.caddy`).
 # DNS for both names points at the host, so Caddy obtains and renews certificates.
-# Everything comes from the Node server, rivermind-poker-web.service on
-# 127.0.0.1:4320: pages and assets, the API and the tables' /ws WebSocket
-# (P4B.7). It sets the pages' Cache-Control (a year for the hashed files under
+# Everything but table voice comes from the Node server,
+# rivermind-poker-web.service on 127.0.0.1:4320: pages and assets, the API and
+# the tables' /ws WebSocket (P4B.7). Voice signalling, the /voice WebSocket,
+# goes to rivermind-poker-voice.service on 127.0.0.1:4323 (P4C.9), so a deploy
+# of the site leaves conversations alone; the audio itself never passes
+# through Caddy (UDP and TCP 3478, straight to that service). The Node server
+# sets the pages' Cache-Control (a year for the hashed files under
 # /_app/immutable/, revalidate for everything else) and a CSP carrying the hash
 # of SvelteKit's start-up script; Caddy adds its policy only to the API, the
-# socket handshake and its own error page.
+# socket handshakes and its own error page.
 #
 # Check: caddy-apply --check rivermindpoker.com deploy/rivermindpoker.com.caddy
-# Install and reload only through caddy-apply, inside with-deploy-lock (update.sh step 7).
+# Install and reload only through caddy-apply, inside with-deploy-lock (update.sh step 8).
 
 www.rivermindpoker.com {
 	redir https://rivermindpoker.com{uri} permanent
@@ -23,7 +27,9 @@ rivermindpoker.com {
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		# The microphone for this site's own pages, for table voice (P4C.9), as
+		# the Node server sends it; never the camera or the location.
+		Permissions-Policy "camera=(), microphone=(self), geolocation=()"
 		-Server
 	}
 
@@ -64,10 +70,10 @@ rivermindpoker.com {
 			events 30
 			window 1m
 		}
-		# Table voice (P4C.8): a voice token, and the voice socket's handshake once
-		# P4C.9 routes /voice. Each token opens one connection; the app limits them
-		# per player and per address, and the voice service its sockets per address
-		# and what each player sends.
+		# Table voice (P4C.8): a voice token, and the voice socket's handshake
+		# (routed below since P4C.9). Each token opens one connection; the app
+		# limits them per player and per address, and the voice service its
+		# sockets per address and what each player sends.
 		zone voice {
 			match {
 				path /api/tables/*/voice /voice
@@ -93,6 +99,18 @@ rivermindpoker.com {
 		header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self' wss://rivermindpoker.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 		reverse_proxy 127.0.0.1:4320 {
 			# A config reload would otherwise close every open game socket.
+			stream_close_delay 5m
+		}
+	}
+
+	# Table voice's signalling (P4C.9): voice signalling v1 on a WebSocket, to the
+	# voice service, which checks the Origin itself and reads the client's
+	# address from X-Forwarded-For for its own limits. Matched by path alone, as
+	# /ws is: a handshake over HTTP/2 carries no Upgrade header to match on.
+	handle /voice {
+		header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self' wss://rivermindpoker.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		reverse_proxy 127.0.0.1:4323 {
+			# A config reload would otherwise end every conversation's signalling.
 			stream_close_delay 5m
 		}
 	}

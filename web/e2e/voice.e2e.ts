@@ -9,21 +9,22 @@
 // microphone (voice/check/browsers.ts). Where an engine cannot capture here
 // (Chromium on macOS), its person is refused the microphone, which is checked
 // too, and a Firefox person speaks to them.
-import {
-	expect,
-	firefox,
-	test as base,
-	type Browser,
-	type BrowserContextOptions,
-	type Page,
-	type TestInfo
-} from '@playwright/test';
-import { canCapture, canTransform, launch } from '../voice/check/browsers.ts';
+import { expect, test as base } from '@playwright/test';
+import { canCapture, canTransform } from '../voice/check/browsers.ts';
 import { nameOf, seated, sitDown, tableIdOf } from './fixtures.ts';
 import { TableServer } from './server.ts';
-
-type Engine = 'chromium' | 'firefox' | 'webkit';
-type Person = { page: Page; violations: string[]; close: () => Promise<void> };
+import {
+	card,
+	closePanel,
+	diagnostics,
+	engineOf,
+	openPanel,
+	person,
+	seatAt,
+	voiceButton,
+	voiceOf,
+	type Engine
+} from './voice.ts';
 
 const test = base.extend<object, { voiceServer: TableServer }>({
 	voiceServer: [
@@ -40,71 +41,6 @@ const test = base.extend<object, { voiceServer: TableServer }>({
 	],
 	baseURL: async ({ voiceServer }, use) => use(voiceServer.url)
 });
-
-const engineOf = (browser: Browser) => browser.browserType().name() as Engine;
-
-// A person in a browser of their own: with a microphone the engine can fake here, or
-// (`mic: false`) none, so asking for one is refused.
-async function person(
-	engine: Engine,
-	testInfo: TestInfo,
-	baseURL: string,
-	{ mic }: { mic: boolean }
-): Promise<Person> {
-	const type = engine === 'firefox' ? firefox : (await import('@playwright/test'))[engine];
-	const options =
-		mic || engine !== 'chromium'
-			? launch[engine]
-			: { args: ['--autoplay-policy=no-user-gesture-required'] };
-	const own = await type.launch(options);
-	const use = testInfo.project.use;
-	const context: BrowserContextOptions = {
-		baseURL,
-		viewport: use.viewport ?? { width: 1440, height: 900 },
-		hasTouch: use.hasTouch ?? false,
-		...(mic && engine !== 'firefox' ? { permissions: ['microphone'] } : {})
-	};
-	const page = await (await own.newContext(context)).newPage();
-	const violations: string[] = [];
-	await page.exposeFunction('__reportCsp', (text: string) => violations.push(text));
-	await page.addInitScript(() => {
-		document.addEventListener('securitypolicyviolation', (e) => {
-			(window as unknown as { __reportCsp: (t: string) => void }).__reportCsp(
-				`${e.violatedDirective} ${e.blockedURI}`
-			);
-		});
-	});
-	if (process.env.VOICE_DEBUG) page.on('console', (m) => console.log(`[${engine}] ${m.text()}`));
-	return { page, violations, close: () => own.close() };
-}
-
-const card = (page: Page) => page.getByRole('dialog', { name: 'Table voice' });
-const voiceButton = (page: Page) => page.getByRole('button', { name: /^Voice/ });
-const seatAt = (page: Page, seat: string) => page.locator(`.seat[data-seat="${seat}"]`);
-const voiceOf = (page: Page, seat: string) => seatAt(page, seat).locator('.voice');
-
-type Diagnostics = {
-	phase: string;
-	denoising: boolean;
-	output: string | null;
-	heard: { seat: number | null; gain: number | null; pan: number | null; speaking: boolean }[];
-	code: string[] | null;
-	live: boolean;
-};
-const diagnostics = (page: Page) =>
-	page.evaluate(() =>
-		(window as unknown as { rivermindVoice: () => Diagnostics }).rivermindVoice()
-	);
-
-async function openPanel(page: Page): Promise<void> {
-	if (!(await card(page).isVisible())) await voiceButton(page).click();
-	await expect(card(page)).toBeVisible();
-}
-
-async function closePanel(page: Page): Promise<void> {
-	if (await card(page).isVisible()) await card(page).getByRole('button', { name: 'Close' }).click();
-	await expect(card(page)).toHaveCount(0);
-}
 
 test.describe('table voice', () => {
 	test.describe.configure({ timeout: 240_000 });
