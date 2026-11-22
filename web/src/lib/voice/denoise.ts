@@ -38,7 +38,16 @@ export async function rnnoiseNode(
 		rnnoiseBinary(),
 		context.audioWorklet.addModule(workletUrl)
 	]);
-	return new RnnoiseWorkletNode(context as AudioContext, { maxChannels: 1, wasmBinary });
+	const node = new RnnoiseWorkletNode(context as AudioContext, { maxChannels: 1, wasmBinary });
+	// One channel in, whatever the microphone has. Left to itself the node takes
+	// a stereo microphone as two channels, cleans the first and leaves the
+	// second silent, and the two are then mixed down to half the level: a voice
+	// 6 dB quieter than it was, on any microphone the browser gives as stereo
+	// (P4C.7's capture measure found it).
+	node.channelCount = 1;
+	node.channelCountMode = 'explicit';
+	node.channelInterpretation = 'speakers';
+	return node;
 }
 
 export class Denoiser {

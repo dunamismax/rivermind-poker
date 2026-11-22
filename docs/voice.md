@@ -356,12 +356,25 @@ Measured by `pnpm voice:check` ([`denoise.check.ts`](../web/voice/check/denoise.
 
 | Voice | Engine | Room where nobody speaks | Speech's level | Added delay | Rendering, of one core |
 | --- | --- | --- | --- | --- | --- |
-| The check's voice-like signal | Chromium, WebKit | 20.1 dB quieter | −4.5 dB | 20.7 ms | 0.7 to 1% |
-| | Firefox | 12.5 to 20.1 dB quieter | −4.3 to −4.4 dB | 20.7 ms | 0.5% |
+| The check's voice-like signal | Chromium, WebKit | 16.6 dB quieter | −4.5 dB | 20.7 ms | 0.8 to 1% |
+| | Firefox | 21.0 to 22.2 dB quieter | −4.5 dB | 20.7 ms | 0.5 to 0.7% |
 | Speech | Chromium, WebKit | 30.3 dB quieter | −0.1 dB | 20.7 ms | 0.7 to 1.1% |
 | | Firefox | 24.8 to 29.3 dB quieter | −0.1 dB | 20.7 ms | 0.5% |
 
-The delay is the lag at which the output best matches the input, 994 samples at 48 kHz in every engine and run. It is over P4C.6's target of 20 ms by 0.7 ms, and mostly fixed by design: the processor reads its ring buffer 640 samples (13.3 ms) behind where it writes, which is about the least a 10 ms frame allows when audio arrives in blocks of 128 samples (608 would do), and RNNoise's own analysis adds the rest. Firefox's spread in the room's figure follows where in the lead RNNoise started. Not measured yet: the comparison with the browser's own suppression, which needs the room played into a real capture path (Chromium on Linux takes a file as its fake microphone), and the cost on a phone.
+The delay is the lag at which the output best matches the input, 994 samples at 48 kHz in every engine and run. It is over P4C.6's target of 20 ms by 0.7 ms, and mostly fixed by design: the processor reads its ring buffer 640 samples (13.3 ms) behind where it writes, which is about the least a 10 ms frame allows when audio arrives in blocks of 128 samples (608 would do), and RNNoise's own analysis adds the rest. The room's figure depends on how long RNNoise has been listening when the measure starts, which is how much of the chatter it has learned to take for noise: the first two rows are with three seconds or more of the room behind it (four in Chromium and WebKit, where the figure is then the same every run, and up to sixteen in Firefox). Before P4C.7 the check let the measure start a tenth of a second after RNNoise did, and Firefox then read anything from 9.6 to 20.1 dB; the speech rows were taken that way, by hand. Not measured yet: the cost on a phone.
+
+**Against the browser's own suppression**, through a real capture path (measured with P4C.7's tools, [`denoise.measure.ts`](../web/voice/check/denoise.measure.ts), `scripts/voice-measure-linux.sh denoise`). Chromium on Linux takes a file as its microphone, so the same room with the Mac's voice over its middle half was played into `getUserMedia` four times, in Playwright 1.65.1's Chromium in a container, with echo cancellation and gain control off:
+
+| The microphone's processing | The room where nobody speaks | The voice | The room against the voice |
+| --- | --- | --- | --- |
+| None | as it is | as it is | 22.6 dB below |
+| The browser's own noise suppression | 16.8 dB quieter | −0.3 dB | 39.1 dB below |
+| RNNoise alone | 32.8 dB quieter | −0.1 dB | 55.3 dB below |
+| Both, as a table sends by default | 25.6 dB quieter | −0.3 dB | 47.9 dB below |
+
+With RNNoise the room is 9 dB further under the voice than with the browser's own alone, which is what the criterion asks. RNNoise by itself does 7 dB better still: the browser's suppression, coming first, seems to leave it noise it knows less well. That is one made-up room through one engine's fake microphone, so the default stays as the owner set it (both), for a real microphone to confirm or change.
+
+The same run found the voice 6 dB quieter through RNNoise than without it. The worklet node, left to its defaults, gave two channels with the second silent, and the mix down to one halved the level; a Web Audio render of one channel, which is all the earlier check did, never showed it. `rnnoiseNode` now takes one channel explicitly, and the voice comes through at −0.1 dB.
 
 **What the seats show.** A glyph by each person's stack (talking, muted, deafened, listening only, not in voice; drawn in `web/art/ui.pxl`) and a ring round the seat while they speak, measured in the listener's browser after decryption, never sent. The ring keeps still for reduced motion.
 
@@ -373,7 +386,7 @@ The delay is the lag at which the output best matches the input, 994 samples at 
 
 **Left for later steps**
 
-- **RNNoise against the browser's own suppression**, and its cost on a phone: P4C.6's last measurements (above).
+- **RNNoise's cost on a phone**: P4C.6's last measurement (the comparison with the browser's own suppression is above).
 - **A page hidden and shown again** resumes the context, starts a microphone the system stopped and says why when it cannot; that is checked by hand on a phone (P4C.9), since Playwright does not hide pages.
 - **The warning for a stranger in the group** is P4C.3's check shown on screen, with no honest way to bring it about in a browser test.
 

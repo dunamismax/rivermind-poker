@@ -170,6 +170,11 @@ function fft(re: Float64Array, im: Float64Array): void {
 // it stands out: the mean power within 10 Hz of it over the mean power from 30
 // to 300 Hz to either side, in dB. A tone stands tens of dB above its
 // surroundings; noise, however it is shaped, does not.
+//
+// The loudest frequency is looked for in the middle of the audio. How far a
+// tone at `atHz` stands out is the median over every stretch of the audio in
+// turn: a tone is in all of them, and whatever a decoder makes of frames that
+// are not audio, which can ring at any frequency for a moment, is not.
 function analyse(
 	pcm: Float32Array,
 	atHz?: number
@@ -178,37 +183,51 @@ function analyse(
 	// A tenth of a second at least; less than the transform is padded with silence.
 	const n = 1 << 15;
 	if (pcm.length < 4800) return { rms, peakHz: null, prominence: null, prominenceAt: null };
-	const re = new Float64Array(n);
-	const im = new Float64Array(n);
-	const start = Math.max(0, Math.floor((pcm.length - n) / 2));
-	const length = Math.min(n, pcm.length);
-	for (let i = 0; i < length; i++) {
-		re[i] = pcm[start + i] * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (length - 1)));
-	}
-	fft(re, im);
 	const hzPerBin = 48000 / n;
-	const power = (bin: number) => re[bin] ** 2 + im[bin] ** 2;
-	const mean = (lo: number, hi: number) => {
-		let sum = 0;
-		let bins = 0;
-		for (let bin = Math.ceil(Math.max(50, lo) / hzPerBin); bin * hzPerBin <= hi; bin++) {
-			sum += power(bin);
-			bins += 1;
+	const spectrum = (start: number) => {
+		const re = new Float64Array(n);
+		const im = new Float64Array(n);
+		const length = Math.min(n, pcm.length - start);
+		for (let i = 0; i < length; i++) {
+			re[i] = pcm[start + i] * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (length - 1)));
 		}
-		return bins ? sum / bins : 0;
+		fft(re, im);
+		const power = (bin: number) => re[bin] ** 2 + im[bin] ** 2;
+		const mean = (lo: number, hi: number) => {
+			let sum = 0;
+			let bins = 0;
+			for (let bin = Math.ceil(Math.max(50, lo) / hzPerBin); bin * hzPerBin <= hi; bin++) {
+				sum += power(bin);
+				bins += 1;
+			}
+			return bins ? sum / bins : 0;
+		};
+		const prominence = (hz: number) => {
+			const tone = mean(hz - 10, hz + 10);
+			const around = (mean(hz - 300, hz - 30) + mean(hz + 30, hz + 300)) / 2;
+			return 10 * Math.log10(Math.max(tone, 1e-30) / Math.max(around, 1e-30));
+		};
+		return { power, prominence };
 	};
-	const prominence = (hz: number) => {
-		const tone = mean(hz - 10, hz + 10);
-		const around = (mean(hz - 300, hz - 30) + mean(hz + 30, hz + 300)) / 2;
-		return 10 * Math.log10(Math.max(tone, 1e-30) / Math.max(around, 1e-30));
-	};
+	const middle = spectrum(Math.max(0, Math.floor((pcm.length - n) / 2)));
 	let peak = Math.ceil(100 / hzPerBin);
-	for (let bin = peak; bin * hzPerBin < 4000; bin++) if (power(bin) > power(peak)) peak = bin;
+	for (let bin = peak; bin * hzPerBin < 4000; bin++) {
+		if (middle.power(bin) > middle.power(peak)) peak = bin;
+	}
+	let prominenceAt: number | null = null;
+	if (atHz) {
+		const each: number[] = [];
+		for (let start = 0; start === 0 || start + n <= pcm.length; start += n) {
+			each.push(spectrum(start).prominence(atHz));
+		}
+		each.sort((a, b) => a - b);
+		prominenceAt = each[Math.floor((each.length - 1) / 2)];
+	}
 	return {
 		rms,
 		peakHz: peak * hzPerBin,
-		prominence: prominence(peak * hzPerBin),
-		prominenceAt: atHz ? prominence(atHz) : null
+		prominence: middle.prominence(peak * hzPerBin),
+		prominenceAt
 	};
 }
 

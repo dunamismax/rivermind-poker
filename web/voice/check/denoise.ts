@@ -8,7 +8,13 @@
 // noise), a keyboard (short clicks) and chatter (other voices, low and
 // muffled). The voice is a voice-like signal (a gliding pitch through three
 // formants, in syllables) unless the caller gives a recording.
-import { RNNOISE_RATE, rnnoiseNode } from '../../src/lib/voice/denoise.ts';
+//
+// For the comparison with the browser's own noise suppression (P4C.6's last
+// measurement, denoise.measure.ts), the page also hands the test the same
+// room and voice as sound to play into a real capture path (`mix`), and
+// records what a microphone captured with each kind of processing (`capture`).
+import { Denoiser, RNNOISE_RATE, rnnoiseNode } from '../../src/lib/voice/denoise.ts';
+import marksUrl from './marks.worklet.js?url';
 
 export type Measure = {
 	// How much quieter RNNoise leaves the room where nobody speaks, in dB.
@@ -24,13 +30,45 @@ export type Measure = {
 	leadSeconds: number;
 };
 
+export type CaptureOptions = {
+	// The browser's own noise suppression (`noiseSuppression` on the microphone).
+	noiseSuppression: boolean;
+	// RNNoise after it, as the site sends by default.
+	denoise: boolean;
+	seconds: number;
+};
+
 declare global {
 	interface Window {
 		denoise: {
 			measure(options?: { voice?: number[]; seconds?: number }): Promise<Measure>;
+			// The room for `seconds`, with a voice over its middle half: 16-bit mono
+			// PCM at 48 kHz, as base64. `voice` is a recording in the same form.
+			mix(seconds: number, voice?: string): string;
+			// What the microphone gives the page for `seconds`, in the same form.
+			capture(options: CaptureOptions): Promise<string>;
 		};
 	}
 }
+
+const bytesOf = (text: string): Uint8Array => {
+	const binary = atob(text);
+	const bytes = new Uint8Array(binary.length);
+	for (let at = 0; at < binary.length; at += 1) bytes[at] = binary.charCodeAt(at);
+	return bytes;
+};
+const pcmOf = (samples: Float32Array): string => {
+	const pcm = new Int16Array(samples.length);
+	for (let at = 0; at < samples.length; at += 1) {
+		pcm[at] = Math.max(-32768, Math.min(32767, Math.round(samples[at] * 32767)));
+	}
+	const bytes = new Uint8Array(pcm.buffer);
+	let text = '';
+	for (let at = 0; at < bytes.length; at += 0x8000) {
+		text += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+	}
+	return btoa(text);
+};
 
 const RATE = RNNOISE_RATE;
 
@@ -135,6 +173,51 @@ function lag(input: Float32Array, out: Float32Array, from: number, to: number): 
 }
 
 window.denoise = {
+	mix(seconds, voice) {
+		const samples = seconds * RATE;
+		const source = voice
+			? Float32Array.from(new Int16Array(bytesOf(voice).buffer), (sample) => sample / 32768)
+			: voiceLike(samples, 3);
+		const [from, to] = [Math.floor((samples * 1) / 4), Math.floor((samples * 3) / 4)];
+		const mix = room(samples);
+		for (let i = from; i < to; i++) mix[i] += source[(i - from) % source.length];
+		return pcmOf(mix);
+	},
+	async capture({ noiseSuppression, denoise, seconds }) {
+		const stream = await navigator.mediaDevices.getUserMedia({
+			audio: {
+				channelCount: { ideal: 1 },
+				echoCancellation: false,
+				autoGainControl: false,
+				noiseSuppression
+			}
+		});
+		const microphone = stream.getAudioTracks()[0];
+		console.log(`[capture] the microphone has ${microphone.getSettings().channelCount} channels`);
+		const denoiser = denoise ? await Denoiser.start(microphone) : null;
+		const context = new AudioContext({ sampleRate: RATE });
+		await context.resume();
+		await context.audioWorklet.addModule(marksUrl);
+		const blocks: Float32Array[] = [];
+		const recorder = new AudioWorkletNode(context, 'marks-recorder', { numberOfOutputs: 0 });
+		recorder.port.onmessage = ({ data }: MessageEvent<Float32Array>) => blocks.push(data);
+		const source = context.createMediaStreamSource(
+			new MediaStream([denoiser?.track ?? microphone])
+		);
+		source.connect(recorder);
+		await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+		source.disconnect();
+		denoiser?.close();
+		microphone.stop();
+		await context.close();
+		const captured = new Float32Array(blocks.reduce((sum, one) => sum + one.length, 0));
+		let at = 0;
+		for (const block of blocks) {
+			captured.set(block, at);
+			at += block.length;
+		}
+		return pcmOf(captured);
+	},
 	async measure({ voice, seconds = 8 } = {}) {
 		const samples = seconds * RATE;
 		// Noise alone for the first and last quarter, a voice over it in between.
@@ -151,9 +234,12 @@ window.denoise = {
 		// The room first, which is not measured: the processor starts RNNoise's WebAssembly
 		// asynchronously in the worklet and plays silence until it has. Where the engine
 		// can, the render waits at its first block; elsewhere (Firefox, which renders
-		// nine seconds in a few tens of milliseconds) the lead grows until RNNoise was
-		// running before the measured part began.
-		let lead = RATE;
+		// nine seconds in a few tens of milliseconds) the lead grows until RNNoise had
+		// been running for three seconds before the measured part began. With less it is
+		// still learning the room when the measure starts: a tenth of a second, which
+		// this once allowed, read 9.6 dB, and one second 12.6 dB, where 20 is the rule.
+		const settle = 3 * RATE;
+		let lead = 4 * RATE;
 		let rendered: AudioBuffer;
 		let renderMs: number;
 		for (;;) {
@@ -182,7 +268,7 @@ window.denoise = {
 			renderMs = performance.now() - started - held;
 			node.destroy();
 			const first = rendered.getChannelData(0).findIndex((sample) => sample !== 0);
-			if ((first >= 0 && first < lead - 0.1 * RATE) || lead >= 64 * RATE) break;
+			if ((first >= 0 && first < lead - settle) || lead >= 64 * RATE) break;
 			lead *= 4;
 		}
 		const out = rendered.getChannelData(0).subarray(lead);
