@@ -83,6 +83,12 @@ export interface ContractOptions {
 	store?: TableStorage | null;
 	/** Drops what a store decides for itself, such as stored times, from an HTTP body. */
 	ignore?: (path: string, body: string) => string;
+	/**
+	 * Told where a socket's messages differ from the recording, in place of failing: for
+	 * reading a deliberate change before the fixture is updated by hand (BUILD.md says why
+	 * each time). `digests` are of every message that socket got in the step.
+	 */
+	differs?: (step: number, socket: string, digests: string[], messages: Message[]) => void;
 }
 
 /** The session's server: its clocks, decks, ids and players fixed as the recording's were. */
@@ -105,10 +111,12 @@ export class Replay {
 	readonly server: TestServer;
 	private readonly sockets = new Map<string, Socket>();
 	private readonly ignore: (path: string, body: string) => string;
+	private readonly differs: ContractOptions['differs'];
 
 	constructor(server: TestServer, options: ContractOptions = {}) {
 		this.server = server;
 		this.ignore = options.ignore ?? ((_path, body) => body);
+		this.differs = options.differs;
 	}
 
 	private sorted(): [string, Socket][] {
@@ -207,6 +215,10 @@ export class Replay {
 			const theirs = want.received?.[name] ?? [];
 			const at = ours.findIndex((d, i) => d !== theirs[i]);
 			if (at === -1 && ours.length === theirs.length) continue;
+			if (this.differs) {
+				this.differs(index, name, ours, kept[name] ?? []);
+				continue;
+			}
 			const mine = kept[name]?.[at === -1 ? ours.length : at];
 			const python = full?.steps[index].result.messages?.[name]?.[at === -1 ? ours.length : at];
 			const detail = full

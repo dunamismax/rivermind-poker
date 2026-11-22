@@ -131,7 +131,7 @@ The Node side of a service holding only mediasoup was 75 to 100 MB (the self-tes
 **Left for later steps**
 
 - **WebKit’s jitter buffer** held 174 ms in the nine-person room against about 35 ms in the others (29 ms with two people). The mock microphone and nine browsers on one machine may be the cause. It was the mock microphone: [P4C.7](#delay) found every listener's buffer grows for a speaker in Playwright's WebKit, in any engine, while WebKit as a listener held 56 ms of well-paced speakers.
-- **Capture in Chromium** was not exercised on this Mac (see [testing](#testing)); P4C.2 ran it on Linux, where its fake microphone works. Safari itself has not been tried at all: a real iPhone and Mac are P4C.9.
+- **Capture in Chromium** was not exercised on this Mac (see [testing](#testing)); P4C.2 ran it on Linux, where its fake microphone works. Safari itself was first tried at [P4C.9](#the-launch-p4c9), in the iOS Simulator; a real iPhone is P7.1b.
 - **The prototype’s frame was not SFrame.** P4C.2 built the real one, and the prototype now seals its frames with the site’s own worker ([as built](#frame-encryption-as-built-p4c2)). Its cost a frame on a phone is still to measure (P4C.2a).
 - **ICE through the home network.** The prototype connected over loopback and the LAN. The announced public address and the path through the router are P4C.4.
 - **ts-mls has had no audit.** The working group’s test vectors now run against it in CI ([P4C.3](#the-working-groups-test-vectors-p4c3)).
@@ -197,9 +197,9 @@ Every frame was sealed and opened long before the next was due. The service’s 
 
 **Left for later steps**
 
-- **A phone.** The figures above are a laptop’s. `crypto.subtle` needs a secure context, so a phone cannot load the check page from this Mac over the LAN; it is measured when a build a phone can load over HTTPS exists (P4C.2a).
-- **Safari itself.** Playwright’s WebKit is not Safari. The check page runs by hand in any browser (`/?run`, and a button for a call through the microphone) and posts what it finds to the server that serves it; nobody has run it in Safari yet (P4C.2a).
-- **CI’s own run.** The checks passed in Playwright’s Linux browsers in a container; GitHub’s runner has not run them yet (P4C.2a).
+- **A phone.** The figures above are a laptop’s. `crypto.subtle` needs a secure context, so a phone cannot load the check page from this Mac over the LAN; a real iPhone and an Android phone are measured at P7.1b, from the live site's own tallies.
+- **Safari itself.** Playwright’s WebKit is not Safari. The check page runs by hand in any browser (`/?run`, a button for a call through the microphone and one for a call with a tone) and posts what it finds to the server that serves it. [P4C.9](#the-launch-p4c9) ran it in Safari 27.2 in the iOS Simulator: the vectors, the key check, the cost and a call sealed, opened and heard.
+- **CI’s own run.** The checks passed in Playwright’s Linux browsers in a container, and then on GitHub’s runner (run 44960250047).
 
 ## The group key as built (P4C.3)
 
@@ -314,7 +314,7 @@ One JSON text frame a message, 32 KiB at most. A page's requests carry an `id`, 
 
 **Left for later steps**
 
-- **From outside the home network.** Checked from inside it only, through the router's loopback; a phone on a mobile network is still to try ([P4C.9](#the-launch-p4c9) says what stands in for it).
+- **From outside the home network.** Checked from inside it only, through the router's loopback, at the launch too ([P4C.9](#the-launch-p4c9)); a phone on a mobile network is P7.1b.
 - **Live.** The unit is installed and `ufw` opened by the first deploy that carries it, an owner gate; [P4C.9](#the-launch-p4c9) added the `/voice` route that reaches its signalling.
 - **The table server's side** (P4C.5): `POST /api/tables/{id}/voice` issues tokens with `issueToken`, and the table tells the service when seats change.
 - **Recovery**: a restart, a dead worker or a lost path cost a room its transports or its group until [P4C.7](#recovery) made each mend itself and measured it.
@@ -386,9 +386,9 @@ The same run found the voice 6 dB quieter through RNNoise than without it. The w
 
 **Left for later steps**
 
-- **RNNoise's cost on a phone**: P4C.6's last measurement (the comparison with the browser's own suppression is above).
-- **A page hidden and shown again** resumes the context, starts a microphone the system stopped and says why when it cannot; that is checked by hand on a phone (P4C.9), since Playwright does not hide pages.
-- **The warning for a stranger in the group** is P4C.3's check shown on screen, with no honest way to bring it about in a browser test.
+- **RNNoise's cost on a phone**: still unmeasured; no session has had a phone (P7.1b).
+- **A page hidden and shown again** resumes the context, starts a microphone the system stopped and says why when it cannot. Playwright does not hide pages, so it was checked by hand at [P4C.9](#the-launch-p4c9), in Safari in the iOS Simulator, where it did each of those.
+- **The warning for a stranger in the group** is P4C.3's check shown on screen, with no honest way to bring it about in a browser test; seeing it on a screen is P7.1b's.
 
 ## Audio quality, resilience and capacity (P4C.7)
 
@@ -649,6 +649,22 @@ The scratch unit, its key and its table were removed afterwards and the live uni
 **The third finding**, the one moderate `pnpm audit` advisory in the esbuild under drizzle-kit's loader, is accepted as it stands: no release and no service runs that code, and the host's pinned versions move for every site at once.
 
 **Checked on a deployed site.** `pnpm e2e:live` now puts guests in voice ([`voice.live.ts`](../web/e2e/voice.live.ts)), through the site's own `/voice` and the voice service's public media port: two at a private table, at desktop size and at a phone's, join with fake microphones, see one voice code on both screens, hear each other, mute and unmute, and leave; and three people, in Chromium, Firefox and WebKit at a phone's size, share one table, each hearing every speaker, and the two who stay move to a new code together when the third leaves. On a Mac the Chromium person is refused the microphone and listens (its fake microphone does not work there). A site that does not offer voice skips both.
+
+**On the live site** (2026-11-22, release `20261122T194132Z-bcbf4c9290b2`, from this Mac inside the home network; every figure below went through the router's public address, 71.215.196.157, over UDP):
+
+- `pnpm e2e:live` passed 21 with 3 skipped (the two restart tests, and the three-engine table in its second project): the two-guest voice check in Chromium at 1440 × 900 with a Firefox speaker, and in WebKit at 375 × 812 with both speaking, and the three-engine table. The voice service logged the three rooms and nothing else of them: opened, the joins and leaves, closed.
+- **Three people at one table, one of them Safari.** A Firefox speaker and a Chromium listener (Playwright, at desktop size) sat at a private six-seat table, and Safari 27.2 on a simulated iPhone 17 Pro (iOS 27.2) opened their invite link, took a seat and chose “Join voice”. Safari asked for the microphone only then. All three screens showed the same four words, in the panel and in each page's own account of its group; Safari showed the Firefox speaker's ring, its own microphone as live, and the listener's headphones. In Safari, mute by the bar's button showed on its own seat and on the Firefox person's screen; deafen turned the playback off and the microphone with it; and leaving the table moved the two who stayed to new words together. The voice service counted `"rooms":1,"people":3` while it lasted.
+- **Hidden and shown again, in Safari.** With the home button pressed for twenty seconds, the Safari person stayed in the room and the group kept its words. Back in front, the panel said the browser was holding the sound back, with “Turn on sound”, and that the microphone had stopped and was being tried again; Safari asked for the microphone once more, and with that allowed and the button tapped, both were back. A line saying the browser had paused the sound stayed on screen after the sound had come back, and now goes with it.
+- **What each browser measured** over a minute at one table (a script reading every peer connection's own statistics, three people, two of them talking): a round trip of 0 to 3.5 ms to the media server, 1 to 7 ms of jitter, and no packet lost of about 2,900 a stream. Firefox held 34 to 38 ms in its jitter buffer and concealed nothing until the last seconds (0.09% over the minute); Chromium held 38 to 42 ms for the Firefox speaker and 25 ms in its own loopback, and concealed 0.3%, all of it in its first ten seconds. So on the home network the live path adds about a millisecond to [P4C.7's figures](#delay), which stand as they are: within 150 ms for Firefox and 170 to 189 ms for Chromium with everything on. Playwright's WebKit held 380 to 590 ms and cannot be read for this, as before; a real Safari's delay needs a real device.
+- **The check page in Safari** (`http://127.0.0.1:4391/?run`, which the Simulator shares with this Mac): all 289 header vectors and the frame vector with no failure, the base key not extractable, the worker loaded under the site's policy, and sealing and opening at 27 and 63 µs a frame in a nine-person room, 2.6% of a core, at a load of 9 to 13 (a first run at a load of 700 read 571 and 935 µs, which says nothing of Safari). A call with a tone sealed 275 frames and opened 275, refused none and concealed nothing, and the listener's analyser read 0.177, a tone of 0.25 as it was made. A call through the microphone connected and sent no frame at all: the Simulator's microphone delivered no audio on this Mac, which is why the page has the tone.
+
+**What a session without a phone could not check**, and where it went (P7.1b in BUILD.md): a real iPhone and an Android phone, on their own microphones and speakers; a second network, a mobile one above all, and with it the path from outside the home network and the delay between two networks; a network that allows only TCP 443, which decides whether a TURN server on 443 is needed; the worker's and RNNoise's cost on a phone; echo with and without Chromium's loopback (`rivermind.voice.direct`); and the stranger warning seen on a screen.
+
+**Found on the way, and fixed.**
+
+- **The invitation was unreadable and a screen down.** “You are invited” was written in ink on the gold frame's dark panel, since some earlier restyling, and stood below practice and the wallet, so someone who followed a friend's link on a phone saw the ordinary lobby. No browser test had looked at its colours and the screenshot scenes never showed it; Safari on a phone's screen did. It is first on the page now, in the panel's own colours, and `lobby.e2e.ts` checks both.
+- **“Away”, for about 20 ms, at your own seat.** A rejoining player's first view was sent before they were marked connected, and their hand log opened with their own “reconnected”. They are marked first now. The recorded table session changed in one step: the joiner gets one message where it got two.
+- **A table closed mid-hand kept the pot.** `Tables.close` paid back stacks and not what had gone into the hand under way. It now pays back both. Only a close by hand can meet a hand in progress, since a table with one never sits idle.
 
 ## Tools considered
 

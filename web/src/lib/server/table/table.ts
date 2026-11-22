@@ -372,6 +372,14 @@ export class Table {
 		return player.stack;
 	}
 
+	/**
+	 * What the seat has put into the hand in progress: nothing between hands. A table that
+	 * closes mid-hand owes it back with the stack, since the hand is never finished.
+	 */
+	inPotOf(seat: number): number {
+		return this.inHand(seat) ? (this.hand as HandState).contributions[seat] : 0;
+	}
+
 	/** Seats that would be dealt into a hand started now (rule 2.1). */
 	dealtInNext(): number[] {
 		return this.players()

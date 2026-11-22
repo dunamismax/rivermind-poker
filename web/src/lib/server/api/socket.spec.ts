@@ -144,7 +144,9 @@ describe('sockets', () => {
 			socket = await player.socket();
 			const again = await socket.join(tableId);
 			const view = again.view;
-			expect(view.seq).toBeGreaterThanOrEqual(lastSeq + 1); // the disconnect is an event
+			expect(view.seq).toBeGreaterThanOrEqual(lastSeq + 2); // the disconnect and the return are events
+			// Their first view already shows them back: no moment of "Away" at their own seat.
+			expect(view.seats[0]!.connected).toBe(true);
 			if (view.hand!.hand_no === handNo && view.hand!.result === null) {
 				expect(view.seats[0]!.cards).toEqual(mine); // the same hand, the same cards
 				expect(view.you.legal).not.toBeNull();
@@ -157,7 +159,8 @@ describe('sockets', () => {
 			);
 			const seqs = events.map((e) => e.seq);
 			expect(seqs).toEqual(seqs.map((_, i) => seqs[0] + i)); // in order, without gaps
-			expect(events.map((e) => e.kind)).toContain('connected');
+			// Their own return is not news to them, so their hand log is not told of it.
+			expect(events.map((e) => e.kind)).not.toContain('connected');
 			for (const message of [...first, ...hands]) checkPrivacy(message, spy);
 		}
 	);

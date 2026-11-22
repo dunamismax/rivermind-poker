@@ -172,6 +172,34 @@
 			Play money only: chips can never be bought, sold or cashed out, and have no value. Every bot
 			is labelled as a bot.
 		</p>
+		<!-- First on the page: someone who followed a friend's link came for this, and on a
+		     phone anything below practice is a screen away. -->
+		{#if invited}
+			<section class="invite px-gold grid gap-5 px-6 pt-5 pb-6" aria-labelledby="invite-title">
+				<h3 id="invite-title" class="text-l text-gold text-shadow-ink">You are invited</h3>
+				<p>
+					{invited.name}: blinds {invited.small_blind}/{invited.big_blind}, {invited.people}
+					{invited.people === 1 ? 'person' : 'people'} seated.
+				</p>
+				{#if invited.waitlist_position !== null}
+					<p>You are number {invited.waitlist_position} in line for a seat.</p>
+				{:else}
+					<button
+						type="button"
+						class="px-btn amber"
+						disabled={joining || (balance !== null && balance < invited.min_buy_in)}
+						onclick={() => accept(invited!)}
+					>
+						{joining
+							? 'Seating…'
+							: invited.free_seats + invited.bot_seats > 0 || invited.hold
+								? 'Take a seat'
+								: 'Join the waitlist'}
+					</button>
+				{/if}
+			</section>
+		{/if}
+		{#if inviteError}<p class="error text-red-light" role="alert">{inviteError}</p>{/if}
 		<section class="practice px-panel grid gap-4 px-7 py-6" aria-labelledby="practice-title">
 			<h3 id="practice-title" class="sr-only">Practice</h3>
 			<button
@@ -231,35 +259,6 @@
 			<a class="px-btn small" href={resolve('/bots')}>The bots</a>
 		</nav>
 		{#if message}<p class="closed px-panel px-5 py-3 text-mist" role="status">{message}</p>{/if}
-		{#if invited}
-			<section
-				class="invite px-gold grid gap-5 px-6 pt-5 pb-6 text-ink"
-				aria-labelledby="invite-title"
-			>
-				<h3 id="invite-title" class="text-l">You are invited</h3>
-				<p>
-					{invited.name}: blinds {invited.small_blind}/{invited.big_blind}, {invited.people}
-					{invited.people === 1 ? 'person' : 'people'} seated.
-				</p>
-				{#if invited.waitlist_position !== null}
-					<p>You are number {invited.waitlist_position} in line for a seat.</p>
-				{:else}
-					<button
-						type="button"
-						class="px-btn amber"
-						disabled={joining || (balance !== null && balance < invited.min_buy_in)}
-						onclick={() => accept(invited!)}
-					>
-						{joining
-							? 'Seating…'
-							: invited.free_seats + invited.bot_seats > 0 || invited.hold
-								? 'Take a seat'
-								: 'Join the waitlist'}
-					</button>
-				{/if}
-			</section>
-		{/if}
-		{#if inviteError}<p class="error text-red-light" role="alert">{inviteError}</p>{/if}
 	</section>
 
 	<div class="side grid min-w-0 gap-8">

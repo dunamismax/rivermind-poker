@@ -308,6 +308,17 @@ class Table:
             return self.hand.stacks[seat]
         return player.stack
 
+    def in_pot_of(self, seat: int) -> int:
+        """What the seat has put into the hand in progress: nothing between hands.
+
+        A table that closes mid-hand owes it back with the stack, since the
+        hand is never finished.
+        """
+        if self.in_hand(seat):
+            assert self.hand is not None
+            return self.hand.contributions[seat]
+        return 0
+
     def dealt_in_next(self) -> list[int]:
         """Seats that would be dealt into a hand started now (rule 2.1)."""
         return [

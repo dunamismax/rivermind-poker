@@ -811,7 +811,8 @@ export class Tables {
 
 	/**
 	 * Close a table now, as eviction does: its people are told why, and anyone
-	 * still seated gets their chips back. Resolves once it has closed.
+	 * still seated gets their chips back, with what they had put into a hand that
+	 * was under way. Resolves once it has closed.
 	 */
 	async close(tableId: string, message: string): Promise<void> {
 		if (this.manager.get(tableId) === null) return;
@@ -909,6 +910,17 @@ export class Tables {
 		if (!connection.tables.has(tableId) && connection.tables.size >= MAX_SUBSCRIPTIONS) {
 			throw new RequestError('bad_request', `follow at most ${MAX_SUBSCRIPTIONS} tables`);
 		}
+		// Someone seated is connected before their first view, not after it: the view then
+		// shows their own seat as it is, where it read "Away" until a second message came,
+		// and their hand log is not told that they "reconnected". The others at the table
+		// hear it as before.
+		if (runner.table.seatOf(playerId) !== null) {
+			// Their seat can go while this waits its turn (another tab leaving): they then
+			// follow the table as anyone may.
+			await runner.setConnected(playerId, true).catch((error: unknown) => {
+				if (!(error instanceof TableError)) throw error;
+			});
+		}
 		await runner.lock.run(() => {
 			if (!connection.tables.has(tableId)) {
 				const listener: Listener = (r, events) =>
@@ -920,7 +932,6 @@ export class Tables {
 			}
 			connection.send(this.tableMessage(runner, playerId));
 		});
-		if (runner.table.seatOf(playerId) !== null) await runner.setConnected(playerId, true);
 	}
 
 	async unfollow(connection: Connection, tableId: string): Promise<void> {
@@ -1050,7 +1061,8 @@ function seatedChips(runner: TableRunner): Credit[] {
 	if (runner.practice !== null) return [];
 	const credits = creditsFor(runner.tableId, departures);
 	for (const [seat, player] of table.players()) {
-		const chips = table.stackOf(seat) + player.pendingRebuy;
+		// A hand cut short is never paid out, so what each person put into it goes back too.
+		const chips = table.stackOf(seat) + table.inPotOf(seat) + player.pendingRebuy;
 		if (player.bot === null && chips > 0) {
 			credits.push({
 				playerId: player.playerId,

@@ -60,6 +60,21 @@ test('joins a private table with its invite link', async ({ page, browser, cspVi
 	await bob.goto(link);
 	const invite = bob.getByRole('region', { name: 'You are invited' });
 	await expect(invite).toContainText('2-seat table');
+	// The invitation is what they came for: above practice, and written in light on its dark
+	// panel. It sat a screen down on a phone, in ink on ink, until a look at a real Safari.
+	const top = (await invite.boundingBox())!.y;
+	expect(top).toBeLessThan(
+		(await bob.getByRole('button', { name: 'Practice vs bots' }).boundingBox())!.y
+	);
+	const light = (locator: typeof invite) =>
+		locator.evaluate((element) => {
+			const [r, g, b] = getComputedStyle(element)
+				.color.match(/[\d.]+/g)!
+				.map(Number);
+			return (r + g + b) / 3;
+		});
+	expect(await light(invite.getByRole('heading'))).toBeGreaterThan(128);
+	expect(await light(invite.locator('p').first())).toBeGreaterThan(128);
 	await invite.getByRole('button', { name: 'Take a seat' }).click();
 	await expect(bob).toHaveURL(/\/$/); // the code leaves the address bar
 	await playUntil(page, async () => seated(bob).isVisible());

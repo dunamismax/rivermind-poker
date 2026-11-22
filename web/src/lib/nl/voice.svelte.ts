@@ -101,6 +101,9 @@ function closedWhy(code: number): string | null {
 	}
 }
 
+// Said when a page comes back from being hidden and its sound needs a tap to start again.
+const PAUSED_WHILE_HIDDEN = 'Your browser paused the sound while the page was hidden.';
+
 export class TableVoice {
 	phase = $state<Phase>('idle');
 	// The site offers voice at all (`GET /api/voice`).
@@ -528,6 +531,8 @@ export class TableVoice {
 
 	#syncPlayback(): void {
 		this.needsGesture = this.#playback?.blocked ?? false;
+		// Sound is back, by itself or from “Turn on sound”: the reason it stopped is old news.
+		if (!this.needsGesture && this.notice === PAUSED_WHILE_HIDDEN) this.notice = null;
 		this.canChooseOutput = this.#playback?.canChooseOutput ?? false;
 		this.#mic?.meter(this.#playback?.context ?? null);
 	}
@@ -841,11 +846,8 @@ export class TableVoice {
 			await this.#playback?.resume();
 			this.#syncPlayback();
 			if (this.mode === 'talk' && this.#mic && !this.#mic.live) await this.#micEnded();
-			if (this.needsGesture) {
-				this.notice = 'Your browser paused the sound while the page was hidden.';
-			} else if (this.notice?.startsWith('Your browser paused')) {
-				this.notice = null;
-			}
+			// #syncPlayback has taken the notice away again if the sound came back by itself.
+			if (this.needsGesture) this.notice = PAUSED_WHILE_HIDDEN;
 		})();
 	};
 

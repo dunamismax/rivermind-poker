@@ -285,6 +285,18 @@ def test_a_rebuy_during_a_hand_is_added_when_it_ends() -> None:
     assert "rebuy_pending" in kinds and kinds[-1] == "rebought"
 
 
+def test_what_a_seat_has_put_into_the_hand_is_known_until_it_ends() -> None:
+    table = table_with([0, 1], stack=5_000)
+    assert table.in_pot_of(0) == table.in_pot_of(1) == 0  # no hand yet
+    table.start_hand(random.Random(0))
+    # The blinds are in: each seat's stack and what it has put in are what it sat down with.
+    assert sorted(table.in_pot_of(seat) for seat in (0, 1)) == [50, 100]
+    for seat in (0, 1):
+        assert table.stack_of(seat) + table.in_pot_of(seat) == 5_000
+    finish(table)
+    assert table.in_pot_of(0) == table.in_pot_of(1) == 0  # paid out with the hand
+
+
 def test_a_pending_rebuy_is_fitted_to_the_maximum() -> None:
     table = table_with([0, 1], stack=9_000)
     table.button = 1

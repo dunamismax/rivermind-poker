@@ -322,6 +322,19 @@ describe('rebuys', () => {
 	});
 });
 
+describe('what a seat has put into the hand', () => {
+	it('is known until the hand ends', () => {
+		const table = tableWith([0, 1], CONFIG, 5_000);
+		expect([table.inPotOf(0), table.inPotOf(1)]).toEqual([0, 0]); // no hand yet
+		table.startHand(rng(0));
+		// The blinds are in: each seat's stack and what it has put in are what it sat down with.
+		expect([table.inPotOf(0), table.inPotOf(1)].sort((a, b) => a - b)).toEqual([50, 100]);
+		for (const seat of [0, 1]) expect(table.stackOf(seat) + table.inPotOf(seat)).toBe(5_000);
+		finish(table);
+		expect([table.inPotOf(0), table.inPotOf(1)]).toEqual([0, 0]); // paid out with the hand
+	});
+});
+
 describe('acting', () => {
 	it('lets only the seat to act act', () => {
 		const table = tableWith([0, 1, 2]);

@@ -235,7 +235,11 @@ describe('concurrent requests', () => {
 		await checkInvariants(server, [alice]);
 	});
 
-	it.each([0, 1, 2])(
+	// Seeds whose 900 requests include every kind that the last lines ask for. A sit that
+	// lands is rare (a handful in a run), and which ones land moves with any change to the
+	// order a request awaits things in: seed 1 had six until a rejoining player was marked
+	// connected before their first view, and none after.
+	it.each([0, 2, 3])(
 		'keep the tables consistent through random requests (seed %i)',
 		async (seed) => {
 			// Every round, every tab of three people sends a random request at once.
