@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rivermind-poker"
 version = "0.1.0.dev0"
-description = "A short-deck poker engine and self-play bot for RiverMind Poker"
+description = "The offline side of RiverMind Poker: the reference no-limit hold'em engine, MCCFR bot training and evaluation, and the original short-deck prototype"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "GPL-3.0-or-later"
