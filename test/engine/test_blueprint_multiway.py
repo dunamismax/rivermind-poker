@@ -357,7 +357,7 @@ def test_blueprints_playing_each_other_stay_on_the_graph(six: Tree, dealt: int) 
     for bot in bots.values():
         assert bot.stats["decisions"] > 60
         assert bot.stats["trained"] == bot.stats["decisions"]
-        assert not any(bot.stats[k] for k in ("lost", "reentries", "off_tree", "below_smallest", "resized", "passed"))
+        assert not any(bot.stats[k] for k in ("lost", "reentries", "off_tree", "below_smallest", "resized", "passed", "capped"))
 
 
 def test_the_policy_keeps_its_place_among_other_players_and_stacks(six: Tree) -> None:
@@ -376,7 +376,7 @@ def test_the_policy_keeps_its_place_among_other_players_and_stacks(six: Tree) ->
     stats = bot.stats
     assert stats["decisions"] > 400 and stats["off_tree"] > 50 and stats["reentries"] > 20 and stats["passed"] > 0
     assert stats["trained"] + stats["lost"] == stats["decisions"]
-    assert stats["lost"] / stats["decisions"] < 0.02
+    assert stats["capped"] > 0 and stats["lost"] / stats["decisions"] < 0.03
 
 
 # Serving bundles

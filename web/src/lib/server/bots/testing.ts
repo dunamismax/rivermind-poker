@@ -1,11 +1,20 @@
 // Test helpers: write a small serving bundle (P4B.6) from TypeScript, with the
-// hu-m1 trees, one bucket a street unless told otherwise, and a strategy the
-// test sets info set by info set.
+// hu-m1 trees or a multiway abstraction's graphs (format 2, P5.7), one bucket
+// a street unless told otherwise, and a strategy the test sets info set by
+// info set.
 
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { FORMAT, KIND, STREETS, tableSetDigest, type Tree } from './bundle.ts';
+import {
+	FORMAT,
+	GRAPH_FORMAT,
+	KIND,
+	STREETS,
+	tableSetDigest,
+	type GraphDocument,
+	type Tree
+} from './bundle.ts';
 import type { Champion, ChampionRegistry } from './champions.ts';
 
 // As champions.ts has it; not imported, so this file loads without the built-in registry.
@@ -32,7 +41,7 @@ export const TEST_CHECKPOINT = {
 /** Write a bundle into `dir`; every card lookup lands in bucket 0 of a 1-class table unless `buckets` says more. */
 export function writeBundle(
 	dir: string,
-	trees: readonly Tree[],
+	trees: readonly (Tree | GraphDocument)[],
 	{
 		buckets = [1, 1, 1, 1] as [number, number, number, number],
 		strategy
@@ -77,9 +86,9 @@ export function writeBundle(
 	const sha256 = { 'test.npy': 'test' };
 	const tableSet = tableSetDigest(sha256);
 	const manifest = {
-		format: FORMAT,
+		format: 'token_sets' in trees[0] ? GRAPH_FORMAT : FORMAT,
 		kind: KIND,
-		abstraction: 'hu-m1',
+		abstraction: trees[0].abstraction,
 		checkpoint: { synthetic: true, ...TEST_CHECKPOINT },
 		cards: { synthetic: true, table_set: tableSet, sha256 },
 		game: {
@@ -115,7 +124,7 @@ export function randomStrategy(size: number, seed = 1): Uint8Array {
 
 /** The slots a bundle of `trees` needs with `buckets` a street. */
 export function strategySize(
-	trees: readonly Tree[],
+	trees: readonly (Tree | GraphDocument)[],
 	buckets: [number, number, number, number] = [1, 1, 1, 1]
 ): number {
 	let size = 0;

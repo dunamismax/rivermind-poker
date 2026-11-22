@@ -15,6 +15,8 @@ import { endianness } from 'node:os';
 import { join } from 'node:path';
 
 export const FORMAT = 1;
+/** The format of a bundle whose trees are multiway graphs (P5.6). */
+export const GRAPH_FORMAT = 2;
 export const KIND = 'rivermind-serving-bundle';
 export const STREETS = ['flop', 'turn', 'river'] as const;
 export const INVALID = 0xffff;
@@ -41,6 +43,181 @@ export interface Tree {
 	readonly terminal_value: readonly number[];
 	readonly measure: readonly (readonly (number | null)[])[];
 	readonly spr: readonly number[];
+}
+
+/** A multiway graph as a format 2 `trees.json` stores it, in columns (`graph_document` in bundle.py). */
+export interface GraphDocument {
+	readonly abstraction: string;
+	readonly depth: number;
+	readonly small_blind: number;
+	readonly big_blind: number;
+	readonly sha256: string;
+	readonly width: readonly [number, number, number, number];
+	readonly seats: number;
+	readonly merged: boolean;
+	readonly player: readonly number[];
+	readonly street: readonly number[];
+	readonly offset: readonly number[];
+	readonly contribution: readonly number[];
+	readonly live: readonly number[];
+	readonly token_sets: readonly (readonly string[])[];
+	readonly tokens: readonly number[];
+	readonly children: readonly number[];
+	readonly measure_sets: readonly (readonly (number | null)[])[];
+	readonly measure: readonly number[];
+	readonly spr: readonly number[];
+	readonly starts: readonly (readonly number[])[];
+	readonly terminal_kind: readonly number[];
+	readonly terminal_value: readonly number[];
+	readonly terminal_pot: readonly number[];
+	readonly terminal_live: readonly number[];
+}
+
+/**
+ * A multiway graph in typed arrays, as a policy reads it. Node `v`'s actions
+ * are `tokenSets[tokens[v]]` and its children `children[first[v]]` onward: a
+ * node number, or `~t` for terminal `t`. `live` is a bit mask of seats.
+ */
+export interface Graph {
+	readonly abstraction: string;
+	readonly depth: number;
+	readonly small_blind: number;
+	readonly big_blind: number;
+	readonly sha256: string;
+	readonly width: readonly [number, number, number, number];
+	readonly seats: number;
+	readonly merged: boolean;
+	readonly player: Uint8Array;
+	readonly street: Uint8Array;
+	readonly offset: Int32Array;
+	readonly contribution: Int32Array;
+	readonly live: Uint16Array;
+	readonly tokenSets: readonly (readonly string[])[];
+	readonly tokens: Uint8Array;
+	readonly first: Int32Array;
+	readonly children: Int32Array;
+	readonly measureSets: readonly (readonly (number | null)[])[];
+	readonly measure: Int32Array;
+	readonly spr: Float64Array;
+	readonly starts: readonly (readonly number[])[];
+	readonly terminalKind: Uint8Array;
+	readonly terminalValue: Int32Array;
+	readonly terminalPot: Int32Array;
+	readonly terminalLive: Uint16Array;
+}
+
+/** A graph from its document, with its columns checked against each other. */
+export function graphFromDocument(doc: GraphDocument): Graph {
+	const n = doc.player.length;
+	const columns = [
+		doc.street,
+		doc.offset,
+		doc.contribution,
+		doc.live,
+		doc.tokens,
+		doc.measure,
+		doc.spr
+	];
+	const terminals = [doc.terminal_value, doc.terminal_pot, doc.terminal_live];
+	if (
+		columns.some((c) => !Array.isArray(c) || c.length !== n) ||
+		terminals.some((c) => !Array.isArray(c) || c.length !== doc.terminal_kind.length) ||
+		doc.starts.length !== 4
+	) {
+		throw new BundleError("the graph's columns have different lengths");
+	}
+	const tokens = Uint8Array.from(doc.tokens);
+	const first = new Int32Array(n + 1);
+	for (let v = 0; v < n; v++) {
+		const set = doc.token_sets[tokens[v]];
+		const sizes = doc.measure_sets[doc.measure[v]];
+		if (set === undefined || sizes === undefined || sizes.length !== set.length) {
+			throw new BundleError("a node's actions and sizes do not match");
+		}
+		first[v + 1] = first[v] + set.length;
+	}
+	if (first[n] !== doc.children.length) {
+		throw new BundleError("the graph's children do not fit its nodes");
+	}
+	const children = Int32Array.from(doc.children);
+	const terminalCount = doc.terminal_kind.length;
+	for (const c of children) {
+		if (c >= n || ~c >= terminalCount) throw new BundleError('a child is not in the graph');
+	}
+	return {
+		abstraction: doc.abstraction,
+		depth: doc.depth,
+		small_blind: doc.small_blind,
+		big_blind: doc.big_blind,
+		sha256: doc.sha256,
+		width: doc.width,
+		seats: doc.seats,
+		merged: doc.merged,
+		player: Uint8Array.from(doc.player),
+		street: Uint8Array.from(doc.street),
+		offset: Int32Array.from(doc.offset),
+		contribution: Int32Array.from(doc.contribution),
+		live: Uint16Array.from(doc.live),
+		tokenSets: doc.token_sets,
+		tokens,
+		first,
+		children,
+		measureSets: doc.measure_sets,
+		measure: Int32Array.from(doc.measure),
+		spr: Float64Array.from(doc.spr),
+		starts: doc.starts,
+		terminalKind: Uint8Array.from(doc.terminal_kind),
+		terminalValue: Int32Array.from(doc.terminal_value),
+		terminalPot: Int32Array.from(doc.terminal_pot),
+		terminalLive: Uint16Array.from(doc.terminal_live)
+	};
+}
+
+/** A multiway graph's SHA-256 as `Tree.sha256` computes it in Python: a head, then a row a node and a row a terminal. */
+export function graphSha256(graph: Graph): string {
+	const hash = createHash('sha256');
+	hash.update(
+		JSON.stringify({
+			abstraction: graph.abstraction,
+			depth: graph.depth,
+			blinds: [graph.small_blind, graph.big_blind],
+			seats: graph.seats,
+			merged: graph.merged,
+			width: graph.width
+		})
+	);
+	const n = graph.player.length;
+	let pending = '';
+	for (let v = 0; v < n; v++) {
+		const kids = Array.from(graph.children.subarray(graph.first[v], graph.first[v + 1]));
+		pending += JSON.stringify([
+			graph.player[v],
+			graph.street[v],
+			graph.offset[v],
+			graph.tokenSets[graph.tokens[v]],
+			kids,
+			graph.contribution[v],
+			graph.live[v]
+		]);
+		if (pending.length > 1 << 20) {
+			hash.update(pending);
+			pending = '';
+		}
+	}
+	for (let t = 0; t < graph.terminalKind.length; t++) {
+		const seats: number[] = [];
+		for (let seat = 0; seat < graph.seats; seat++) {
+			if ((graph.terminalLive[t] >> seat) & 1) seats.push(seat);
+		}
+		pending += JSON.stringify([
+			graph.terminalKind[t],
+			graph.terminalValue[t],
+			graph.terminalPot[t],
+			seats
+		]);
+	}
+	hash.update(pending);
+	return hash.digest('hex');
 }
 
 export interface BundleManifest {
@@ -179,7 +356,12 @@ export class CardTables {
 export interface Bundle {
 	readonly path: string;
 	readonly manifest: BundleManifest;
+	/** The table size the bundle's blueprint plays. */
+	readonly seats: number;
+	/** A heads-up bundle's trees; empty in a multiway bundle. */
 	readonly trees: readonly Tree[];
+	/** A multiway bundle's graphs (format 2); empty in a heads-up bundle. */
+	readonly graphs: readonly Graph[];
 	readonly buckets: readonly [number, number, number, number];
 	readonly base: readonly (readonly [number, number, number, number])[];
 	readonly strategy: Uint8Array;
@@ -226,8 +408,8 @@ export function loadBundle(path: string, options: LoadOptions = {}): Bundle {
 	} catch (error) {
 		throw new BundleError(`${path} has no readable manifest.json: ${error}`);
 	}
-	if (manifest.kind !== KIND || manifest.format !== FORMAT) {
-		throw new BundleError(`${path} is not a format ${FORMAT} serving bundle`);
+	if (manifest.kind !== KIND || (manifest.format !== FORMAT && manifest.format !== GRAPH_FORMAT)) {
+		throw new BundleError(`${path} is not a format ${FORMAT} or ${GRAPH_FORMAT} serving bundle`);
 	}
 	if (options.tableSet !== undefined && manifest.cards.table_set !== options.tableSet) {
 		throw new BundleError('this bundle was not built from the expected card table set');
@@ -260,18 +442,32 @@ export function loadBundle(path: string, options: LoadOptions = {}): Bundle {
 		if (count * dtype.bytes !== data.length) throw new BundleError(`${name} has the wrong size`);
 		return dtype.make(data.buffer as ArrayBuffer, data.byteOffset, count);
 	};
-	const trees = JSON.parse(new TextDecoder().decode(files.get('trees.json'))) as Tree[];
-	const layout = manifest.game;
+	const documents = JSON.parse(new TextDecoder().decode(files.get('trees.json'))) as unknown[];
+	const isGraph = (t: unknown) => typeof t === 'object' && t !== null && 'token_sets' in t;
 	if (
-		trees.length !== layout.trees.length ||
+		!Array.isArray(documents) ||
+		documents.some((t) => isGraph(t) !== (manifest.format === GRAPH_FORMAT))
+	) {
+		throw new BundleError("the bundle's trees do not suit its format");
+	}
+	const layout = manifest.game;
+	const graphs =
+		manifest.format === GRAPH_FORMAT ? (documents as GraphDocument[]).map(graphFromDocument) : [];
+	const trees = manifest.format === GRAPH_FORMAT ? [] : (documents as Tree[]);
+	const shapes: readonly (Tree | Graph)[] = manifest.format === GRAPH_FORMAT ? graphs : trees;
+	if (
+		shapes.length !== layout.trees.length ||
 		trees.some(
 			(t, d) => t.depth !== layout.trees[d].depth || treeSha256(t) !== layout.trees[d].sha256
+		) ||
+		graphs.some(
+			(g, d) => g.depth !== layout.trees[d].depth || graphSha256(g) !== layout.trees[d].sha256
 		)
 	) {
 		throw new BundleError("the bundle's trees do not match its manifest");
 	}
 	let size = 0;
-	trees.forEach((t, d) =>
+	shapes.forEach((t, d) =>
 		[0, 1, 2, 3].forEach((s) => {
 			if (layout.base[d][s] !== size) throw new BundleError("the bundle's layout is inconsistent");
 			size += t.width[s] * layout.buckets[s];
@@ -290,7 +486,9 @@ export function loadBundle(path: string, options: LoadOptions = {}): Bundle {
 	return {
 		path,
 		manifest,
+		seats: graphs.length ? graphs[0].seats : 2,
 		trees,
+		graphs,
 		buckets: layout.buckets,
 		base: layout.base,
 		strategy,

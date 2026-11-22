@@ -122,7 +122,8 @@ web/                             SvelteKit app (Node 26.13.1 from web/.node-vers
   src/lib/engine/                browser-safe cards and evaluator
   src/lib/server/engine/         TypeScript engine (P4B.4); rules.json is generated from Python fixtures
   src/lib/server/bots/           TypeScript bots and BlueprintPolicy (P4B.6), with PythonRandom;
-                                 champions.ts loads a registered champion's bundle (P5.7a)
+                                 champions.ts loads a registered champion's bundle (P5.7a);
+                                 multiway.ts plays a six-seat bundle's graph (P5.7)
   src/lib/champions.json         the site's extract of the model registry, written by blueprint promote
   src/lib/server/db/             Drizzle schema, pool, migrator and test-database guard (P4B.3)
   src/lib/server/table/          table, clock, snapshot, runner and Drizzle table store (P4B.5b)
@@ -222,7 +223,7 @@ uv run --locked python -m test.engine.export_fixtures
 
 ### Bots, card tables and training
 
-After a change to either side of the bots, run `pnpm bots:parity` from `web/` (CI runs it on a synthetic bundle). For a change to the blueprint policy or the bundle format, also run the long parity run against a real bundle; the command is in [docs/bots.md](docs/bots.md#serving-p4b6), as is `pnpm bots:bench`.
+After a change to either side of the bots, run `pnpm bots:parity` from `web/` (CI runs it on a synthetic heads-up bundle and a synthetic six-seat one). For a change to the blueprint policy or the bundle format, also run the long parity run against a real bundle; the command is in [docs/bots.md](docs/bots.md#serving-p4b6), as is `pnpm bots:bench`.
 
 | Task | Command | Notes |
 | --- | --- | --- |
@@ -288,6 +289,8 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 ### Bots in two languages
 
 - The bots in `web/src/lib/server/bots` must play exactly as `rivermind/bots` does, seed for seed. Both draw from CPython’s `random.Random` (ported as `PythonRandom`), so keep every random draw in the same order in both languages, and land a bot change in both in the same commit.
+- The multiway policy (`multiway.ts`, `MultiwayBlueprintPolicy` in `policy.py`) is a separate class in both languages, so the heads-up policy the champion plays through stays as it is. A change to either multiway class lands in both, and `pnpm bots:parity` checks them on a synthetic six-seat bundle; `-- --multiway-decisions 20000` is the long run.
+- A format 2 bundle's `trees.json` is columns, read into typed arrays (`graphFromDocument`). Never give a graph an array a node: the 100 big blind graph has 654,597 of them.
 - A bundle file is read into its own `ArrayBuffer`. `readFileSync` may return a pooled buffer whose offset breaks typed-array views.
 
 ### Training and artifacts

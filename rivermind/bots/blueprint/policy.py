@@ -500,6 +500,22 @@ class MultiwayBlueprintPolicy(BlueprintPolicy):
             self.stats["passed"] += 1
         return None
 
+    def _token(self, tree: Tree, node: int, hand: _Hand, index: int, record: ActionRecord, real: _Real, rng: random.Random) -> str | None:
+        """As heads-up, and a raise where the graph has none left is its call.
+
+        The graph may hold a seat all-in, or the street's raises spent, where
+        the real table goes on raising. The raiser has at least matched the
+        bet, so the call keeps the hand in the graph (``capped``).
+        """
+        token = super()._token(tree, node, hand, index, record, real, rng)
+        if token is None and record.kind in (ActionKind.BET, ActionKind.RAISE):
+            tokens = tree.tokens[node]
+            token = "c" if "c" in tokens else "k" if "k" in tokens else None
+            if token is not None:
+                self.stats["capped"] += 1
+                hand.tokens[index] = token
+        return token
+
     def _street_table(
         self,
         tree: Tree,

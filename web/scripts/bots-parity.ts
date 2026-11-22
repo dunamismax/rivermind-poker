@@ -8,13 +8,19 @@
 //      every decision (to within 1e-9), the same statistics and the same
 //      hand records, heads-up against each of those bots and itself;
 //   3. card-bucket lookups agree on every hole-card pair for a seeded sample
-//      of boards on each street.
+//      of boards on each street;
+//   4. the blueprint of a multiway (format 2) bundle does the same at a table
+//      of its size with three or more dealt in, in one or more seats, against
+//      those bots and itself (P5.7).
 //
 // Without --bundle it checks a synthetic bundle (the real trees with random
-// strategies and card tables), which CI can build in a second.
+// strategies and card tables), which CI can build in a second. Without
+// --multiway-bundle it checks a synthetic six-seat bundle of the 50 big
+// blind graph, which Python compiles in half a minute where no cache holds it.
 //
 //   node scripts/bots-parity.ts [--hands 250] [--seats 2-9] [--seed 0]
 //     [--bundle <dir>] [--tables <dir>] [--decisions 2000] [--boards 200]
+//     [--multiway-bundle <dir>] [--multiway-decisions 2000]
 
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -25,11 +31,13 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { BlueprintPolicy } from '../src/lib/server/bots/blueprint.ts';
 import { loadBundle } from '../src/lib/server/bots/bundle.ts';
+import { MultiwayBlueprintPolicy } from '../src/lib/server/bots/multiway.ts';
 import {
 	bucketReport,
 	largestDifference,
 	replayLine,
-	simpleBots
+	simpleBots,
+	type TrainedPolicy
 } from '../src/lib/server/bots/parity.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -43,7 +51,9 @@ const { values } = parseArgs({
 		bundle: { type: 'string' },
 		tables: { type: 'string' },
 		decisions: { type: 'string', default: '2000' },
-		boards: { type: 'string', default: '200' }
+		boards: { type: 'string', default: '200' },
+		'multiway-bundle': { type: 'string' },
+		'multiway-decisions': { type: 'string', default: '2000' }
 	}
 });
 const TOLERANCE = 1e-9;
@@ -84,6 +94,47 @@ async function lines(args: string[], each: (fields: string[], n: number) => void
 const started = performance.now();
 const report: Record<string, unknown> = {};
 const seed = values.seed;
+let blueprintReport: Record<string, unknown> = {};
+
+/** Replay the reference's hands of a blueprint and compare probabilities, statistics and records. */
+async function checkBlueprint(
+	label: string,
+	args: string[],
+	blueprint: TrainedPolicy
+): Promise<number> {
+	const withBlueprint = { ...bots, blueprint };
+	let decisions = 0;
+	let largest = 0;
+	let exact = true;
+	const hands = await lines(args, ([metaText, record], n) => {
+		const meta = JSON.parse(metaText);
+		const result = replayLine(meta, JSON.parse(record), withBlueprint, blueprint);
+		const gap = largestDifference(result.probabilities, meta.probabilities);
+		if (gap === null || gap > TOLERANCE) {
+			fail(
+				`${label} line ${n}: probabilities differ (${gap}):\n  python: ${JSON.stringify(meta.probabilities)}\n  ts:     ${JSON.stringify(result.probabilities)}`
+			);
+		}
+		if (JSON.stringify(result.probabilities) !== JSON.stringify(meta.probabilities)) exact = false;
+		largest = Math.max(largest, gap);
+		if (JSON.stringify(result.stats) !== JSON.stringify(meta.stats)) {
+			fail(
+				`${label} line ${n}: statistics differ:\n  python: ${JSON.stringify(meta.stats)}\n  ts:     ${JSON.stringify(result.stats)}`
+			);
+		}
+		if (result.record !== record) {
+			fail(`${label} line ${n} differs:\n  python: ${record}\n  ts:     ${result.record}`);
+		}
+		decisions += result.probabilities.length;
+	});
+	blueprintReport = {
+		decisions,
+		largest_difference: largest,
+		identical: exact,
+		stats: blueprint.stats
+	};
+	return hands;
+}
 
 // 1. Simple bots on the fuzz deals.
 const bots = simpleBots();
@@ -120,41 +171,12 @@ try {
 		load_seconds: Math.round((performance.now() - loadStarted) / 100) / 10
 	};
 	const blueprint = new BlueprintPolicy(bundle);
-	const withBlueprint = { ...bots, blueprint };
-	let decisions = 0;
-	let largest = 0;
-	let exact = true;
-	report.blueprint_hands = await lines(
+	report.blueprint_hands = await checkBlueprint(
+		'blueprint',
 		['blueprint', bundlePath, '--decisions', values.decisions, '--seed', seed],
-		([metaText, record], n) => {
-			const meta = JSON.parse(metaText);
-			const result = replayLine(meta, JSON.parse(record), withBlueprint, blueprint);
-			const gap = largestDifference(result.probabilities, meta.probabilities);
-			if (gap === null || gap > TOLERANCE) {
-				fail(
-					`blueprint line ${n}: probabilities differ (${gap}):\n  python: ${JSON.stringify(meta.probabilities)}\n  ts:     ${JSON.stringify(result.probabilities)}`
-				);
-			}
-			if (JSON.stringify(result.probabilities) !== JSON.stringify(meta.probabilities))
-				exact = false;
-			largest = Math.max(largest, gap);
-			if (JSON.stringify(result.stats) !== JSON.stringify(meta.stats)) {
-				fail(
-					`blueprint line ${n}: statistics differ:\n  python: ${JSON.stringify(meta.stats)}\n  ts:     ${JSON.stringify(result.stats)}`
-				);
-			}
-			if (result.record !== record) {
-				fail(`blueprint line ${n} differs:\n  python: ${record}\n  ts:     ${result.record}`);
-			}
-			decisions += result.probabilities.length;
-		}
+		blueprint
 	);
-	report.blueprint = {
-		decisions,
-		largest_difference: largest,
-		identical: exact,
-		stats: blueprint.stats
-	};
+	report.blueprint = blueprintReport;
 
 	// 3. Card buckets.
 	const boards = Number(values.boards);
@@ -179,6 +201,47 @@ try {
 	report.buckets = { boards_per_street: boards, against: values.tables ? 'tables' : 'bundle' };
 } finally {
 	if (scratch) rmSync(scratch, { recursive: true, force: true });
+}
+
+// 4. A multiway blueprint, on a real or synthetic format 2 bundle.
+let multiwayScratch: string | null = null;
+let multiwayPath = values['multiway-bundle'];
+if (multiwayPath === undefined) {
+	multiwayScratch = mkdtempSync(join(tmpdir(), 'rivermind-bundle-'));
+	multiwayPath = join(multiwayScratch, 'synthetic');
+	const { exited } = python([
+		'synthetic',
+		multiwayPath,
+		'--seed',
+		seed,
+		'--abstraction',
+		'6max-s1',
+		'--depths',
+		'50'
+	]);
+	await exited;
+}
+multiwayPath = resolve(multiwayPath);
+try {
+	const loadStarted = performance.now();
+	const bundle = loadBundle(multiwayPath);
+	report.multiway_bundle = {
+		path: values['multiway-bundle'] ?? 'synthetic',
+		abstraction: bundle.manifest.abstraction,
+		seats: bundle.seats,
+		depths: bundle.graphs.map((g) => g.depth),
+		table_set: bundle.manifest.cards.table_set,
+		load_seconds: Math.round((performance.now() - loadStarted) / 100) / 10
+	};
+	const blueprint = new MultiwayBlueprintPolicy(bundle);
+	report.multiway_hands = await checkBlueprint(
+		'multiway',
+		['multiway', multiwayPath, '--decisions', values['multiway-decisions'], '--seed', seed],
+		blueprint
+	);
+	report.multiway = blueprintReport;
+} finally {
+	if (multiwayScratch) rmSync(multiwayScratch, { recursive: true, force: true });
 }
 report.seconds = Math.round((performance.now() - started) / 100) / 10;
 console.log(JSON.stringify({ parity: 'ok', ...report }, null, 2));

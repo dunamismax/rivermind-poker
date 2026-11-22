@@ -5,7 +5,7 @@
 import { dumps, handRecord, historyFromDict, type Json } from '../engine/history.ts';
 import { apply, isOver, startHand, type HandState } from '../engine/state.ts';
 import { seatView } from '../engine/view.ts';
-import { BlueprintPolicy, type Stats } from './blueprint.ts';
+import type { Stats } from './blueprint.ts';
 import { STREETS, type CardTables } from './bundle.ts';
 import { PythonRandom } from './mt.ts';
 import {
@@ -64,12 +64,19 @@ export interface LineResult {
 	readonly stats: Stats;
 }
 
+/** A blueprint policy of either table size, as the replay reads it. */
+export interface TrainedPolicy extends Policy {
+	readonly stats: Stats;
+	lastProbabilities: number[] | null;
+	newHand(): void;
+}
+
 /** Play the deal of one reference line with the TypeScript bots. */
 export function replayLine(
 	meta: LineMeta,
 	record: Json,
 	bots: Record<string, Policy>,
-	blueprint?: BlueprintPolicy
+	blueprint?: TrainedPolicy
 ): LineResult {
 	const history = historyFromDict(record);
 	const probabilities: (number[] | null)[] = [];

@@ -1,6 +1,7 @@
-// The hu-m1 action abstraction: a port of rivermind/bots/blueprint/abstraction.py
-// (P4B.6, docs/bots.md). Sizes are exact fractions, as in Python, so the
-// raise-to amounts round identically.
+// The action abstractions, hu-m1 and 6max-s1: a port of
+// rivermind/bots/blueprint/abstraction.py (P4B.6 and P5.7, docs/bots.md).
+// Sizes are exact fractions, as in Python, so the raise-to amounts round
+// identically.
 
 import {
 	Action,
@@ -64,8 +65,57 @@ export interface AbstractAction {
 	readonly action: Action;
 }
 
-export function sizes(street: Street, level: number): readonly Fraction[] {
-	const rows = street === PREFLOP ? PREFLOP_MULTIPLES : POSTFLOP_FRACTIONS[street];
+/** One format's betting abstraction: who plays, its size table and how its tree is compiled. */
+export interface Abstraction {
+	readonly name: string;
+	readonly seats: number;
+	/** Pre-flop raise-to multiples of the current bet, by level. */
+	readonly preflop: readonly (readonly Fraction[])[];
+	/** Post-flop fractions of the called pot, by street and level. */
+	readonly postflop: Record<1 | 2 | 3, readonly (readonly Fraction[])[]>;
+	readonly depths: readonly number[];
+	/** Whether betting states with the same chips, players and rights are one node. */
+	readonly merged: boolean;
+}
+
+export const HU_M1: Abstraction = {
+	name: NAME,
+	seats: 2,
+	preflop: PREFLOP_MULTIPLES,
+	postflop: POSTFLOP_FRACTIONS,
+	depths: [50, 100],
+	merged: false
+};
+
+const BET_THEN_POT: readonly (readonly Fraction[])[] = [[[3, 4]], [[1, 1]]];
+
+/** Six seats, one size a level, betting states merged (P5.6). */
+export const SIX_MAX_S1: Abstraction = {
+	name: '6max-s1',
+	seats: 6,
+	preflop: [[[5, 2]], [[3, 1]], [[9, 4]]],
+	postflop: { 1: BET_THEN_POT, 2: BET_THEN_POT, 3: BET_THEN_POT },
+	depths: [50, 100],
+	merged: true
+};
+
+export const ABSTRACTIONS: Record<string, Abstraction> = {
+	[HU_M1.name]: HU_M1,
+	[SIX_MAX_S1.name]: SIX_MAX_S1
+};
+
+export function abstractionNamed(name: string): Abstraction {
+	const found = ABSTRACTIONS[name];
+	if (found === undefined) throw new RangeError(`unknown abstraction ${name}`);
+	return found;
+}
+
+export function sizes(
+	street: Street,
+	level: number,
+	abstraction: Abstraction = HU_M1
+): readonly Fraction[] {
+	const rows = street === PREFLOP ? abstraction.preflop : abstraction.postflop[street];
 	return level < rows.length ? rows[level] : [];
 }
 
@@ -89,14 +139,18 @@ function sizeTo(
 	return Math.floor((2 * num + d) / (2 * d));
 }
 
-/** The node's actions in their fixed order: fold, check or call, sizes ascending, all-in. Heads-up only. */
+/**
+ * The node's actions in their fixed order: fold, check or call, sizes ascending, all-in.
+ * A raise is judged against one caller, the seat with the most in on the street.
+ */
 export function abstractActions(
 	legal: LegalActions,
 	street: Street,
 	level: number,
 	pot: number,
 	currentBet: number,
-	streetBets: readonly number[]
+	streetBets: readonly number[],
+	abstraction: Abstraction = HU_M1
 ): AbstractAction[] {
 	const seat = legal.seat;
 	const found: AbstractAction[] = [];
@@ -107,10 +161,10 @@ export function abstractActions(
 	if (kind === null) return found;
 	const letter = kind === 'bet' ? 'b' : 'r';
 	const owed = currentBet - streetBets[seat];
-	// The opponent is the other seat with chips in; empty seats bet nothing.
+	// The opponent is the other seat with the most in; empty seats bet nothing.
 	const other = Math.max(...streetBets.filter((_, s) => s !== seat));
 	const seen = new Set<number>();
-	sizes(street, level).forEach((size, i) => {
+	sizes(street, level, abstraction).forEach((size, i) => {
 		const to = Math.max(sizeTo(street, size, pot, currentBet, owed), legal.minTo);
 		if (to >= legal.maxTo || seen.has(to)) return;
 		const calledPot = pot - streetBets[seat] - other + 2 * to;

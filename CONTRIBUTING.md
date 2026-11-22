@@ -38,7 +38,7 @@ cd web && pnpm engine:bench                                                     
 
 ### The TypeScript bots
 
-`web/src/lib/server/bots` ports `rivermind/bots` (P4B.6): the simple bots, the hu-m1 abstraction and `BlueprintPolicy`, reading a serving bundle exported by `rivermind-poker blueprint export`. Bots draw from `PythonRandom`, CPython's Mersenne Twister in TypeScript. As with the engine, Python is the reference and a change to a bot lands in both languages in the same commit. `pnpm bots:parity` (also in CI) plays the same deals with the same seeds in both and compares hand records, the blueprint's probabilities and statistics, and card buckets; [docs/bots.md](docs/bots.md#serving-p4b6) has the long run against a real bundle and `pnpm bots:bench`.
+`web/src/lib/server/bots` ports `rivermind/bots` (P4B.6): the simple bots, the hu-m1 abstraction and `BlueprintPolicy`, reading a serving bundle exported by `rivermind-poker blueprint export`. Bots draw from `PythonRandom`, CPython's Mersenne Twister in TypeScript. As with the engine, Python is the reference and a change to a bot lands in both languages in the same commit. `pnpm bots:parity` (also in CI) plays the same deals with the same seeds in both and compares hand records, the blueprint's probabilities and statistics, and card buckets; [docs/bots.md](docs/bots.md#serving-p4b6) has the long run against a real bundle and `pnpm bots:bench`. Since P5.7 the same check plays a six-seat bundle too: `multiway.ts` ports `MultiwayBlueprintPolicy`, `loadBundle` reads the format 2 bundle a multiway graph is stored in, and `compileGraph` builds the `6max-s1` graphs from the TypeScript engine to Python's SHA-256s ([docs/bots.md](docs/bots.md#serving-bundles-for-a-graph)).
 
 ## PostgreSQL
 

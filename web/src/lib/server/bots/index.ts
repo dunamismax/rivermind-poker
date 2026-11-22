@@ -5,16 +5,24 @@
 // operating system's randomness, so a seeded bot plays as its Python
 // counterpart does; scripts/bots-parity.ts checks that they agree.
 
-export { abstractActions, streetLevel, type AbstractAction } from './abstraction.ts';
+export {
+	abstractActions,
+	abstractionNamed,
+	streetLevel,
+	type AbstractAction,
+	type Abstraction
+} from './abstraction.ts';
 export { BlueprintPolicy, pseudoHarmonic, type Stats } from './blueprint.ts';
 export {
 	BundleError,
 	CardTables,
 	loadBundle,
 	type Bundle,
+	type Graph,
 	type LoadOptions,
 	type Tree
 } from './bundle.ts';
+export { MultiwayBlueprintPolicy } from './multiway.ts';
 export { PythonRandom } from './mt.ts';
 export {
 	CallingStationPolicy,

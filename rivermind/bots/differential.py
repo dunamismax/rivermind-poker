@@ -16,6 +16,11 @@ ports in ``web/src/lib/server/bots`` must reproduce:
     ``--decisions`` decisions. Each line also lists the probabilities of
     every blueprint decision (``null`` where it had no data) and its
     statistics so far.
+``multiway``
+    Hands of a multiway bundle's blueprint at a table of its size with three
+    or more dealt in, the blueprint in at least one seat and the simple bots
+    or itself in the others, at random stacks and blinds, in the same form
+    as ``blueprint``.
 ``buckets``
     Card-bucket digests: every hole-card pair on a seeded sample of boards
     for each street, from the original card tables when ``--tables`` is
@@ -141,6 +146,53 @@ def write_blueprint(out: TextIO, bundle_path: Path, decisions: int, seed: int) -
     return hands
 
 
+def write_multiway(out: TextIO, bundle_path: Path, decisions: int, seed: int) -> int:
+    """Hands of a multiway bundle's blueprint at its table, until it has made ``decisions`` decisions."""
+    from .blueprint.bundle import ServingBundle
+
+    bundle = ServingBundle(bundle_path)
+    table = bundle.game.seats
+    if table == 2:
+        raise ValueError("this bundle is heads-up; use the blueprint command")
+    blueprint = bundle.policy()
+    bots: dict[str, Policy] = {**simple_bots(), "blueprint": blueprint}
+    deals = random.Random(seed)
+    made = 0
+    hands = 0
+    while made < decisions:
+        dealt = deals.randint(3, table)
+        chosen = sorted(deals.sample(range(table), dealt))
+        config = HandConfig(50, 100) if deals.random() < 0.8 else HandConfig(*sorted((deals.randint(1, 200), deals.randint(1, 200))))
+        big = config.big_blind
+        level = deals.random()
+        stacks: list[int | None] = [None] * table
+        for seat in chosen:
+            # Mostly the depth classes' own stacks, where every action is on the graph; otherwise anything.
+            stacks[seat] = 50 * big if level < 0.25 else 100 * big if level < 0.5 else deals.randint(5 * big, 250 * big)
+        seats = ["blueprint"] * table
+        if deals.random() < 0.75:
+            for seat in chosen:
+                seats[seat] = deals.choice((*SIMPLE, "blueprint", "blueprint"))
+            seats[deals.choice(chosen)] = "blueprint"
+        button = deals.choice(chosen)
+        deck = list(range(52))
+        deals.shuffle(deck)
+        bot_seed = deals.getrandbits(64)
+        probabilities: list[list[float] | None] = []
+
+        def record(policy: Policy, probabilities: list[list[float] | None] = probabilities) -> None:
+            if policy is blueprint:
+                probabilities.append(blueprint.last_probabilities)
+
+        blueprint.new_hand()
+        final = play(start_hand(config, stacks, button, deck=deck), seats, bots, random.Random(bot_seed), record)
+        made += len(probabilities)
+        hands += 1
+        meta = {"bots": seats, "seed": str(bot_seed), "probabilities": probabilities, "stats": dict(sorted(blueprint.stats.items()))}
+        out.write(f"{json.dumps(meta, separators=(',', ':'), sort_keys=True)}\t{dumps(hand_record(final))}\n")
+    return hands
+
+
 def boards(size: int, count: int, seed: int) -> Iterator[list[int]]:
     """``count`` boards of ``size`` distinct cards, drawn as ``engine.differential.sample_hands`` draws."""
     gen = SplitMix32(seed)
@@ -191,6 +243,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     bp.add_argument("bundle")
     bp.add_argument("--decisions", type=int, default=2_000)
     bp.add_argument("--seed", type=int, default=0)
+    mw = commands.add_parser("multiway", help="write hands of a multiway bundle's blueprint at its table")
+    mw.add_argument("bundle")
+    mw.add_argument("--decisions", type=int, default=2_000)
+    mw.add_argument("--seed", type=int, default=0)
     bk = commands.add_parser("buckets", help="print card-bucket digests as JSON")
     bk.add_argument("bundle")
     bk.add_argument("--tables", default=None, help="the original card tables, to check the bundle's against")
@@ -199,11 +255,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     syn = commands.add_parser("synthetic", help="write a synthetic serving bundle")
     syn.add_argument("out")
     syn.add_argument("--seed", type=int, default=0)
+    syn.add_argument("--abstraction", default="hu-m1")
+    syn.add_argument("--depths", default="50,100", help="depth classes, such as 50 for a quicker six-seat bundle")
     args = parser.parse_args(argv)
     if args.command == "policies":
         write_policies(sys.stdout, args.hands, parse_seats(args.seats), args.seed)
     elif args.command == "blueprint":
         write_blueprint(sys.stdout, Path(args.bundle), args.decisions, args.seed)
+    elif args.command == "multiway":
+        write_multiway(sys.stdout, Path(args.bundle), args.decisions, args.seed)
     elif args.command == "buckets":
         if args.tables:
             from .cards import CardTables
@@ -218,7 +278,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         from .blueprint.bundle import synthetic_bundle
 
-        synthetic_bundle(args.out, seed=args.seed)
+        synthetic_bundle(args.out, seed=args.seed, abstraction=args.abstraction, depths=tuple(int(d) for d in args.depths.split(",")))
     return 0
 
 
