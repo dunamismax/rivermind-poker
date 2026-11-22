@@ -690,5 +690,47 @@
       ],
       "note": null
     }
+  ],
+  "levels": [
+    {
+      "date": "2026-11-22",
+      "format": "heads-up",
+      "level": "medium",
+      "champion": "hu-m1-s0-1024m",
+      "share": 0.5,
+      "report": "evaluations/hu-m1-s0-1024m-medium.json",
+      "sha256": "efaa17de3532c1d69566969eafe4dee017794e1e2be10cb32661898ed4792107",
+      "deals": 20000,
+      "seed": 0,
+      "results": [
+        {
+          "opponent": "heuristic",
+          "stack_bb": 100,
+          "bb_per_100": 26.51,
+          "ci95_bb_per_100": [
+            20.27,
+            32.75
+          ]
+        },
+        {
+          "opponent": "calling_station",
+          "stack_bb": 100,
+          "bb_per_100": 261.93,
+          "ci95_bb_per_100": [
+            246.94,
+            276.92
+          ]
+        },
+        {
+          "opponent": "hard",
+          "stack_bb": 100,
+          "bb_per_100": -38.36,
+          "ci95_bb_per_100": [
+            -48.14,
+            -28.58
+          ]
+        }
+      ]
+    }
   ]
 }

@@ -286,6 +286,18 @@ Each format serves three levels: **Easy** is the heuristic, **Hard** the format'
 
 **Its evaluation.** `blueprint evaluate <bundle> --level medium` plays Medium as the candidate, and `blueprint level <report.json>` records the report under the champion it was made from, after checking that its Medium is made from that champion's registered bundle, with the site's share, and that it played RiverMind Easy, the calling station and the champion itself at 100 big blinds. Medium is not put to a gate: it claims only what its report measured. A new champion has no Medium until its own is evaluated and recorded, and the site offers Medium only for a champion whose Medium is recorded (`MediumPolicy.recorded`).
 
+**The first Medium** ([report](evaluations/hu-m1-s0-1024m-medium.md)), made from `hu-m1-s0-1024m`’s served bundle and recorded on 2026-11-22: 20,000 duplicate deals a matchup at `5a93b0c`, 161 s on three workers. It played 49.8% of its hands as the champion. Halfway is the mean of RiverMind Easy’s and the served champion’s results on the same deals (Easy against itself scores exactly zero, deterministic in both seats, and Hard against itself zero in expectation):
+
+| Against, at 100 bb | RiverMind Easy | Medium (95% interval) | Hard (served) | Halfway |
+| --- | --- | --- | --- | --- |
+| RiverMind Easy | 0 | +26.51 (+20.27 to +32.75) | +58.79 | +29.40 |
+| Calling station | +324.63 | +261.93 (+246.94 to +276.92) | +224.92 | +274.78 |
+| Random | +170.64 | +188.95 (+170.11 to +207.79) | +209.67 | +190.16 |
+| Min-bet probe | +80.48 | +167.94 (+148.19 to +187.69) | +268.94 | +174.71 |
+| RiverMind Hard | −58.79 | −38.36 (−48.14 to −28.58) | 0 | −29.40 |
+
+So Medium sits between the two levels against every opponent measured, and its own interval holds or touches the halfway point each time. Against the calling station it does better than Hard because RiverMind Easy does: Easy’s +324.63 there is the best result of the three.
+
 **Parity.** `pnpm bots:parity` plays Medium made from the bundle in both languages, heads-up against the simple bots, the blueprint and itself, and compares which bot it chose at every decision, the blueprint's probabilities, the statistics and the hand records. On 2026-11-22 with the champion `hu-m1-s0-1024m`’s bundle (`--decisions 20000`): 20,001 Medium decisions in 9,137 hands, identical.
 
 ## 6-max and 9-max

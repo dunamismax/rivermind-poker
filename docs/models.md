@@ -26,6 +26,7 @@ Promoted on 2026-11-21, replacing `hu-m1-s0-128m`. Against the simple bots it wi
 - **Training settings:** `abstraction` hu-m1, `depths` [50, 100], `seed` 0, `chunk_size` 1,000, `chunks_per_batch` 64, `discount_every` 1,000,000, `discount_until` 40,000,000, `prune_after` 20,000,000, `prune_probability` 0.95, `prune_threshold` -10,000,000, `regret_floor` -11,000,000.
 - **Serving bundle:** `strategy.u8` `31a782ea5d70fb72f363c685e31c8d0c70b05938d295b96b9face1fdc340fc8b`, probabilities in multiples of 1/255. `models.json` has all 12 files.
 - **Kept in:** `artifacts/models/hu-m1-s0-1024m/` (`checkpoint/` and `bundle/`).
+- **RiverMind Medium:** each hand played as this served bundle with probability 0.5 and as RiverMind Easy otherwise; +26.51 (+20.27 to +32.75) against RiverMind Easy; +261.93 (+246.94 to +276.92) against the calling station; -38.36 (-48.14 to -28.58) against RiverMind Hard, the champion itself at 100 big blinds, over 20,000 duplicate deals each, seed 0 ([report](evaluations/hu-m1-s0-1024m-medium.md); recorded 2026-11-22).
 
 ## Decisions
 
