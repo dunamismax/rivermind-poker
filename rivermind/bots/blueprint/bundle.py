@@ -21,6 +21,11 @@ flat little-endian files that need no NumPy to read:
     digest, ``table_set``), each array's dtype and shape, and every file's
     SHA-256 and size.
 
+A bundle for a table of more than two (P5.6) is **format 2**. Its
+``trees.json`` holds each graph in columns: one flat list of children,
+whose runs follow the nodes in order, and tables of the few distinct token
+and measure tuples that nodes point into (``graph_document``).
+
 ``ServingBundle`` reads a bundle back for Python, so the reference
 ``BlueprintPolicy`` can play exactly what Node serves; the TypeScript
 reader is ``web/src/lib/server/bots/bundle.ts``.
@@ -47,11 +52,14 @@ from rivermind.bots.cards.equity import INVALID
 from rivermind.bots.cards.iso import PERMS, pair_index, set_rank
 from rivermind.bots.cards.tables import STREET_OF_BOARD, TableError
 
+from .abstraction import abstraction_named
 from .blueprint import Blueprint
 from .game import Game
 from .tree import Tree, compile_tree
 
 FORMAT = 1
+GRAPH_FORMAT = 2
+"""The format of a bundle whose trees are multiway graphs."""
 KIND = "rivermind-serving-bundle"
 LEVELS = 255
 """A served probability is a multiple of 1/255."""
@@ -76,8 +84,50 @@ def table_set_digest(sha256: Mapping[str, str]) -> str:
     return hashlib.sha256(json.dumps(dict(sha256), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def graph_document(tree: Tree) -> dict[str, Any]:
+    """A multiway tree as a format 2 ``trees.json`` stores it, in columns.
+
+    ``children`` is flat: node *v*'s children are the next
+    ``len(token_sets[tokens[v]])`` entries, in node order. ``tokens`` and
+    ``measure`` index ``token_sets`` and ``measure_sets``. ``live`` and
+    ``terminal_live`` are bit masks of seats.
+    """
+    token_sets: dict[tuple[str, ...], int] = {}
+    measure_sets: dict[tuple[float | None, ...], int] = {}
+    tokens = [token_sets.setdefault(t, len(token_sets)) for t in tree.tokens]
+    measure = [measure_sets.setdefault(m, len(measure_sets)) for m in tree.measure]
+    return {
+        "abstraction": tree.abstraction,
+        "depth": tree.depth,
+        "small_blind": tree.small_blind,
+        "big_blind": tree.big_blind,
+        "sha256": tree.sha256,
+        "width": list(tree.width),
+        "seats": tree.seats,
+        "merged": tree.merged,
+        "player": tree.player,
+        "street": tree.street,
+        "offset": tree.offset,
+        "contribution": tree.contribution,
+        "live": tree.live,
+        "token_sets": [list(t) for t in token_sets],
+        "tokens": tokens,
+        "children": [c for kids in tree.children for c in kids],
+        "measure_sets": [list(m) for m in measure_sets],
+        "measure": measure,
+        "spr": tree.spr,
+        "starts": [list(s) for s in tree.starts],
+        "terminal_kind": tree.terminal_kind,
+        "terminal_value": tree.terminal_value,
+        "terminal_pot": tree.terminal_pot,
+        "terminal_live": [sum(1 << seat for seat in live) for live in tree.terminal_live],
+    }
+
+
 def tree_document(tree: Tree) -> dict[str, Any]:
     """A tree as ``trees.json`` stores it."""
+    if tree.multiway:
+        return graph_document(tree)
     return {
         "abstraction": tree.abstraction,
         "depth": tree.depth,
@@ -152,7 +202,7 @@ def _write(out: Path, game: Game, strategy: np.ndarray, arrays: Mapping[str, np.
             array.tofile(partial / name)
             shapes[name] = {"dtype": dtype, "shape": list(array.shape)}
         manifest = {
-            "format": FORMAT,
+            "format": GRAPH_FORMAT if game.trees[0].multiway else FORMAT,
             "kind": KIND,
             "abstraction": game.trees[0].abstraction,
             **meta,
@@ -223,8 +273,10 @@ def synthetic_bundle(
     classes: int = 7,
     untrained: float = 0.1,
     untrained_nodes: float = 0.02,
+    abstraction: str = "hu-m1",
+    depths: tuple[int, ...] = (50, 100),
 ) -> dict[str, Any]:
-    """A bundle with the real hu-m1 trees and random strategies and card tables, for tests and CI.
+    """A bundle with an abstraction's real trees and random strategies and card tables, for tests and CI.
 
     Every board falls into one of ``classes`` random classes with a random
     suit permutation, and every info set gets random byte weights, except a
@@ -232,19 +284,33 @@ def synthetic_bundle(
     which stay zero so borrowing and the untrained fallback are exercised.
     """
     rng = np.random.default_rng(seed)
-    trees = tuple(compile_tree(d) for d in (50, 100))
+    chosen = abstraction_named(abstraction)
+    trees = tuple(compile_tree(d, chosen) for d in depths)
     game = Game(trees, (169, *buckets))  # type: ignore[arg-type]
     strategy = rng.integers(0, LEVELS + 1, game.size, dtype=np.int64).astype(np.uint8)
-    for d, tree in enumerate(trees):
-        for v in range(len(tree)):
-            s = tree.street[v]
-            n = len(tree.children[v])
-            first = game.base[d][s] + tree.offset[v]
-            rows = first + np.arange(game.buckets[s])[:, None] * tree.width[s] + np.arange(n)[None, :]
-            if rng.random() < untrained_nodes:
-                strategy[rows] = 0
-                continue
-            strategy[rows[rng.random(game.buckets[s]) < untrained]] = 0
+    if chosen.seats == 2:
+        for d, tree in enumerate(trees):
+            for v in range(len(tree)):
+                s = tree.street[v]
+                n = len(tree.children[v])
+                first = game.base[d][s] + tree.offset[v]
+                rows = first + np.arange(game.buckets[s])[:, None] * tree.width[s] + np.arange(n)[None, :]
+                if rng.random() < untrained_nodes:
+                    strategy[rows] = 0
+                    continue
+                strategy[rows[rng.random(game.buckets[s]) < untrained]] = 0
+    else:
+        # A graph has too many nodes to visit one by one: blank whole nodes and single info sets a street at a time.
+        for d, s, start, stop in game.slices():
+            tree = trees[d]
+            on_street = [v for v in range(len(tree)) if tree.street[v] == s]
+            offsets = np.array([tree.offset[v] for v in on_street], dtype=np.int64)
+            counts = np.array([len(tree.children[v]) for v in on_street], dtype=np.int64)
+            block = strategy[start:stop].reshape(game.buckets[s], tree.width[s])
+            blank = rng.random((game.buckets[s], len(on_street))) < untrained
+            blank |= rng.random(len(on_street))[None, :] < untrained_nodes
+            order = np.argsort(offsets, kind="stable")
+            block[np.repeat(blank[:, order], counts[order], axis=1)] = 0
     arrays: dict[str, np.ndarray] = {"preflop.u16": rng.integers(0, 169, 1326).astype(np.uint16)}
     for s, size, count in zip(STREETS, (3, 4, 5), buckets):
         boards = {3: 22_100, 4: 270_725, 5: 2_598_960}[size]
@@ -304,8 +370,8 @@ class ServingBundle:
             self.manifest: dict[str, Any] = json.loads((self.path / "manifest.json").read_text())
         except (OSError, ValueError) as e:
             raise BundleError(f"{self.path} has no readable manifest.json") from e
-        if self.manifest.get("kind") != KIND or self.manifest.get("format") != FORMAT:
-            raise BundleError(f"{self.path} is not a format {FORMAT} serving bundle")
+        if self.manifest.get("kind") != KIND or self.manifest.get("format") not in (FORMAT, GRAPH_FORMAT):
+            raise BundleError(f"{self.path} is not a format {FORMAT} or {GRAPH_FORMAT} serving bundle")
         if verify:
             expected = {n: e["sha256"] for n, e in self.manifest["files"].items()}
             found = {p.name: _file_entry(p)["sha256"] for p in self.path.iterdir() if p.is_file() and p.name != "manifest.json"}
@@ -315,9 +381,12 @@ class ServingBundle:
         if table_set is not None and self.manifest["cards"]["table_set"] != table_set:
             raise BundleError("this bundle was not built from the expected card table set")
         layout = self.manifest["game"]
-        trees = tuple(compile_tree(t["depth"]) for t in layout["trees"])
+        abstraction = abstraction_named(self.manifest["abstraction"])
+        trees = tuple(compile_tree(t["depth"], abstraction) for t in layout["trees"])
         if [t.sha256 for t in trees] != [t["sha256"] for t in layout["trees"]]:
             raise BundleError("this software compiles different trees from the bundle's")
+        if self.manifest["format"] != (GRAPH_FORMAT if trees[0].multiway else FORMAT):
+            raise BundleError("the bundle's format does not suit its trees")
         self.game = Game(trees, tuple(layout["buckets"]))  # type: ignore[arg-type]
         if self.game.size != layout["size"]:
             raise BundleError("the bundle's layout does not match its trees")
@@ -325,9 +394,9 @@ class ServingBundle:
         self.tables = BundleTables(self.path, self.manifest)
 
     def policy(self, **kwargs: Any) -> Any:
-        from .policy import BlueprintPolicy
+        from .policy import policy_for
 
-        return BlueprintPolicy(self, self.tables, **kwargs)  # type: ignore[arg-type]
+        return policy_for(self, self.tables, **kwargs)  # type: ignore[arg-type]
 
 
 __all__ = [
@@ -335,6 +404,7 @@ __all__ = [
     "BundleTables",
     "ServingBundle",
     "export_bundle",
+    "graph_document",
     "quantize",
     "synthetic_bundle",
     "table_set_digest",

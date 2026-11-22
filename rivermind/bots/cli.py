@@ -17,6 +17,7 @@ def tables() -> None:
 
 @tables.command("build")
 @click.option("--out", default="artifacts/tables/hu-m1", show_default=True, help="Directory to create.")
+@click.option("--name", "abstraction", default="hu-m1", show_default=True, help="The card abstraction's name, recorded in the manifest.")
 @click.option("--seed", default=0, show_default=True)
 @click.option("--workers", default=None, type=int, help="Processes to use (default: every CPU).")
 @click.option("--flop_buckets", default=1000, show_default=True)
@@ -28,6 +29,7 @@ def tables() -> None:
 @click.option("--keep_work", is_flag=True, help="Keep the river equities and histograms in work/.")
 def build_command(
     out: str,
+    abstraction: str,
     seed: int,
     workers: int | None,
     flop_buckets: int,
@@ -42,6 +44,7 @@ def build_command(
     from rivermind.bots.cards import Settings, build
 
     settings = Settings(
+        abstraction=abstraction,
         flop_buckets=flop_buckets,
         turn_buckets=turn_buckets,
         river_buckets=river_buckets,
@@ -85,6 +88,7 @@ def bucket_command(path: str, hole: str, board: str) -> None:
 
 
 SETTING_OPTIONS = (
+    "abstraction",
     "seed",
     "chunk_size",
     "chunks_per_batch",
@@ -97,18 +101,23 @@ SETTING_OPTIONS = (
 )
 
 
+ABSTRACTION_NAMES = ("hu-m1", "6max-s1")
+
+
 @click.group()
 def blueprint() -> None:
-    """Heads-up blueprint training on the hu-m1 abstraction (docs/bots.md)."""
+    """Blueprint training, evaluation and promotion for the trained bots (docs/bots.md)."""
 
 
 @blueprint.command("tree")
-def tree_command() -> None:
+@click.option("--abstraction", default="hu-m1", show_default=True, type=click.Choice(ABSTRACTION_NAMES))
+def tree_command(abstraction: str) -> None:
     """Print each depth class's compiled tree: nodes, widths and SHA-256."""
     from rivermind.bots.blueprint import compile_tree
-    from rivermind.bots.blueprint.tree import DEPTHS
+    from rivermind.bots.blueprint.abstraction import abstraction_named
 
-    click.echo(json.dumps([compile_tree(d).summary() for d in DEPTHS], indent=2))
+    chosen = abstraction_named(abstraction)
+    click.echo(json.dumps([compile_tree(d, chosen).summary() for d in chosen.depths], indent=2))
 
 
 @blueprint.command("train")
@@ -119,6 +128,7 @@ def tree_command() -> None:
 @click.option("--checkpoint_every", default=10_000_000, show_default=True, type=int)
 @click.option("--keep", default=2, show_default=True, help="Checkpoints to keep.")
 @click.option("--resume", is_flag=True, help="Continue RUN from its latest checkpoint.")
+@click.option("--abstraction", default="hu-m1", show_default=True, type=click.Choice(ABSTRACTION_NAMES), help="The format to train; 6max-s1 needs --tables artifacts/tables/c200.")
 @click.option("--seed", default=0, show_default=True)
 @click.option("--chunk_size", default=1_000, show_default=True)
 @click.option("--chunks_per_batch", default=64, show_default=True)

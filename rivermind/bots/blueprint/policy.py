@@ -14,6 +14,11 @@ the table passes in (D-8).
 The bot plays the average strategy of its info set. One that training
 never reached borrows the nearest bucket at the same node that has data,
 and failing that the bot checks or calls. ``stats`` counts each case.
+
+``MultiwayBlueprintPolicy`` (P5.6) plays a blueprint for a bigger table:
+it seats the real players in the tree by their position from the button,
+folds the tree's early seats when fewer are dealt in, and passes over a
+tree seat that cannot act at the real table.
 """
 
 from __future__ import annotations
@@ -30,7 +35,7 @@ from rivermind.bots.cards import CardTables
 from rivermind.engine import Action, ActionKind, ActionRecord, Street
 from rivermind.engine.view import SeatView
 
-from .abstraction import abstract_actions, street_level
+from .abstraction import NAME, abstract_actions, abstraction_named, street_level
 from .blueprint import Blueprint
 from .tree import Tree
 
@@ -117,6 +122,7 @@ class BlueprintPolicy:
         self.blueprint = blueprint
         self.tables = tables
         self.game = blueprint.game
+        self.abstraction = abstraction_named(blueprint.manifest.get("abstraction", NAME))
         self.stats: Counter[str] = Counter()
         self.last_probabilities: list[float] | None = None
         """The probabilities of the last decision, or ``None`` when it checked or called without data."""
@@ -127,7 +133,7 @@ class BlueprintPolicy:
     @classmethod
     def load(cls, checkpoint: str | Path, tables: str | Path | None = None, **kwargs: object) -> BlueprintPolicy:
         bp = Blueprint(checkpoint)
-        return cls(bp, CardTables(tables or bp.manifest["cards"]["path"]), **kwargs)  # type: ignore[arg-type]
+        return policy_for(bp, CardTables(tables or bp.manifest["cards"]["path"]), **kwargs)
 
     @classmethod
     def from_bundle(cls, bundle: str | Path, **kwargs: object) -> BlueprintPolicy:
@@ -291,8 +297,7 @@ class BlueprintPolicy:
         legal = view.legal
         if legal is None:
             raise ValueError(f"S{view.seat} is not the seat to act")
-        if len(view.seat_order) != 2:
-            raise ValueError("the blueprint plays heads-up only")
+        self._check_table(view)
         self.stats["decisions"] += 1
         self.last_probabilities = None
         hand = self._hand(view)
@@ -325,6 +330,10 @@ class BlueprintPolicy:
         hand.seen = view.actions
         return self._real_action(view, tree, node, token)
 
+    def _check_table(self, view: SeatView) -> None:
+        if len(view.seat_order) != 2:
+            raise ValueError("the blueprint plays heads-up only")
+
     def _real_action(self, view: SeatView, tree: Tree, node: int, token: str) -> Action:
         """The engine action for an abstract choice, sized from the real pot and stacks."""
         legal = view.legal
@@ -336,6 +345,7 @@ class BlueprintPolicy:
             pot=view.pot,
             current_bet=view.current_bet,
             street_bets=view.street_bets,
+            abstraction=self.abstraction,
         )
         for option in options:
             if option.token == token:
@@ -352,6 +362,209 @@ class BlueprintPolicy:
         return min(raises, key=lambda o: abs((o.action.amount - view.current_bet) / (view.pot + owed) - want)).action  # type: ignore[operator]
 
 
+class _RealTable(_Real):
+    """The real chips at a table of more than two: who has folded, and the stack that matters to one seat."""
+
+    def __init__(self, view: SeatView) -> None:
+        super().__init__(view)
+        self.me = view.seat
+        self.folded: set[int] = set()
+
+    def apply(self, record: ActionRecord) -> None:
+        super().apply(record)
+        if record.kind is ActionKind.FOLD:
+            self.folded.add(record.seat)
+
+    def copy(self) -> _RealTable:
+        other = object.__new__(_RealTable)
+        other.seats = self.seats
+        other.start = list(self.start)
+        other.contributions = list(self.contributions)
+        other.street_bets = list(self.street_bets)
+        other.street = self.street
+        other.current_bet = self.current_bet
+        other.me = self.me
+        other.folded = set(self.folded)
+        return other
+
+    def spr(self) -> float:
+        """What this seat can win or lose from here, over the pot: its stack, or the biggest stack against it if smaller."""
+        pot = self.pot
+        if not pot:
+            return math.inf
+        others = [self.behind(s) for s in self.seats if s != self.me and s not in self.folded]
+        mine = self.behind(self.me)
+        return (min(mine, max(others)) if others else mine) / pot
+
+
+class MultiwayBlueprintPolicy(BlueprintPolicy):
+    """A ``Policy`` that plays a blueprint trained for a table of more than two (P5.6).
+
+    The tree's seat 0 is the button, seat 1 the small blind and seat 2 the
+    big blind; the rest count back from the button. With fewer players
+    dealt in than the tree has seats, the tree's first seats to act have
+    folded, so four players are the cutoff, the button and the blinds.
+    Three is the fewest: heads-up the button posts the small blind and acts
+    last after the flop, which no six-seat hand does.
+    """
+
+    def __init__(self, blueprint: Blueprint, tables: CardTables, *, name: str = "blueprint") -> None:
+        super().__init__(blueprint, tables, name=name)
+        self._starts_by_live: list[list[dict[int, list[int]]]] = []
+        for tree in self.game.trees:
+            streets: list[dict[int, list[int]]] = []
+            for s in range(4):
+                found: dict[int, list[int]] = {}
+                for v in tree.street_starts(s):
+                    found.setdefault(tree.live[v], []).append(v)
+                streets.append(found)
+            self._starts_by_live.append(streets)
+
+    def _check_table(self, view: SeatView) -> None:
+        if not 3 <= len(view.seat_order) <= self.game.seats:
+            raise ValueError(f"this blueprint plays three to {self.game.seats} players")
+
+    def depth_index(self, view: SeatView) -> int:
+        big = view.config.big_blind
+        start = {s: (view.stacks[s] or 0) + view.contributions[s] for s in view.seat_order}
+        others = max(v for s, v in start.items() if s != view.seat)
+        effective = min(start[view.seat], others) / big
+        depths = [t.depth for t in self.game.trees]
+        if len(depths) == 1:
+            return 0
+        want = 50 if effective < SPLIT_DEPTH_BB else 100
+        return depths.index(want) if want in depths else int(np.argmin([abs(d - effective) for d in depths]))
+
+    def tree_seats(self, view: SeatView) -> dict[int, int]:
+        """Each real seat's seat in the tree, by its position from the button."""
+        order = view.seat_order  # clockwise from the small blind; the button is last
+        k = len(order)
+        n = self.game.seats
+        out = {}
+        for i, seat in enumerate(order):
+            back = k - 1 - i
+            out[seat] = 0 if back == 0 else i + 1 if i <= 1 else n - back
+        return out
+
+    def _open(self, tree: Tree, view: SeatView) -> int | None:
+        """The pre-flop node the hand starts at: the root, after a fold for each tree seat nobody sits in."""
+        node = 0
+        for _ in range(self.game.seats - len(view.seat_order)):
+            if tree.tokens[node][0] != "f":
+                return None
+            node = tree.children[node][0]
+            if node < 0:
+                return None
+        return node
+
+    def _reenter_table(self, tree: Tree, d: int, street: Street, real: _RealTable, seats: dict[int, int], view: SeatView) -> int | None:
+        """The node that opens ``street`` for the players still in, with the stack-to-pot ratio closest to the real one."""
+        if street is Street.PREFLOP:
+            return self._open(tree, view)
+        live = sum(1 << seats[s] for s in real.seats if s not in real.folded)
+        starts = self._starts_by_live[d][street].get(live)
+        if not starts:
+            return None
+        self.stats["reentries"] += 1
+        target = real.spr()
+
+        def distance(v: int) -> float:
+            a, b = tree.spr[v], target
+            if a <= 0 or b <= 0 or math.isinf(b):
+                return abs(a - b) if not math.isinf(b) else -a
+            return abs(math.log(a) - math.log(b))
+
+        return min(starts, key=distance)
+
+    def _pass_to(self, tree: Tree, node: int, actor: int, street: Street) -> int | None:
+        """From ``node``, the node where tree seat ``actor`` acts on ``street``.
+
+        A tree seat due to act before it did not act at the real table, where
+        it is all-in or the betting had already closed: the tree checks or
+        calls for it.
+        """
+        for _ in range(2 * self.game.seats):
+            if tree.street[node] != street:
+                return None
+            if tree.player[node] == actor:
+                return node
+            tokens = tree.tokens[node]
+            if "k" in tokens:
+                node = tree.children[node][tokens.index("k")]
+            elif "c" in tokens:
+                node = tree.children[node][tokens.index("c")]
+            else:
+                return None
+            if node < 0:
+                return None
+            self.stats["passed"] += 1
+        return None
+
+    def _street_table(
+        self,
+        tree: Tree,
+        node: int,
+        records: list[tuple[int, ActionRecord]],
+        real: _RealTable,
+        hand: _Hand,
+        rng: random.Random,
+        seats: dict[int, int],
+        street: Street,
+    ) -> tuple[bool, int | None]:
+        at: int | None = node
+        for index, record in records:
+            if at is None:
+                return False, None
+            at = self._pass_to(tree, at, seats[record.seat], street)
+            if at is None:
+                real.apply(record)
+                return False, None
+            token = self._token(tree, at, hand, index, record, real, rng)
+            real.apply(record)
+            if token not in tree.tokens[at]:
+                return False, None
+            child = tree.children[at][tree.tokens[at].index(token)]
+            at = child if child >= 0 else None
+        return True, at
+
+    def _position(self, view: SeatView, hand: _Hand, rng: random.Random) -> int | None:
+        d = hand.d
+        tree = self.game.trees[d]
+        seats = self.tree_seats(view)
+        real = _RealTable(view)
+        node = self._open(tree, view)
+        for street in Street:
+            if street > view.street:
+                break
+            real.to_street(street)
+            if street > Street.PREFLOP and (node is None or tree.street[node] != street):
+                node = self._reenter_table(tree, d, street, real, seats, view)
+            records = [(i, r) for i, r in enumerate(view.actions) if r.street == street]
+            start = real.copy()
+            ok, reached = (False, None) if node is None else self._street_table(tree, node, records, real, hand, rng, seats, street)
+            if not ok:
+                real = start.copy()
+                again = self._reenter_table(tree, d, street, real, seats, view)
+                if again is None:
+                    return None
+                ok, reached = self._street_table(tree, again, records, real, hand, rng, seats, street)
+                if not ok:
+                    return None
+            node = reached
+        me = seats[view.seat]
+        found = None if node is None else self._pass_to(tree, node, me, view.street)
+        if found is None:
+            again = self._reenter_table(tree, d, view.street, real, seats, view)
+            found = None if again is None else self._pass_to(tree, again, me, view.street)
+        return found
+
+
+def policy_for(blueprint: Blueprint, tables: CardTables, **kwargs: object) -> BlueprintPolicy:
+    """The policy class for a blueprint's table size."""
+    cls = BlueprintPolicy if blueprint.game.seats == 2 else MultiwayBlueprintPolicy
+    return cls(blueprint, tables, **kwargs)  # type: ignore[arg-type]
+
+
 def coverage(stats: Counter[str]) -> dict[str, float | int]:
     decisions = stats["decisions"]
     out: dict[str, float | int] = dict(sorted(stats.items()))
@@ -360,4 +573,4 @@ def coverage(stats: Counter[str]) -> dict[str, float | int]:
     return out
 
 
-__all__: Sequence[str] = ["BlueprintPolicy", "coverage", "pseudo_harmonic"]
+__all__: Sequence[str] = ["BlueprintPolicy", "MultiwayBlueprintPolicy", "coverage", "policy_for", "pseudo_harmonic"]

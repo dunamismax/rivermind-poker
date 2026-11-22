@@ -1,9 +1,10 @@
-"""The ``hu-m1`` action abstraction (P5.1, ``docs/bots.md``).
+"""The action abstractions: ``hu-m1`` (P5.1) and ``6max-s1`` (P5.6, ``docs/bots.md``).
 
 At each decision the bot chooses among fold (only when facing a bet), check
 or call, a few bet or raise sizes and all-in. The sizes depend on the street
 and on the street's **level**: how many bets and raises it has seen, where
-the blinds do not count.
+the blinds do not count. An ``Abstraction`` holds one format's size table,
+its seats and its depth classes.
 
 Pre-flop sizes are "raise to" totals as multiples of the current bet.
 Post-flop sizes are fractions *f* of the called pot: a bet or raise of *f* is
@@ -42,6 +43,54 @@ ALL_IN_BEHIND = F(1, 5)
 STREET_LETTERS = "PFTR"
 
 
+@dataclass(frozen=True, eq=False)
+class Abstraction:
+    """One format's betting abstraction: who plays, the size table and how its tree is compiled."""
+
+    name: str
+    seats: int
+    preflop: tuple[tuple[Fraction, ...], ...]
+    """Pre-flop raise-to multiples of the current bet, by level."""
+    postflop: dict[Street, tuple[tuple[Fraction, ...], ...]]
+    """Post-flop fractions of the called pot, by street and level."""
+    depths: tuple[int, ...]
+    """The depth classes in big blinds."""
+    merged: bool = False
+    """Whether betting states with the same chips, players and rights are one node, however they were reached."""
+
+    def sizes(self, street: Street, level: int) -> tuple[Fraction, ...]:
+        """The size table row for a street and level (empty when only all-in remains)."""
+        rows = self.preflop if street is Street.PREFLOP else self.postflop[street]
+        return rows[level] if level < len(rows) else ()
+
+
+HU_M1 = Abstraction(NAME, 2, PREFLOP_MULTIPLES, POSTFLOP_FRACTIONS, (50, 100))
+"""Heads-up, medium action abstraction, version 1: every history its own node."""
+
+SIX_MAX_S1 = Abstraction(
+    "6max-s1",
+    6,
+    ((F(5, 2),), (F(3),), (F(9, 4),)),
+    {
+        Street.FLOP: ((F(3, 4),), (F(1),)),
+        Street.TURN: ((F(3, 4),), (F(1),)),
+        Street.RIVER: ((F(3, 4),), (F(1),)),
+    },
+    (50, 100),
+    merged=True,
+)
+"""Six seats, small action abstraction, version 1: one size a level, and betting states merged (P5.6)."""
+
+ABSTRACTIONS: dict[str, Abstraction] = {a.name: a for a in (HU_M1, SIX_MAX_S1)}
+
+
+def abstraction_named(name: str) -> Abstraction:
+    try:
+        return ABSTRACTIONS[name]
+    except KeyError:
+        raise ValueError(f"unknown abstraction {name!r}; use one of {', '.join(ABSTRACTIONS)}") from None
+
+
 @dataclass(frozen=True, slots=True)
 class AbstractAction:
     """One choice at an abstract node: its history token and the engine action it plays."""
@@ -52,9 +101,8 @@ class AbstractAction:
 
 
 def sizes(street: Street, level: int) -> tuple[Fraction, ...]:
-    """The size table row for a street and level (empty when only all-in remains)."""
-    rows = PREFLOP_MULTIPLES if street is Street.PREFLOP else POSTFLOP_FRACTIONS[street]
-    return rows[level] if level < len(rows) else ()
+    """The ``hu-m1`` size table row for a street and level (empty when only all-in remains)."""
+    return HU_M1.sizes(street, level)
 
 
 def street_level(actions: Sequence[ActionRecord], street: Street) -> int:
@@ -82,13 +130,14 @@ def abstract_actions(
     pot: int,
     current_bet: int,
     street_bets: Sequence[int],
+    abstraction: Abstraction = HU_M1,
 ) -> tuple[AbstractAction, ...]:
     """The node's actions in their fixed order: fold, check or call, sizes ascending, all-in.
 
     ``pot`` counts every chip put in so far, the current street's bets
-    included, and ``street_bets`` is indexed by seat. Heads-up only: the
-    opponent is the other seat with chips in, so a bigger table's empty
-    seats (betting nothing) do not count.
+    included, and ``street_bets`` is indexed by seat. A raise is judged
+    against one caller, the seat with the most in on the street, so a
+    bigger table's empty seats (betting nothing) do not count.
     """
     seat = legal.seat
     found: list[AbstractAction] = []
@@ -105,7 +154,7 @@ def abstract_actions(
     owed = current_bet - street_bets[seat]
     other = max(b for s, b in enumerate(street_bets) if s != seat)
     seen: set[int] = set()
-    for i, size in enumerate(sizes(street, level)):
+    for i, size in enumerate(abstraction.sizes(street, level)):
         to = max(round_chips(size_to(street, size, pot, current_bet, owed)), legal.min_to)
         if to >= legal.max_to or to in seen:
             continue

@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 
+from .abstraction import abstraction_named
 from .game import Game
 from .train import CheckpointError, Settings, read_manifest
 from .tree import compile_tree
@@ -19,7 +20,8 @@ class Blueprint:
         self.path = Path(checkpoint)
         self.manifest: dict[str, Any] = read_manifest(self.path, verify=verify)
         self.settings = Settings.from_dict(self.manifest["settings"])
-        trees = tuple(compile_tree(d) for d in self.settings.depths)
+        abstraction = abstraction_named(self.settings.abstraction)
+        trees = tuple(compile_tree(d, abstraction) for d in self.settings.depths)
         recorded = [t["sha256"] for t in self.manifest["game"]["trees"]]
         if [t.sha256 for t in trees] != recorded:
             raise CheckpointError("this software compiles different trees from the checkpoint's")

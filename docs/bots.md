@@ -1,6 +1,6 @@
 # RiverMind bot design
 
-This is the design for RiverMind’s trained no-limit bots (P5.1). It fixes the game the first champion plays, its action and card abstractions, how real bets map onto them, the info-set key, and memory and time estimates for training it on this Mac (Q-5). Later steps build it: card tables at P5.2, training at P5.3, evaluation at P5.4, promotion at P5.5 and serving at P5.7a. They change this page when a measurement shows a choice was wrong, and say so in the handoff log. Estimates for 6-max and 9-max are added at P5.6.
+This is the design for RiverMind’s trained no-limit bots (P5.1). It fixes the game the first champion plays, its action and card abstractions, how real bets map onto them, the info-set key, and memory and time estimates for training it on this Mac (Q-5). Later steps build it: card tables at P5.2, training at P5.3, evaluation at P5.4, promotion at P5.5 and serving at P5.7a. They change this page when a measurement shows a choice was wrong, and say so in the handoff log. The six-seat format, `6max-s1`, is [below](#6-max-and-9-max) (P5.6).
 
 The engine in `rivermind/engine` is the only source of rules. Every abstract betting tree is built by playing actions through `start_hand`, `legal_actions` and `apply`, so minimum raises, incomplete all-ins and [rule 7.8](rules.md#7-legal-actions-and-amounts) come out exactly as at a live table.
 
@@ -280,7 +280,120 @@ Once the host’s checkout has the registry, `rivermind-poker blueprint champion
 
 ## 6-max and 9-max
 
-Added at P5.6, after the heads-up pipeline has produced a champion. The same abstraction scheme extends to more seats, but the history grows with every player, and position needs a place in the key. P5.6 records the new tree sizes, estimates and results.
+Six seats first (P5.6). The heads-up pipeline carries over: trees compiled from the engine, the same card abstraction, external-sampling MCCFR in deterministic batches, duplicate matches and the promotion gate. Three things change. The betting tree becomes a graph of merged betting states, because six seats' histories are too many to hold; the card tables get 200 buckets a street; and the bot has to find its seat at a real table, which may have fewer than six players, short stacks and side pots. The code is built and tested. **No six-seat blueprint has been trained yet**: the owner put training on this Mac on hold on 2026-11-22, so what follows is the design, what was measured in building it, and the estimates for the run.
+
+### The format: `6max-s1`
+
+`6max-s1` (six seats, small action abstraction, version 1) is no-limit hold’em without an ante for six players with equal stacks, in the same two depth classes as `hu-m1`, 50 and 100 big blinds. Seat 0 is the button, seat 1 the small blind, seat 2 the big blind, and seats 3, 4 and 5 are under the gun, the hijack and the cutoff; seat 3 acts first before the flop and seat 1 first after it.
+
+| Street | Level 0 | Level 1 | Level 2 | Level 3 and up |
+| --- | --- | --- | --- | --- |
+| Pre-flop (multiples of the bet faced) | 2.5× | 3× | 2.25× | all-in only |
+| Flop, turn and river (fractions of the called pot) | ¾ | 1 | all-in only | all-in only |
+
+Fold, check or call, and all-in are there as in `hu-m1`, with the same legality rules (a size under the minimum raises to the minimum, one leaving less than 20% of the called pot behind becomes all-in) and the same order. A raise is judged against one caller, the seat with the most in on the street. All-in stays available at every decision that allows a raise: without it an opponent’s shove would map to a small raise, and keeping it costs about a tenth of the graph.
+
+**Why the states are merged.** Built the heads-up way, with a node for every history, even the smallest table of sizes is out of reach. Throwaway scripts counted the trees through the engine at 100 big blinds, for one size a level and all-in only when facing a raise:
+
+| Seats | Decision nodes, every history its own node |
+| --- | --- |
+| 3 | 7,659 |
+| 4 | 96,923 |
+| 5 | 997,474 |
+| 6 | 8,465,576 |
+
+With 200 buckets a street that is 1.7 billion info sets and 42 GB of training tables at six seats, before a second size anywhere. Pluribus’s blueprint had 665 million action sequences and took 12,400 core-hours in C++; this trainer is Python on ten cores.
+
+So a `merged` abstraction compiles a graph. Two histories are one node when they leave the same seats in the hand with the same chips in the pot, the same bets on the street, the same seat to act and the same rights to raise: the engine’s `acted_at` and `min_raise` (rules 7.4 and 8.1), the street’s level, and the pot, in which the chips of seats that folded count only as a total. Everything that decides the actions at a node and the chips at every terminal beneath it is in that key, so the merged graph plays exactly the lines of the unmerged tree (`test_merging_keeps_every_line_of_the_betting` walks both). What is lost is memory: on the flop the bot no longer knows who raised before it, only who is still in and what the pot is. The abstraction already has imperfect recall of cards; this gives it imperfect recall of betting, and with it no proof of convergence, as for Pluribus’s card abstraction. P5.4-style evaluation measures what it costs.
+
+Because stacks start equal, a seat that is all-in has everything in, and so does anyone who calls it: every showdown is for one pot among seats that put in the same amount, and a terminal is four numbers (fold or showdown, what each remaining seat has in, the pot, and who remains).
+
+**Candidates**, all merged, six seats, counted through the engine; info sets and memory are for 200 buckets a street after the flop:
+
+| Candidate | Sizes | States at 100 bb | Info sets at 100 bb | Training tables, both depths |
+| --- | --- | --- | --- | --- |
+| A | pre-flop 2.5×, 3×; one ¾-pot bet, every raise all-in; all-in only against a raise | 210,155 | 41.6 million | 1.8 GB |
+| A1 | A, with a pot-sized raise after the flop | 510,802 | 101.8 million | 3.8 GB |
+| **`6max-s1`** | A1, with a 2.25× four-bet before the flop and all-in at every decision | **654,597** | **129.9 million** | **5.3 GB** |
+| B2 | three pre-flop levels; two bet sizes on every street after the flop (½ and pot) and a pot-sized raise; all-in only against a raise | 1,394,401 | 277.9 million | 10.1 GB |
+
+A cannot raise after the flop except by moving all-in, which is crude at 100 big blinds and looks it to anyone playing against it. B2 doubles the info sets for a second bet size. `6max-s1` is the middle: the bot can open, three-bet and four-bet before the flop, and bet, raise and re-raise all-in after it.
+
+**The graphs as compiled** ([`tree.py`](../rivermind/bots/blueprint/tree.py), `rivermind-poker blueprint tree --abstraction 6max-s1`):
+
+| Depth | Decision nodes | By street | Width by street | Terminals | SHA-256 |
+| --- | --- | --- | --- | --- | --- |
+| 50 | 345,581 | 33,163, 68,927, 117,180, 126,311 | 79,677, 152,895, 254,203, 272,733 | 15,179 | `cc952203…c7383f59` |
+| 100 | 654,597 | 33,163, 120,616, 234,861, 265,957 | 79,677, 273,876, 519,398, 584,447 | 29,103 | `2da67faf…4392b4e3` |
+
+With the `c200` card tables that is 68,088,147 and 129,891,347 info sets, 197,979,494 in all, in 438,441,226 slots. The engine takes 30 s and 38 s to walk the two graphs, so `compile_tree` keeps each in `artifacts/trees/`, in a file named by a hash of the abstraction, the tree and abstraction modules and the engine’s source; a change to any of them compiles again. Reading one back takes half a second. A multiway tree’s SHA-256 covers each node’s seat, street, offset, actions, children, the acting seat’s chips in the pot and the seats still in, and each terminal; the `hu-m1` trees hash as they always did (`220a7cab…` and `378a4e1d…`).
+
+A node’s **history** in an info-set key is the one the depth-first walk met first: `6max-s1|50|P|168|ffffc` is the big blind’s option after four folds and the small blind’s call. `Tree.node` finds a node from any of its histories by walking the tokens, and folds appear in them as `f`.
+
+### Card tables: `c200`
+
+The same pipeline as `hu-m1`’s tables ([card abstraction](#card-abstraction)) with 200 buckets on the flop, turn and river, as Pluribus used: 169 classes before the flop.
+
+```sh
+uv run --locked rivermind-poker tables build --out artifacts/tables/c200 --name c200 \
+  --flop_buckets 200 --turn_buckets 200 --river_buckets 200
+```
+
+Built on 2026-11-22 from `3888572` (whose card code the build used unchanged) with ten workers in 181 s, with a peak of 3.1 GB summed over processes, at a load average near 30: 401 MB in 16 files. `preflop.npy` is `hu-m1`’s (`a0a6e5ed…`); `flop.npy` is `b245fe1e…916929ee`, `turn.npy` `2765327c…f2bfacee` and `river.npy` `2c89cf94…4f16ae3a`. A second build to compare byte for byte waits for the training hold to end.
+
+### Training six seats
+
+[`_run_chunk_multiway`](../rivermind/bots/blueprint/mccfr.py) is the heads-up walk with three changes. The traverser is seat *iteration* mod 6. Every other seat’s action is sampled and its current strategy added to its average-strategy sums, as the one opponent’s is heads-up. And the walk stops where the traverser folds: the hand goes on without it, but it can lose nothing more, so the fold is worth minus what it has put in. At a showdown the traverser wins the pot divided among the best hands still in, less its own chips; chips are not rounded as the engine rounds an odd chip. The dealer deals six hands and a board and ranks each hand once.
+
+**Correctness.** On two seats and an unmerged tree the multiway walk makes the same draws and returns the same regret and strategy changes as the heads-up walk, slot for slot: with the `hu-m1` trees and tables, six chunks of 1,000 iterations with pruning on were identical, and the test repeats it on stand-in cards. A three-seat graph played to its terminals on the engine with real cards pays every seat what the graph says, to within the engine’s odd chip. A three-seat run is byte-identical on one worker and three, and stopped and resumed. Trained for 60,000 iterations on a game where each seat holds one of six strengths, the small blind folds its worst hand to an all-in more than 90% of the time and its best less than 5%.
+
+**Measured on this Mac** (2026-11-22, one probe of 2,560,000 iterations through the CLI with ten workers, from uniform strategies, while other projects held the load average at 35 to 47):
+
+- 23,000 to 24,000 iterations a second once running; the first batch took 34 s while ten workers started and read the graphs.
+- About 23 decision nodes an iteration, 5 of them the traverser’s (the prototype’s count; heads-up visits 46 and updates 14).
+- Memory: 14.4 GB summed over processes at the peak, which counts shared pages once a process. The arrays themselves are 1.75 GB of regrets and 3.5 GB of average-strategy sums, and a checkpoint is 5.3 GB.
+- After those iterations 27% of the pre-flop info sets at 100 big blinds had been touched, 6.5% of the flop’s, 2.5% of the turn’s and 1.5% of the river’s.
+
+**Estimate.** The first heads-up champion had about 90 updates an info set (128 million iterations, 13.9 updates each, 17 million info sets). The same average here is 198 million × 90 / 5 ≈ 3.6 billion iterations: **about 43 hours at the probe’s rate**, on a Mac shared as it was that day. An idle Mac should be faster, by how much is not measured; heads-up lost a factor of two to load and another once strategies were trained, and gained some back from pruning. The run can be put to the gate at any checkpoint on the way. If two days is too long, the 100 big blind class alone is two thirds of the work, and candidate A a fifth of it.
+
+**Settings to use.** A run this long keeps Pluribus’s proportions as `hu-m1` did: a linear-CFR discount every 4,000,000 iterations until 160,000,000, and pruning from 80,000,000. The pruning threshold cannot be set from here. An info set is updated about thirty times less often than heads-up at the same iteration, so regrets grow that much more slowly and `hu-m1`’s −10,000,000 might prune nothing; P5.3 chose its threshold from a probe on a partly trained run, and this one needs the same: train a few tens of millions of iterations, scale the regrets to the middle of the run and time chunks at several thresholds. That probe is the first thing to do when training may start again.
+
+```sh
+nice -n 19 uv run --locked rivermind-poker blueprint train artifacts/blueprints/6max-s1-s0 \
+  --abstraction 6max-s1 --tables artifacts/tables/c200 --iterations 3600000000 \
+  --discount_every 4000000 --discount_until 160000000 --prune_after 80000000 \
+  --prune_threshold THRESHOLD --regret_floor FLOOR --checkpoint_every 100000000 --keep 4
+```
+
+### Playing at a real table
+
+[`MultiwayBlueprintPolicy`](../rivermind/bots/blueprint/policy.py) keeps the heads-up mapping (the pseudo-harmonic rule, remembered tokens, its own sizes from the real pot) and adds what a table needs.
+
+- **Seats.** A real seat takes its tree seat by position: the button 0, the blinds 1 and 2, and the rest counting back from the button, so the seat before the button is always the cutoff.
+- **Fewer than six dealt in.** The hand starts at the node where the tree’s first seats to act have folded: five players start after one fold, three after three. Folding in turn puts no chips in the pot, so this is the six-seat game with those hands gone. Two players are different: heads-up the button posts the small blind and acts last after the flop, which no six-seat hand does. The policy refuses a hand of two, and P5.7 gives those hands to the heads-up champion.
+- **Depth class.** By the bot’s own stack, or the largest stack against it if that is smaller: under 71 big blinds the 50 tree.
+- **Seats that cannot act.** Real stacks differ, so a player can be all-in at the table while the tree, where stacks are equal, waits for it. The tree checks or calls for that seat and moves on (`passed` in the statistics).
+- **Re-entering the graph.** When a street’s real actions do not fit from the node the hand reached, the bot restarts the street at the node that opens it for exactly the seats still in, with the stack-to-pot ratio closest to the real one, and replays the street. Because states are merged, such a node is very nearly where the hand is.
+
+Six blueprints playing each other with equal stacks at the depth class never leave the graph: every decision finds its own node with no mapping, re-entry or passed seat, at six, five, four and three dealt in (`test_blueprints_playing_each_other_stay_on_the_graph`). Against the random bot, the calling station and RiverMind Easy over 300 hands at three to six players with stacks from 7 to 150 big blinds, every action was legal and 2 of 545 decisions found no node and checked or called.
+
+### Evaluating a full table
+
+`blueprint evaluate` reads the table size from the candidate’s abstraction. At six seats a **deal** is one deck played six times: the candidate sits in each seat in turn against five copies of the opponent, the button staying in seat 0, from fresh stacks. The deal’s value is the candidate’s mean winnings over the six hands, and the interval is over deals, as heads-up. Five calling stations and a sixth score exactly zero. The report adds the candidate’s result in each position. The gate is unchanged: at 100 big blinds the lower bound of the 95% interval must be above zero against a table of RiverMind Easy and against a table of calling stations, for the checkpoint and for the bundle. A replacement plays alone against five copies of the champion.
+
+One bot against five copies of another is the only arrangement measured. It answers “does this bot win at a table of those?”, which is what a guest sitting with bots meets; it does not rank two trained bots against a mixed field.
+
+### Serving bundles for a graph
+
+A multiway bundle is **format 2**. Its `strategy.u8` and card-table arrays are as before. Its `trees.json` stores each graph in columns, since a list per node would make Node hold a million small arrays: `player`, `street`, `offset`, `contribution` and `live` (a bit mask of seats) a node; `children` as one flat list, each node’s run following the last, with its length the size of the node’s token set; `tokens` and `measure` as indexes into `token_sets` (6 of them) and `measure_sets` (about 2,000); `spr`; the nodes that open each street; and the terminals’ kind, chips each, pot and seats. A reader rebuilds the graph’s SHA-256 from those columns alone, which `test_a_six_seat_bundle_is_format_two_and_plays` does. The TypeScript reader and policy are P5.7.
+
+The 6-max bundle will be about 0.9 GB: 438 MB of strategy, 400 MB of card tables and the graphs. With the heads-up champion’s 0.5 GB that is most of the web unit’s 2 GB `MemoryHigh`, so P5.7 measures it on ubuntu-vm before anything is served and raises the limit if it must; the host now has 15 GB.
+
+### Nine seats
+
+Not designed yet, and `6max-s1`’s sizes will not stretch to it. The merged graph grows by a factor of four to five a seat at 100 big blinds: 3,762 states at three seats, 28,964 at four, 152,981 at five and 654,597 at six. At seven seats it is 2,417,164: 479 million info sets with 200 buckets and 11.7 GB of training tables for the 100 big blind class alone, more than both of six seats’ classes together (one process, 148 s). The factor falls as seats are added (7.7, 5.3, 4.3, 3.7), and if it keeps falling that way nine seats is on the order of 20 to 25 million states: four to five billion info sets, over 100 GB of tables and a run some twenty-five times the six-seat one. That does not fit this Mac’s 32 GB, whatever the patience (Q-5).
+
+So the nine-seat design has a real choice to make, and it is not made here. The options to weigh, each with a measurement to take first: (1) play the last six positions of a nine-seat hand on the six-seat blueprint, which is exact once the first three seats have folded, and train only a small pre-flop strategy for those three seats; (2) a coarser nine-seat graph of its own, with candidate A’s sizes and 50 buckets a street, which is about a tenth of the tables above and still far more than six seats; (3) merge further, treating seats that have only called as interchangeable. The first is the cheapest and reuses a champion that will already have passed its gate; its cost is every hand in which an early seat stays in. Nine seats stays open in P5.6 until six seats has a champion.
 
 ## References
 

@@ -35,10 +35,26 @@ class Dealer(Protocol):
         ...
 
 
+class SeatDealer(Dealer, Protocol):
+    """A dealer for tables of more than two (P5.6)."""
+
+    def deal_seats(self, rng: np.random.Generator, n: int, seats: int) -> tuple[np.ndarray, np.ndarray]:
+        """``(n, seats, 4)`` buckets by seat and street, and ``(n, seats)`` hand ranks at the showdown, lower being better."""
+        ...
+
+
 @dataclass(frozen=True)
 class Game:
     trees: tuple[Tree, ...]
     buckets: tuple[int, int, int, int]
+
+    @property
+    def seats(self) -> int:
+        return self.trees[0].seats
+
+    def slim(self) -> Game:
+        """A copy for worker processes, whose trees hold only what the walk reads."""
+        return Game(tuple(t.slim() if t.multiway else t for t in self.trees), self.buckets)
 
     @cached_property
     def base(self) -> tuple[tuple[int, int, int, int], ...]:

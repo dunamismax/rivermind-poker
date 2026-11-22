@@ -1,4 +1,4 @@
-"""Duplicate, seat-rotated heads-up matches on the engine (P5.4).
+"""Duplicate, seat-rotated matches on the engine (P5.4; full tables at P5.6).
 
 Each **deal** is one shuffled deck played twice: once with the candidate on
 the button and once with the opponent there, so both players hold each
@@ -6,6 +6,11 @@ pair of hole cards and the board is the same. Both hands start from the
 same stacks. A deal's value is the candidate's mean winnings over its two
 hands, and the 95% interval is computed over deals, which are independent,
 with both seat rotations kept together.
+
+At a table of more than two (``Matchup.seats``), each deal is played once
+for every seat: the candidate sits in each seat in turn against a copy of
+the opponent in every other seat, the button stays where it is, and the
+deal's value is the candidate's mean winnings over those hands.
 
 Everything random comes from the seed: deal *i* shuffles its deck with
 ``Random((seed, i))`` and each seat's policy draws from its own generator
@@ -70,9 +75,9 @@ def make_policy(spec: str, tables: str | None = None) -> Policy:
     if spec in SIMPLE:
         return SIMPLE[spec]()
     if spec.startswith("blueprint:"):
-        from .blueprint.policy import BlueprintPolicy
+        from .blueprint.policy import policy_for
 
-        return BlueprintPolicy(*_loaded(spec.split(":", 1)[1], tables))
+        return policy_for(*_loaded(spec.split(":", 1)[1], tables))
     if spec.startswith("bundle:"):
         policy: Policy = _bundle(spec.split(":", 1)[1]).policy()
         return policy
@@ -89,10 +94,21 @@ class Matchup:
     small_blind: int = 50
     big_blind: int = 100
     tables: str | None = None
+    seats: int = 2
 
     @property
     def stack(self) -> int:
         return self.stack_bb * self.big_blind
+
+
+def position_names(seats: int) -> list[str]:
+    """Each seat's position by its number, the button being seat 0 (``docs/bots.md``)."""
+    if seats == 2:
+        return ["button", "big_blind"]
+    middle = seats - 3  # the seats between the big blind and the button
+    late = ["lojack", "hijack", "cutoff"][-(3 if middle >= 4 else min(middle, 2)) :] if middle else []
+    names = [f"utg+{i}" if i else "utg" for i in range(middle - len(late))] + late
+    return ["button", "small_blind", "big_blind", *names]
 
 
 @dataclass
@@ -107,6 +123,8 @@ class Result:
     big_blind: float = 0.0
     showdowns: int = 0
     candidate_stats: Counter[str] = field(default_factory=Counter)
+    positions: list[float] = field(default_factory=list)
+    """At a table of more than two: the candidate's winnings in each seat (the button is seat 0), summed over deals."""
 
     def add(self, other: Result) -> None:
         self.deals += other.deals
@@ -116,6 +134,11 @@ class Result:
         self.big_blind += other.big_blind
         self.showdowns += other.showdowns
         self.candidate_stats.update(other.candidate_stats)
+        if other.positions:
+            if not self.positions:
+                self.positions = [0.0] * len(other.positions)
+            for i, x in enumerate(other.positions):
+                self.positions[i] += x
 
     def summary(self) -> dict[str, Any]:
         n = self.deals
@@ -123,15 +146,20 @@ class Result:
         mean = self.total / n if n else 0.0
         variance = (self.total_squares - n * mean * mean) / (n - 1) if n > 1 else 0.0
         half = 1.96 * math.sqrt(max(variance, 0.0) / n) if n else 0.0
+        seats = self.matchup.seats
         out: dict[str, Any] = {
             "deals": n,
-            "hands": 2 * n,
+            "hands": seats * n,
             "bb_per_100": round(100 * mean / bb, 2),
             "ci95_bb_per_100": [round(100 * (mean - half) / bb, 2), round(100 * (mean + half) / bb, 2)],
             "button_bb_per_100": round(100 * self.button / n / bb, 2) if n else 0.0,
             "big_blind_bb_per_100": round(100 * self.big_blind / n / bb, 2) if n else 0.0,
-            "showdown_share": round(self.showdowns / (2 * n), 4) if n else 0.0,
+            "showdown_share": round(self.showdowns / (seats * n), 4) if n else 0.0,
         }
+        if seats != 2:
+            out["position_bb_per_100"] = {
+                name: round(100 * x / n / bb, 2) if n else 0.0 for name, x in zip(position_names(seats), self.positions or [0.0] * seats)
+            }
         stats = self.candidate_stats
         if stats.get("decisions"):
             out["candidate_decisions"] = dict(sorted(stats.items()))
@@ -164,8 +192,56 @@ def play_hand(policies: Sequence[Policy], rngs: Sequence[random.Random], deck: S
     return (final[0] or 0) - stack, (final[1] or 0) - stack, state.result.showdown
 
 
+def play_table(policies: Sequence[Policy], rngs: Sequence[random.Random], deck: Sequence[int], stack: int, config: HandConfig) -> tuple[list[int], bool]:
+    """Play one hand at a full table with seat 0 on the button; return each seat's winnings and whether it reached showdown."""
+    for policy in policies:
+        if hasattr(policy, "new_hand"):
+            policy.new_hand()
+    state = start_hand(config, [stack] * len(policies), 0, deck=deck)
+    while not state.is_over:
+        seat = state.to_act
+        assert seat is not None
+        state = apply(state, policies[seat].act(seat_view(state, seat), rngs[seat]))
+    final = state.final_stacks
+    assert state.result is not None
+    return [(f or 0) - stack for f in final], state.result.showdown
+
+
+def _play_block_table(matchup: Matchup, first: int, last: int) -> Result:
+    """``play_block`` at a table of more than two: the candidate once in every seat, the opponent in the others."""
+    seats = matchup.seats
+    candidate = make_policy(matchup.candidate, matchup.tables)
+    opponents = [make_policy(matchup.opponent, matchup.tables) for _ in range(seats - 1)]
+    config = HandConfig(matchup.small_blind, matchup.big_blind)
+    result = Result(matchup, positions=[0.0] * seats)
+    for deal in range(first, last):
+        deck = deck_for(matchup.seed, deal)
+        won = []
+        for rotation in range(seats):
+            table: list[Policy] = list(opponents)
+            table.insert(rotation, candidate)
+            rngs = [random.Random(_seed_int("seat", matchup.seed, deal, rotation, s)) for s in range(seats)]
+            winnings, showdown = play_table(table, rngs, deck, matchup.stack, config)
+            won.append(winnings[rotation])
+            result.showdowns += showdown
+        value = sum(won) / seats
+        result.deals += 1
+        result.total += value
+        result.total_squares += value * value
+        result.button += won[0]
+        result.big_blind += won[2]
+        for i, w in enumerate(won):
+            result.positions[i] += w
+    stats = getattr(candidate, "stats", None)
+    if stats is not None:
+        result.candidate_stats.update(stats)
+    return result
+
+
 def play_block(matchup: Matchup, first: int, last: int) -> Result:
     """Deals ``first`` to ``last - 1`` of a matchup, with fresh policies."""
+    if matchup.seats != 2:
+        return _play_block_table(matchup, first, last)
     candidate = make_policy(matchup.candidate, matchup.tables)
     opponent = make_policy(matchup.opponent, matchup.tables)
     config = HandConfig(matchup.small_blind, matchup.big_blind)
@@ -248,7 +324,21 @@ def describe_policy(spec: str) -> dict[str, Any]:
 def matchup_record(matchup: Matchup) -> dict[str, Any]:
     out = asdict(matchup)
     out.pop("tables")
+    if matchup.seats == 2:
+        out.pop("seats")
     return out
+
+
+def policy_seats(spec: str) -> int:
+    """The table size a policy is for: a blueprint's or a bundle's abstraction says; the simple bots play any, so 2."""
+    if not spec.startswith(("blueprint:", "bundle:")):
+        return 2
+    import json
+
+    from .blueprint.abstraction import abstraction_named
+
+    manifest = json.loads((Path(spec.split(":", 1)[1]) / "manifest.json").read_text())
+    return abstraction_named(manifest.get("abstraction", "hu-m1")).seats
 
 
 DEFAULT_PLAN: tuple[tuple[str, int], ...] = (
@@ -280,24 +370,37 @@ def evaluate(
     """Run every matchup of a plan and return the report (without timings, so a rerun matches it exactly)."""
     from .blueprint.train import engine_identity, software
 
+    seats = policy_seats(candidate)
+    for opponent, _ in plan:
+        if opponent.startswith(("blueprint:", "bundle:")) and policy_seats(opponent) != seats:
+            raise ValueError(f"{opponent} does not play at a table of {seats}")
     results = []
     for opponent, stack_bb in plan:
-        matchup = Matchup(candidate, opponent, stack_bb=stack_bb, deals=deals, seed=seed, tables=tables)
+        matchup = Matchup(candidate, opponent, stack_bb=stack_bb, deals=deals, seed=seed, tables=tables, seats=seats)
         summary = run_matchup(matchup, workers).summary()
         results.append({"opponent": opponent, "stack_bb": stack_bb, **summary})
         if progress is not None:
             progress(results[-1])
     code = software()
+    game = {
+        "rules": "no-limit Texas hold'em, 52-card deck, heads-up, no ante (docs/rules.md)",
+        "seats": 2,
+        "blinds": [50, 100],
+        "format": "duplicate: each deal played twice with the seats swapped, fresh stacks each hand",
+        "interval": "95%, normal approximation over deals, both rotations of a deal together",
+    }
+    if seats != 2:
+        game = {
+            "rules": f"no-limit Texas hold'em, 52-card deck, {seats} seats, no ante (docs/rules.md)",
+            "seats": seats,
+            "blinds": [50, 100],
+            "format": f"duplicate: each deal played {seats} times, the candidate once in every seat against {seats - 1} copies of the opponent, fresh stacks each hand",
+            "interval": f"95%, normal approximation over deals, all {seats} rotations of a deal together",
+        }
     return {
         "format": FORMAT,
         "kind": KIND,
-        "game": {
-            "rules": "no-limit Texas hold'em, 52-card deck, heads-up, no ante (docs/rules.md)",
-            "seats": 2,
-            "blinds": [50, 100],
-            "format": "duplicate: each deal played twice with the seats swapped, fresh stacks each hand",
-            "interval": "95%, normal approximation over deals, both rotations of a deal together",
-        },
+        "game": game,
         "seed": seed,
         "deals_per_matchup": deals,
         "candidate": describe_policy(candidate),
@@ -321,12 +424,13 @@ def render_markdown(report: dict[str, Any], *, name: str, command: str) -> str:
         candidate = f"Candidate: `{c.get('checkpoint', c['spec'])}`" + (
             f", {c['iteration']:,} iterations, trained at `{(c.get('trained_by') or 'unknown')[:7]}`." if "iteration" in c else "."
         )
+    seats = report["game"]["seats"]
     lines = [
         f"# Evaluation: {name}",
         "",
         candidate,
         f"Game: {report['game']['rules']}; blinds 50/100; {report['game']['format']}.",
-        f"Seed {report['seed']}, {report['deals_per_matchup']:,} deals ({2 * report['deals_per_matchup']:,} hands) per matchup;"
+        f"Seed {report['seed']}, {report['deals_per_matchup']:,} deals ({seats * report['deals_per_matchup']:,} hands) per matchup;"
         f" evaluated at `{(report['software']['commit'] or 'unknown')[:7]}`{' with local changes' if report['software']['dirty'] else ''}.",
         "",
         "| Opponent | Stacks (bb) | bb/100 | 95% interval | On the button | In the big blind | Trained data |",
@@ -342,6 +446,20 @@ def render_markdown(report: dict[str, Any], *, name: str, command: str) -> str:
         "",
         "“Trained data” is the share of the candidate’s decisions whose own info set had average-strategy data; the rest borrowed the nearest bucket, or checked or called (docs/bots.md). The JSON beside this file has every count, the checkpoint’s and opponents’ hashes and the decision statistics.",
         "",
+    ]
+    if seats != 2:
+        names = position_names(seats)
+        lines += [
+            "The candidate’s result in each seat, in big blinds per 100 hands:",
+            "",
+            "| Opponent | Stacks (bb) | " + " | ".join(n.replace("_", " ") for n in names) + " |",
+            "| --- | --- | " + " | ".join("---" for _ in names) + " |",
+        ]
+        for r in report["results"]:
+            by_seat = r["position_bb_per_100"]
+            lines.append(f"| {r['opponent']} | {r['stack_bb']} | " + " | ".join(f"{by_seat[n]:+.2f}" for n in names) + " |")
+        lines.append("")
+    lines += [
         "Reproduce with:",
         "",
         "```sh",

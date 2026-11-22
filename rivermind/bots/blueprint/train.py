@@ -35,7 +35,7 @@ from typing import Any
 
 import numpy as np
 
-from .abstraction import NAME
+from .abstraction import NAME, abstraction_named
 from .game import Dealer, Game
 from .mccfr import Chunk, ChunkResult, run_chunk
 from .tree import DEPTHS, compile_tree
@@ -110,9 +110,10 @@ class Progress:
 
 
 def build_game(settings: Settings, dealer: Dealer) -> Game:
-    if settings.abstraction != NAME:
-        raise ValueError(f"only the {NAME} abstraction is implemented")
-    return Game(tuple(compile_tree(d) for d in settings.depths), dealer.buckets)
+    abstraction = abstraction_named(settings.abstraction)
+    if abstraction.seats != 2 and not hasattr(dealer, "deal_seats"):
+        raise ValueError(f"{settings.abstraction} needs a dealer for {abstraction.seats} seats")
+    return Game(tuple(compile_tree(d, abstraction) for d in settings.depths), dealer.buckets)
 
 
 # Workers
@@ -234,7 +235,7 @@ class Trainer:
             self._pool = ctx.Pool(
                 self.workers,
                 initializer=_init_worker,
-                initargs=(self.game, str(self.regrets_path), self.game.size, self.dealer),
+                initargs=(self.game.slim(), str(self.regrets_path), self.game.size, self.dealer),
             )
         return self._pool.map(_run_worker_chunk, chunks, chunksize=1)
 
