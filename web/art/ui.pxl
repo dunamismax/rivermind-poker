@@ -143,3 +143,88 @@ KGGGGGGGGGGGGgK
 .....KGGGK.....
 ....KgggggK....
 ....KKKKKKK....
+
+# --- Table voice (P4C.6), 11 × 11: a microphone and a pair of headphones, each
+# plain or struck through in red. @face is the metal, @shade its darker side;
+# R is the strike. Every part has a face colour inside its outline, so the glyph
+# reads on an ink tag as well as on a button. A seat shows one beside its name, and the bar's buttons use
+# them: talking, muted, listening only and deafened. "Not in voice" is the
+# microphone in dim colors.
+
+legend
+. clear
+K ink
+F @face
+f @shade
+
+sprite voice-mic
+....KKK....
+...KFFFK...
+...KFFfK...
+...KFFfK...
+.K.KFFfK.K.
+KFKKFFfKKfK
+KFFKKKKKffK
+.KFFFFFffK.
+..KKKFKKK..
+...KFFfK...
+...KKKKK...
+
+legend
+. clear
+K ink
+F @face
+f @shade
+R red light
+
+sprite voice-mic-muted
+....KKK..RR
+...KFFFKRR.
+...KFFfRR..
+...KFFRR...
+.K.KFRRK.K.
+KFKKRRfKKfK
+KFFRRKKKffK
+.KRRFFFffK.
+.RRKKFKKK..
+RR.KFFfK...
+R..KKKKK...
+
+legend
+. clear
+K ink
+F @face
+f @shade
+
+sprite voice-phones
+...KKKKK...
+..KFFFFfK..
+.KF.....fK.
+KF.......fK
+KF.......fK
+KKK.....KKK
+KFFK...KFfK
+KFFK...KFfK
+KFFK...KFfK
+KKKK...KKKK
+...........
+
+legend
+. clear
+K ink
+F @face
+f @shade
+R red light
+
+sprite voice-phones-muted
+...KKKKK.RR
+..KFFFFfRR.
+.KF....RRK.
+KF....RR.fK
+KF...RR..fK
+KKK.RR..KKK
+KFFRR..KFfK
+KFRR...KFfK
+KRRK...KFfK
+RRKK...KKKK
+R..........

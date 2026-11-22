@@ -43,7 +43,7 @@ import { clientAddress, REACTIONS } from './safety.ts';
 import { STAKES, type Site } from './site.ts';
 import { parseCookies } from './socket.ts';
 import type { Tables } from './tables.ts';
-import { VOICE_PATH, type VoiceTokenResponse } from '../../voice/signalling.ts';
+import { VOICE_PATH, type VoiceOffer, type VoiceTokenResponse } from '../../voice/signalling.ts';
 import { Invalid, parseJson, type Schema } from './validate.ts';
 import { handDetail, handSummary, tableSummary } from './views.ts';
 import { PLAY_MONEY_NOTICE } from './wallet.ts';
@@ -68,6 +68,11 @@ export interface ApiOptions {
 	allowedOrigins?: Iterable<string>;
 	/** The running tables, for the lobby, seating, practice and safety routes (P4B.5b). */
 	tables?: Tables | null;
+	/**
+	 * Whether pages offer table voice (`GET /api/voice`, P4C.6): only where a page can
+	 * reach the voice service, and only with one configured (`tables.voice`).
+	 */
+	voiceOffered?: boolean;
 }
 
 export { HttpError };
@@ -167,6 +172,7 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 	const origins = new Set([...(options.allowedOrigins ?? [])].map((o) => o.replace(/\/+$/, '')));
 	const limiters = site.limiters;
 	const tables = options.tables ?? null;
+	const voiceOffered = options.voiceOffered ?? false;
 
 	function address(request: Request, info: RequestInfo): string {
 		return clientAddress(info.peer, request.headers.get('x-forwarded-for'));
@@ -460,6 +466,12 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 			return json(response);
 		};
 
+		/** Whether pages offer table voice here (P4C.6). */
+		const voiceOffer: Route = async () => {
+			const response: VoiceOffer = { offered: tables.voice !== null && voiceOffered };
+			return json(response, 200, { 'cache-control': 'no-store' });
+		};
+
 		routes.find((r) => r.pattern.source === '^\\/api\\/relations$')!.methods.PUT = setRelation;
 		routes.push(
 			{ pattern: /^\/api\/tables$/, methods: { POST: newTable, GET: listTables } },
@@ -475,7 +487,8 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 			{ pattern: /^\/api\/quick-seat$/, methods: { POST: quickSeat } },
 			{ pattern: /^\/api\/practice$/, methods: { POST: practice } },
 			{ pattern: /^\/api\/reports$/, methods: { POST: report } },
-			{ pattern: /^\/api\/tables\/([^/]+)\/voice$/, methods: { POST: voiceToken } }
+			{ pattern: /^\/api\/tables\/([^/]+)\/voice$/, methods: { POST: voiceToken } },
+			{ pattern: /^\/api\/voice$/, methods: { GET: voiceOffer } }
 		);
 	}
 

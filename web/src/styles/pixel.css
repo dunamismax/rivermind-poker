@@ -8,6 +8,7 @@
  *   .px-field  text and number inputs, selects
  *   .px-table  the felt and its rail
  *   .chip-* .avatar-* .dealer-button .pot-pile  sprites
+ *   .voice-glyph .voice-*                        table voice's glyphs (P4C.6)
  */
 
 /* --- Frames: 7 × 7 images, three-pixel corners. ---------------------------- */
@@ -268,6 +269,26 @@ input.px-range:disabled {
 	width: calc(11 * var(--px));
 	height: calc(11 * var(--px));
 	background-image: url('../lib/art/ui/dealer.png');
+}
+/* Table voice's glyphs (P4C.6), 11 × 11. */
+.voice-glyph {
+	width: calc(11 * var(--px));
+	height: calc(11 * var(--px));
+}
+.voice-mic {
+	background-image: url('../lib/art/ui/voice-mic.png');
+}
+.voice-mic-muted {
+	background-image: url('../lib/art/ui/voice-mic-muted.png');
+}
+.voice-phones {
+	background-image: url('../lib/art/ui/voice-phones.png');
+}
+.voice-phones-muted {
+	background-image: url('../lib/art/ui/voice-phones-muted.png');
+}
+.voice-out {
+	background-image: url('../lib/art/ui/voice-out.png');
 }
 .mini-cards {
 	width: calc(14 * var(--px));

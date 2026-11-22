@@ -17,6 +17,10 @@
 //                           table, and leaves /api/* and /ws unanswered, so it can
 //                           start beside the live server on the same database.
 //                           /healthz reports `database`, `tables` and `champions`.
+//   RIVERMIND_VOICE_PROXY   the voice service, such as http://127.0.0.1:4323, to
+//                           pass /voice handshakes on to (P4C.6): for development
+//                           and the browser tests. Never on the live unit, where
+//                           Caddy routes /voice (P4C.9).
 //   SHUTDOWN_TIMEOUT        seconds a SIGTERM waits for open requests (10)
 //   ORIGIN, PROTOCOL_HEADER, HOST_HEADER, ADDRESS_HEADER, XFF_DEPTH and
 //   BODY_SIZE_LIMIT are read by SvelteKit's handler, as documented for adapter-node.
@@ -61,7 +65,11 @@ const app = createApp({
 	shutdownTimeoutMs: Number(process.env.SHUTDOWN_TIMEOUT ?? 10) * 1000,
 	api: candidate ? null : (runtime?.api ?? null),
 	sockets: candidate ? null : (runtime?.sockets ?? null),
-	origin: process.env.ORIGIN ? new URL(process.env.ORIGIN) : null
+	origin: process.env.ORIGIN ? new URL(process.env.ORIGIN) : null,
+	voiceProxy:
+		!candidate && process.env.RIVERMIND_VOICE_PROXY
+			? new URL(process.env.RIVERMIND_VOICE_PROXY)
+			: null
 });
 
 app.server.listen(port, host, () => {

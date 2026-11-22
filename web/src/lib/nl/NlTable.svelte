@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { tableCardUrls } from '../card-assets.ts';
 	import ConnectionStatus from '../components/ConnectionStatus.svelte';
 	import PlayingCard from '../components/PlayingCard.svelte';
@@ -18,10 +18,21 @@
 	import HandReplay from './HandReplay.svelte';
 	import { betClass, clockLeft, placeClass, sideClass } from './layout.ts';
 	import NlSeat from './NlSeat.svelte';
+	import NlVoice from './NlVoice.svelte';
 	import { REACTIONS, REPORT_REASONS, relationText } from './safety.ts';
+	import { TableVoice } from './voice.svelte.ts';
 	import './seat-places.css';
 
 	let { view, connection }: { view: TableView; connection: NlConnection } = $props();
+
+	// Table voice (P4C.6): offered to people seated with someone else, never at practice tables.
+	const voice = new TableVoice();
+	$effect(() => voice.update(view, connection.relations));
+	onDestroy(() => voice.destroy());
+	if (typeof window !== 'undefined') {
+		(window as unknown as { rivermindVoice?: () => unknown }).rivermindVoice = () =>
+			voice.diagnostics();
+	}
 
 	// Fetch the faces and the back once, so no card pops in mid-deal.
 	onMount(() => {
@@ -266,6 +277,8 @@
 	}
 </script>
 
+<svelte:window onkeydown={voice.keydown} onkeyup={voice.keyup} />
+
 <!-- Wide screens: the table on the left; the action dock, the seat tools and the hand log in a
      column on the right, narrower on a laptop (`lap:`). Narrow landscape screens (`tall:`): one
      column, the seat tools above the table so they never move, and the dock pinned to the bottom.
@@ -285,7 +298,7 @@
 	aria-label="Table"
 >
 	<div
-		class="bar col-span-full row-1 flex min-h-24 flex-wrap items-center gap-6 phone:relative phone:z-6 phone:min-h-20 phone:gap-4 pocket:gap-3"
+		class="bar relative col-span-full row-1 flex min-h-24 flex-wrap items-center gap-6 phone:z-6 phone:min-h-20 phone:gap-4 pocket:gap-3"
 	>
 		{#if me}
 			<button
@@ -314,6 +327,9 @@
 			>
 				Invite
 			</button>
+		{/if}
+		{#if voice.phase !== 'idle'}
+			<NlVoice {voice} />
 		{/if}
 		{#if view.practice}
 			<span
@@ -399,6 +415,37 @@
 				<p class="hint text-s text-paper-shade">
 					Muting hides their reactions. Blocking also keeps quick seat from seating you together.
 				</p>
+				{#if voice.inVoice && pickedInfo.ref}
+					{@const ref = pickedInfo.ref}
+					<div
+						class="menu-row voice-row flex flex-wrap items-center gap-4"
+						role="group"
+						aria-label="Voice"
+					>
+						<button
+							type="button"
+							class={['px-btn small', voice.isMuted(ref) && 'red']}
+							aria-pressed={voice.isMuted(ref)}
+							onclick={() => voice.toggleMute(ref)}
+						>
+							Mute voice
+						</button>
+						<label class="flex items-center gap-3 text-s">
+							Volume
+							<input
+								type="range"
+								class="px-range w-80"
+								min="0"
+								max="200"
+								step="5"
+								value={Math.round(voice.volumeOf(ref) * 100)}
+								aria-valuetext="{Math.round(voice.volumeOf(ref) * 100)}%"
+								oninput={(e) => voice.setVolume(ref, Number(e.currentTarget.value) / 100)}
+							/>
+							<span class="w-20 text-right">{Math.round(voice.volumeOf(ref) * 100)}%</span>
+						</label>
+					</div>
+				{/if}
 				<form
 					class="menu-row flex flex-wrap items-center gap-4"
 					onsubmit={(e) => {
@@ -467,6 +514,7 @@
 						won={result ? (result.winnings[seat] ?? 0) : 0}
 						reaction={connection.reactions[seat]?.text ?? null}
 						relation={relationText(connection.relationOf(info.ref))}
+						voice={voice.seat(seat, info.ref, seat === mine)}
 						onselect={info.kind === 'human' && seat !== mine ? () => pick(seat) : undefined}
 					/>
 					{#if info.bet > 0 && !result}

@@ -22,9 +22,17 @@
 // drops, the room asks for a new token and joins a new group, keeping the
 // person's mutes (P4C.5). A new group starts again at epoch 0, which a key
 // store never goes back to, so each session has a worker and keys of its own.
+//
+// What the person does with their own audio (P4C.6) is kept by the room too,
+// across sessions: the microphone, which can change or go (listening only);
+// whether it sends, which a mute or push-to-talk stops at the page and at the
+// service; whether they hear anyone (deafened, which pauses every stream at
+// the service); and the bitrate. `status` tells everyone else they muted
+// themself or deafened, where the service takes it.
 import { Device, type types as msc } from 'mediasoup-client';
 import { EpochKeys, type Epoch } from './group-keys.ts';
 import { Member, type Identity } from './group.ts';
+import type { Bitrate } from './settings.ts';
 import { FrameCrypto } from './sframe-client.ts';
 import type { Tally } from './sframe-transform.ts';
 import { Refused, VoiceSocket } from './signalling-client.ts';
@@ -34,6 +42,7 @@ import {
 	toBase64,
 	type Notice,
 	type PeerInfo,
+	type PeerStatus,
 	type Requests,
 	type TransportInfo
 } from './signalling.ts';
@@ -65,6 +74,14 @@ export type VoiceRoomOptions = {
 	// The public references of the people this person has muted (P4.5): their
 	// audio stays paused at the voice service from the start, never sent here.
 	muted?: string[];
+	// Whether the microphone sends now: false while the person has muted
+	// themself, or holds no push-to-talk key (P4C.6). True by default.
+	sending?: boolean;
+	// What the person says of themself to everyone else (`status`).
+	status?: PeerStatus;
+	// Deafened: every stream paused at the service, so this page hears nobody.
+	deafened?: boolean;
+	bitrate?: Bitrate;
 	commitTurnMs?: number;
 	onepoch?: (epoch: Epoch) => void;
 	// A stream was added, or ended.
@@ -75,6 +92,9 @@ export type VoiceRoomOptions = {
 	// The connection was lost and the room is coming back, or has.
 	onreconnecting?: (code: number) => void;
 	onreconnected?: () => void;
+	// Someone came, went, started or stopped sending, or said they muted
+	// themself or deafened: read `people` again.
+	onchange?: () => void;
 	log?: (line: string) => void;
 };
 
@@ -91,6 +111,20 @@ export type Heard = {
 	consumer: msc.Consumer;
 	receiver: RTCRtpReceiver | null;
 	track: MediaStreamTrack;
+};
+
+// Someone else in the room, as this page knows them (P4C.6): the seat and
+// player are those their leaf names in this page's own copy of the group, and
+// null until they are in it.
+export type VoicePerson = {
+	peer: string;
+	leaf: number | null;
+	player: string | null;
+	seat: number | null;
+	// They send audio: they joined with a microphone, not to listen only.
+	sending: boolean;
+	muted: boolean;
+	deafened: boolean;
 };
 
 class VoiceSession {
@@ -113,6 +147,9 @@ class VoiceSession {
 	#queue: Promise<void> = Promise.resolve();
 	#commitTimer: ReturnType<typeof setTimeout> | null = null;
 	#closed = false;
+	#sending: boolean;
+	#status: PeerStatus;
+	#deafened: boolean;
 	epoch: Epoch | null = null;
 	refused: string[] = [];
 
@@ -126,6 +163,9 @@ class VoiceSession {
 		this.#welcome = welcome;
 		this.#identity = { player: welcome.player, seat: welcome.seat };
 		this.#muted = new Set(options.muted ?? []);
+		this.#sending = options.sending ?? true;
+		this.#status = options.status ?? { muted: false, deafened: false };
+		this.#deafened = options.deafened ?? false;
 		this.#keys = new EpochKeys(this.#frames);
 		this.#keys.seats(options.seated);
 		this.#frames.onrefused = (asked, error) => this.refused.push(`${asked}: ${error}`);
@@ -184,8 +224,107 @@ class VoiceSession {
 		return this.#member;
 	}
 
+	get producer(): msc.Producer | null {
+		return this.#producer;
+	}
+
+	// Everyone else in this page's group, by its own copy of the tree, with what
+	// the service says of their socket. A reloaded page's old leaf, which stays
+	// beside its new one until it is removed, is left out: its socket is gone.
+	get people(): VoicePerson[] {
+		const mine = this.#member?.leaf ?? null;
+		const people: VoicePerson[] = [];
+		for (const { leaf, identity } of this.#member?.roster() ?? []) {
+			if (leaf === mine || !identity) continue;
+			const peer = [...this.#peers.values()].find((one) => one.leaf === leaf);
+			if (!peer && people.some((one) => one.seat === identity.seat)) continue;
+			people.push({
+				peer: peer?.peer ?? '',
+				leaf,
+				player: identity.player,
+				seat: identity.seat,
+				sending: (peer?.producer ?? null) !== null,
+				muted: peer?.muted ?? false,
+				deafened: peer?.deafened ?? false
+			});
+		}
+		// The same seat twice: keep the leaf whose socket is still here.
+		return people.filter(
+			(one) => one.peer !== '' || !people.some((other) => other !== one && other.seat === one.seat)
+		);
+	}
+
 	tallies(): Promise<Tally[]> {
 		return this.#frames.tallies();
+	}
+
+	#changed(): void {
+		try {
+			this.#options.onchange?.();
+		} catch (error) {
+			this.#log(`voice: ${error}`);
+		}
+	}
+
+	// Change the microphone, or give it up to listen only (null). A page that
+	// joined to listen makes its send transport when it first has one.
+	setTrack(track: MediaStreamTrack | null): Promise<void> {
+		this.#options.track = track;
+		return this.#later(async () => {
+			if (this.#producer) {
+				await this.#producer.replaceTrack({ track });
+				if (!track) await this.#pause(true);
+				else if (this.#sending) await this.#pause(false);
+				return;
+			}
+			if (!track) return;
+			if (!this.#send) this.#send = await this.#transport('send');
+			await this.#produce();
+		});
+	}
+
+	// Start or stop sending: a mute, or push-to-talk held or let go.
+	setSending(sending: boolean): Promise<void> {
+		this.#sending = sending;
+		return this.#later(() => this.#pause(!sending || !this.#options.track));
+	}
+
+	// Tell everyone else this person muted themself or deafened, or no longer.
+	setStatus(status: PeerStatus): Promise<void> {
+		this.#status = status;
+		return this.#later(() => this.#sendStatus());
+	}
+
+	// Hear nobody, or everyone again but those this person muted.
+	deafen(deafened: boolean): Promise<void> {
+		this.#deafened = deafened;
+		return this.#later(async () => {
+			for (const heard of this.#heard.values()) {
+				const paused = deafened || heard.muted;
+				const type = paused ? 'consumer.pause' : 'consumer.resume';
+				await this.#socket.request(type, { consumer: heard.consumer.id });
+			}
+		});
+	}
+
+	setBitrate(bitrate: Bitrate): Promise<void> {
+		this.#options.bitrate = bitrate;
+		return this.#later(async () => {
+			await this.#producer?.setRtpEncodingParameters({ maxBitrate: bitrate });
+		});
+	}
+
+	async #pause(paused: boolean): Promise<void> {
+		const producer = this.#producer;
+		if (!producer || producer.paused === paused) return;
+		if (paused) producer.pause();
+		else producer.resume();
+		await this.#socket.request(paused ? 'producer.pause' : 'producer.resume', {});
+	}
+
+	async #sendStatus(): Promise<void> {
+		if (!this.#welcome.statuses) return;
+		await this.#socket.request('status', this.#status);
 	}
 
 	// Mute or unmute someone, by public reference. A mute pauses their audio at
@@ -196,9 +335,10 @@ class VoiceSession {
 			else this.#muted.delete(player);
 			for (const heard of this.#heard.values()) {
 				if (heard.player !== player || heard.muted === muted) continue;
+				heard.muted = muted;
+				if (this.#deafened) continue;
 				const type = muted ? 'consumer.pause' : 'consumer.resume';
 				await this.#socket.request(type, { consumer: heard.consumer.id });
-				heard.muted = muted;
 			}
 		});
 	}
@@ -254,7 +394,9 @@ class VoiceSession {
 		if (this.#options.track) this.#send = await this.#transport('send');
 		await this.#joinGroup(this.#welcome.groupInfo);
 		await this.#produce();
+		if (this.#status.muted || this.#status.deafened) await this.#sendStatus();
 		for (const peer of this.#peers.values()) await this.#consume(peer);
+		this.#changed();
 	}
 
 	async #transport(direction: 'send' | 'recv'): Promise<msc.Transport> {
@@ -316,17 +458,24 @@ class VoiceSession {
 		this.#member = member;
 		this.epoch = await this.#keys.advance(member);
 		this.#options.onepoch?.(this.epoch);
+		this.#changed();
 	}
 
 	async #produce(): Promise<void> {
 		if (!this.#send || !this.#options.track || this.#producer) return;
+		const bitrate = this.#options.bitrate ?? CODEC_OPTIONS.opusMaxAverageBitrate!;
 		this.#producer = await this.#send.produce({
 			track: this.#options.track,
 			// The microphone outlives this session: the next one sends it again.
 			stopTracks: false,
-			codecOptions: CODEC_OPTIONS,
+			// A pause sends nothing and leaves the shared track alone.
+			disableTrackOnPause: false,
+			zeroRtpOnPause: true,
+			codecOptions: { ...CODEC_OPTIONS, opusMaxAverageBitrate: bitrate },
+			encodings: [{ maxBitrate: bitrate }],
 			onRtpSender: (sender) => this.#frames.encrypt(sender)
 		});
+		if (!this.#sending) await this.#pause(true);
 	}
 
 	async #consume(peer: PeerInfo): Promise<void> {
@@ -367,15 +516,20 @@ class VoiceSession {
 			track: consumer.track
 		};
 		this.#heard.set(peer.peer, heard);
-		// Consumers start paused at the service; a muted person's stays so.
-		if (!muted) await this.#socket.request('consumer.resume', { consumer: consumer.id });
+		// Consumers start paused at the service; a muted person's stays so, and
+		// everyone's while this person is deafened.
+		if (!muted && !this.#deafened) {
+			await this.#socket.request('consumer.resume', { consumer: consumer.id });
+		}
 		this.#options.onheard?.(heard);
+		this.#changed();
 	}
 
 	#drop(heard: Heard): void {
 		heard.consumer.close();
 		this.#heard.delete(heard.peer);
 		this.#options.onended?.(heard);
+		this.#changed();
 	}
 
 	async #notice(notice: Notice): Promise<void> {
@@ -386,6 +540,7 @@ class VoiceSession {
 			case 'producer':
 				this.#peers.set(notice.peer.peer, notice.peer);
 				await this.#consume(notice.peer);
+				this.#changed();
 				return;
 			case 'consumer.closed':
 				for (const heard of this.#heard.values()) {
@@ -396,8 +551,15 @@ class VoiceSession {
 				this.#peers.delete(notice.peer);
 				const heard = this.#heard.get(notice.peer);
 				if (heard) this.#drop(heard);
+				this.#changed();
 				return;
 			}
+			case 'peer':
+				// The service's whole view of that socket now, someone who only
+				// listens included, whom no `producer` notice names.
+				this.#peers.set(notice.peer.peer, notice.peer);
+				this.#changed();
+				return;
 			case 'media.reset':
 				// Every transport is gone at the service: make them again and send again.
 				for (const heard of this.#heard.values()) this.#drop(heard);
@@ -407,6 +569,7 @@ class VoiceSession {
 				this.#recv = await this.#transport('recv');
 				if (this.#options.track) this.#send = await this.#transport('send');
 				await this.#produce();
+				this.#changed();
 				return;
 		}
 	}
@@ -474,6 +637,9 @@ export class VoiceRoom {
 	#options: VoiceRoomOptions;
 	#session: VoiceSession | null = null;
 	#muted: Set<string>;
+	#sending: boolean;
+	#status: PeerStatus;
+	#deafened: boolean;
 	#closed = false;
 	#tries = 0;
 	#retry: ReturnType<typeof setTimeout> | null = null;
@@ -481,6 +647,9 @@ export class VoiceRoom {
 	private constructor(options: VoiceRoomOptions) {
 		this.#options = options;
 		this.#muted = new Set(options.muted ?? []);
+		this.#sending = options.sending ?? true;
+		this.#status = options.status ?? { muted: false, deafened: false };
+		this.#deafened = options.deafened ?? false;
 	}
 
 	// Join the table's voice room. A first connection that fails throws.
@@ -497,6 +666,9 @@ export class VoiceRoom {
 			...this.#options,
 			token,
 			muted: [...this.#muted],
+			sending: this.#sending,
+			status: this.#status,
+			deafened: this.#deafened,
 			onclose: (code, reason) => this.#lost(session, code, reason)
 		});
 		if (this.#closed) {
@@ -569,6 +741,42 @@ export class VoiceRoom {
 
 	get member(): Member | null {
 		return this.#session?.member ?? null;
+	}
+
+	get producer(): msc.Producer | null {
+		return this.#session?.producer ?? null;
+	}
+
+	get people(): VoicePerson[] {
+		return this.#session?.people ?? [];
+	}
+
+	// Change the microphone, or give it up to listen only (null).
+	async setTrack(track: MediaStreamTrack | null): Promise<void> {
+		this.#options.track = track;
+		await this.#session?.setTrack(track);
+	}
+
+	// Start or stop sending (a mute, or push-to-talk): kept across reconnections.
+	async setSending(sending: boolean): Promise<void> {
+		this.#sending = sending;
+		await this.#session?.setSending(sending);
+	}
+
+	// What everyone else is told of this person: muted, deafened.
+	async setStatus(status: PeerStatus): Promise<void> {
+		this.#status = status;
+		await this.#session?.setStatus(status);
+	}
+
+	async deafen(deafened: boolean): Promise<void> {
+		this.#deafened = deafened;
+		await this.#session?.deafen(deafened);
+	}
+
+	async setBitrate(bitrate: Bitrate): Promise<void> {
+		this.#options.bitrate = bitrate;
+		await this.#session?.setBitrate(bitrate);
 	}
 
 	async tallies(): Promise<Tally[]> {

@@ -9,7 +9,9 @@ import tailwindcss from '@tailwindcss/vite';
 const backend = process.env.RIVERMIND_BACKEND ?? 'http://127.0.0.1:8000';
 const proxy = {
 	'/api': { target: backend, changeOrigin: true },
-	'/ws': { target: backend, ws: true, changeOrigin: true }
+	'/ws': { target: backend, ws: true, changeOrigin: true },
+	// Table voice (P4C.6): the voice service, which checks the page's own origin.
+	'/voice': { target: process.env.RIVERMIND_VOICE_BACKEND ?? 'http://127.0.0.1:4323', ws: true }
 };
 
 // SvelteKit's route announcer hides itself with an inline style attribute,

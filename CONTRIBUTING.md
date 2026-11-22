@@ -271,7 +271,7 @@ pnpm visual:compare ../artifacts/visual/before-1 ../artifacts/visual/before-2 ..
 
 ## Table voice
 
-Table voice is Phase 4C; [docs/voice.md](docs/voice.md) holds the design and what each step found. Nothing a player sees is built yet. What exists is the frame encryption (P4C.2) and the group key (P4C.3) in [`web/src/lib/voice/`](web/src/lib/voice/), the voice service and its signalling (P4C.4) in [`web/voice/server.ts`](web/voice/server.ts) and [`web/src/lib/server/voice/`](web/src/lib/server/voice/), and the prototype (P4C.1) in [`web/voice/prototype/`](web/voice/prototype/), which is not part of the site, the build or `pnpm e2e`.
+Table voice is Phase 4C; [docs/voice.md](docs/voice.md) holds the design and what each step found. What exists is the frame encryption (P4C.2) and the group key (P4C.3) in [`web/src/lib/voice/`](web/src/lib/voice/), the voice service and its signalling (P4C.4) in [`web/voice/server.ts`](web/voice/server.ts) and [`web/src/lib/server/voice/`](web/src/lib/server/voice/), the table server's side (P4C.5), the voice card and controls at the table (P4C.6) in [`web/src/lib/nl/voice.svelte.ts`](web/src/lib/nl/voice.svelte.ts) and [`NlVoice.svelte`](web/src/lib/nl/NlVoice.svelte), and the prototype (P4C.1) in [`web/voice/prototype/`](web/voice/prototype/), which is not part of the site, the build or `pnpm e2e`. The live site offers no voice until P4C.9.
 
 ### Frame encryption (P4C.2)
 
@@ -354,6 +354,21 @@ The table server's side (P4C.5) is [`api/voice.ts`](web/src/lib/server/api/voice
 `room.check.ts` also starts a voice service of its own on 4393 (the check page's CSP allows it) and restarts it with SIGTERM, to show pages coming back by themselves; a run that is stopped can leave it holding the port (`lsof -ti tcp:4393 | xargs kill`).
 
 The voice service takes its settings from the environment (the comment at the top of `voice/server.ts` lists them). Locally, `RIVERMIND_SECRET` stands in for the live unit's `VOICE_KEY_FILE`. `pnpm voice:check` starts it from the source on `127.0.0.1:4392`, with media on loopback and this machine's first LAN address (for Firefox) and a secret of the checks' own, and its room checks sign their tokens with the same secret. With `VOICE_REMOTE=1` it starts no service and the room checks talk to whatever answers on 4392, such as a service on ubuntu-vm through `ssh -N -L 4392:127.0.0.1:4323 root@ubuntu-vm`, with media over the host's public address (how P4C.4 was checked; docs/voice.md has the host setup).
+
+### Voice at the table (P4C.6)
+
+Pages offer voice only where `GET /api/voice` says so: a voice service in `RIVERMIND_VOICE_URL` and `RIVERMIND_VOICE_OFFER=1`. A page reaches the voice service on its own origin's `/voice`, which Caddy will route on the live site (P4C.9). Locally the Node server passes `/voice` on itself when given `RIVERMIND_VOICE_PROXY`, and `vite dev` forwards it to `RIVERMIND_VOICE_BACKEND` (127.0.0.1:4323 by default). Both servers need the same secret, and the voice service the page's origin:
+
+```sh
+cd web && pnpm build
+RIVERMIND_SECRET=dev PORT=4323 VOICE_ORIGINS=http://127.0.0.1:8000 VOICE_MEDIA_PORT=0 \
+  VOICE_LISTEN_IPS=127.0.0.1,$(ipconfig getifaddr en0) node voice/server.ts
+RIVERMIND_API=1 RIVERMIND_SECRET=dev PORT=8000 ORIGIN=http://127.0.0.1:8000 \
+  RIVERMIND_VOICE_URL=http://127.0.0.1:4323 RIVERMIND_VOICE_OFFER=1 \
+  RIVERMIND_VOICE_PROXY=http://127.0.0.1:4323 node build/start.js
+```
+
+Two people need two browsers (or a private window): voice is offered only to someone seated with another person. `window.rivermindVoice()` on a table page returns what the page knows of voice (its phase, how it plays sound, each voice's gain and pan, the voice code), never a key. `pnpm e2e` runs [`voice.e2e.ts`](web/e2e/voice.e2e.ts) against a server of its own with a voice service from the source (`TableServer`'s `voicePort`, on 8860 and 8880 upwards), each person a browser started with the engine's fake microphone.
 
 ### The prototype (P4C.1)
 

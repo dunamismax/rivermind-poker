@@ -25,6 +25,7 @@ import {
 	type ClientMessage,
 	type Notice,
 	type PeerInfo,
+	type PeerStatus,
 	type RequestType,
 	type Requests,
 	type VoiceError
@@ -85,6 +86,8 @@ type Peer = {
 	recv: ms.WebRtcTransport | null;
 	producer: ms.Producer | null;
 	consumers: Map<string, ms.Consumer>;
+	// What the person last said of themself (`status`, P4C.6).
+	status: PeerStatus;
 };
 
 type Accepted = Extract<Outcome, { accepted: true }>;
@@ -142,7 +145,7 @@ class Room {
 	}
 
 	info(peer: Peer): PeerInfo {
-		return { peer: peer.id, leaf: peer.leaf, producer: peer.producer?.id ?? null };
+		return { peer: peer.id, leaf: peer.leaf, producer: peer.producer?.id ?? null, ...peer.status };
 	}
 
 	groupInfo(): string | null {
@@ -399,7 +402,8 @@ export class VoiceService {
 					send: null,
 					recv: null,
 					producer: null,
-					consumers: new Map()
+					consumers: new Map(),
+					status: { muted: false, deafened: false }
 				};
 				const peers = [...room.peers.values()].map((other) => room.info(other));
 				room.peers.set(peer.id, peer);
@@ -414,7 +418,8 @@ export class VoiceService {
 					group: toBase64(room.delivery.groupId),
 					groupInfo: room.groupInfo(),
 					routerRtpCapabilities: withoutAudioLevel(room.router.rtpCapabilities),
-					peers
+					peers,
+					statuses: true
 				};
 				return { room, peer, welcome };
 			});
@@ -586,6 +591,15 @@ export class VoiceService {
 				const consumer = peer.consumers.get(message.consumer) ?? fail('unknown');
 				await (message.type === 'consumer.pause' ? consumer.pause() : consumer.resume());
 				reply({});
+				return;
+			}
+			case 'status': {
+				const { muted, deafened } = message;
+				if (typeof muted !== 'boolean' || typeof deafened !== 'boolean') fail('bad-request');
+				const changed = muted !== peer.status.muted || deafened !== peer.status.deafened;
+				peer.status = { muted, deafened };
+				reply({});
+				if (changed) room.tellAll({ notice: 'peer', peer: room.info(peer) }, peer);
 				return;
 			}
 		}

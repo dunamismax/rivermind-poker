@@ -5,7 +5,7 @@
 // (e2e/journey-setup.ts) keeps everything in the disposable test database.
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { tmpdir } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const WEB = resolve(import.meta.dirname, '..');
@@ -84,20 +84,59 @@ const HAND_PAUSE = '0.4';
 const BOT_DELAY = '0.05';
 const PRACTICE_STACK = '300';
 
+// The voice service's own secret for the browser tests (P4C.6): the Node server signs
+// sessions and voice tokens with it, and the voice service derives its key from it.
+const VOICE_SECRET = 'the browser tests of table voice';
+
+// Firefox's ICE fails against a media address on loopback alone (docs/voice.md),
+// so the voice service also listens on this machine's first LAN address.
+const lan = Object.values(networkInterfaces())
+	.flat()
+	.find((address) => address?.family === 'IPv4' && !address.internal)?.address;
+
 export class TableServer {
 	/** The site's origin: the Node server. */
 	readonly url: string;
 	readonly #web: Child;
+	readonly #voice: Child | null = null;
 
 	/**
 	 * @param databaseUrl A disposable, migrated database for the server to keep its players,
 	 *   wallets, tables and hands in (the P5.9 journey). Without one, everything lives in memory.
+	 * @param voicePort Table voice (P4C.6): a voice service from the source on this port,
+	 *   which the Node server offers to pages and passes /voice on to.
 	 */
 	constructor(
 		readonly port: number,
-		{ databaseUrl = '' }: { databaseUrl?: string } = {}
+		{ databaseUrl = '', voicePort = 0 }: { databaseUrl?: string; voicePort?: number } = {}
 	) {
 		this.url = `http://127.0.0.1:${port}`;
+		let voice: NodeJS.ProcessEnv = {};
+		if (voicePort) {
+			const voiceUrl = `http://127.0.0.1:${voicePort}`;
+			this.#voice = new Child(
+				'the voice service',
+				`${voiceUrl}/healthz`,
+				process.execPath,
+				['voice/server.ts'],
+				WEB,
+				{
+					...process.env,
+					HOST: '127.0.0.1',
+					PORT: String(voicePort),
+					RIVERMIND_SECRET: VOICE_SECRET,
+					VOICE_ORIGINS: this.url,
+					VOICE_MEDIA_PORT: '0',
+					VOICE_LISTEN_IPS: ['127.0.0.1', ...(lan ? [lan] : [])].join(',')
+				}
+			);
+			voice = {
+				RIVERMIND_SECRET: VOICE_SECRET,
+				RIVERMIND_VOICE_URL: voiceUrl,
+				RIVERMIND_VOICE_OFFER: '1',
+				RIVERMIND_VOICE_PROXY: voiceUrl
+			};
+		}
 		// Never a developer's database: only one a test names, and otherwise memory.
 		const tables: NodeJS.ProcessEnv = {
 			RIVERMIND_API: '1',
@@ -119,17 +158,20 @@ export class TableServer {
 				HOST: '127.0.0.1',
 				PORT: String(port),
 				ORIGIN: this.url,
-				...tables
+				...tables,
+				...voice
 			}
 		);
 	}
 
 	async start(): Promise<void> {
+		await this.#voice?.start();
 		await this.#web.start();
 	}
 
 	async stop(): Promise<void> {
 		await this.#web.stop();
+		await this.#voice?.stop();
 	}
 
 	async restart(): Promise<void> {

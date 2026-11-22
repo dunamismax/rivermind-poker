@@ -219,7 +219,13 @@ describe('who the voice service lets in', () => {
 		const answer = await page.hello();
 		expect(answer.ok).toBe(true);
 		const welcome = page.welcome!;
-		expect(welcome).toMatchObject({ v: 1, seat: 2, player: who(2).player, groupInfo: null });
+		expect(welcome).toMatchObject({
+			v: 1,
+			seat: 2,
+			player: who(2).player,
+			groupInfo: null,
+			statuses: true
+		});
 		expect(fromBase64(welcome.service)).toHaveLength(32);
 		expect(fromBase64(welcome.group)).toHaveLength(16);
 		expect(welcome.peers).toEqual([]);
@@ -391,6 +397,47 @@ describe('the group, over the wire', () => {
 		c.leave();
 	});
 
+	it('passes on who has muted themself or deafened, to everyone else and to newcomers (P4C.6)', async () => {
+		const voice = service();
+		const [a, b] = [new Page(voice, 0), new Page(voice, 3)];
+		await a.hello();
+		const leaf = await a.joinGroup();
+		await b.hello();
+		await b.joinGroup();
+		await a.apply(await a.notices());
+		expect((await a.ask('status', { muted: true, deafened: false })).ok).toBe(true);
+		expect(await b.apply(await b.notices())).toEqual([
+			{
+				notice: 'peer',
+				peer: { peer: a.welcome!.peer, leaf, producer: null, muted: true, deafened: false }
+			}
+		]);
+		// Saying the same again tells nobody anything.
+		await a.ok('status', { muted: true, deafened: false });
+		await settle();
+		expect(b.pending()).toEqual([]);
+		expect(a.pending()).toEqual([]);
+		// A newcomer hears it in the welcome.
+		const c = new Page(voice, 5);
+		await c.hello();
+		expect(c.welcome!.peers.find((one) => one.peer === a.welcome!.peer)).toMatchObject({
+			muted: true,
+			deafened: false
+		});
+		await a.ok('status', { muted: true, deafened: true });
+		expect((await c.notices()).find((one) => one.notice === 'peer')).toMatchObject({
+			peer: { peer: a.welcome!.peer, muted: true, deafened: true }
+		});
+		// Anything but two booleans is refused.
+		for (const bad of [{ muted: 'yes', deafened: false }, { muted: true }]) {
+			expect(await a.ask('status', bad as never)).toMatchObject({
+				ok: false,
+				error: 'bad-request'
+			});
+		}
+		for (const page of [a, b, c]) page.leave();
+	});
+
 	it('accepts the first commit for an epoch and gives the loser what to start again from', async () => {
 		const voice = service();
 		const pages = [0, 1, 2, 3].map((seat) => new Page(voice, seat));
@@ -513,7 +560,9 @@ describe('audio, through the room', () => {
 		).toBe(false);
 
 		await b.hello();
-		expect(b.welcome!.peers).toEqual([{ peer: a.welcome!.peer, leaf, producer }]);
+		expect(b.welcome!.peers).toEqual([
+			{ peer: a.welcome!.peer, leaf, producer, muted: false, deafened: false }
+		]);
 		const recv = await b.ok('transport.create', { direction: 'recv' });
 		const consumed = await b.ok('consume', {
 			transport: recv.transport,
@@ -559,7 +608,16 @@ describe('audio, through the room', () => {
 		).producer;
 		const told = (await a.notices(2)).filter((n) => n.notice === 'producer');
 		expect(told).toEqual([
-			{ notice: 'producer', peer: { peer: b.welcome!.peer, leaf: bLeaf, producer: bProducer } }
+			{
+				notice: 'producer',
+				peer: {
+					peer: b.welcome!.peer,
+					leaf: bLeaf,
+					producer: bProducer,
+					muted: false,
+					deafened: false
+				}
+			}
 		]);
 		await a.ok('producer.pause', {});
 		await a.ok('producer.resume', {});

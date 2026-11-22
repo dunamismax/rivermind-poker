@@ -116,7 +116,8 @@ The stack is SvelteKit 3 · Svelte 5 · TypeScript · Tailwind CSS 4 · PostgreS
 ```text
 web/                             SvelteKit app (Node 26.13.1 from web/.node-version, pnpm 12.18.0 from packageManager)
   src/routes/                    pages: the lobby and table (/), /hands, /fairness, /bots, /style
-  src/lib/nl/                    no-limit lobby and table UI; connection.svelte.ts owns the socket
+  src/lib/nl/                    no-limit lobby and table UI; connection.svelte.ts owns the socket;
+                                 voice.svelte.ts and NlVoice.svelte are table voice at the table (P4C.6)
   src/lib/engine/                browser-safe cards and evaluator
   src/lib/server/engine/         TypeScript engine (P4B.4); rules.json is generated from Python fixtures
   src/lib/server/bots/           TypeScript bots and BlueprintPolicy (P4B.6), with PythonRandom;
@@ -141,8 +142,9 @@ web/                             SvelteKit app (Node 26.13.1 from web/.node-vers
                                  delivery rules (delivery.ts), each epoch's keys (group-keys.ts) and the
                                  voice code (P4C.3); voice signalling v1 (signalling.ts), shared with the
                                  service, and a page's side of it (signalling-client.ts, room.ts: P4C.4);
-                                 the ts-mls design check (P4C.1); and, in mls-vectors/, the MLS working
-                                 group's test vectors against ts-mls
+                                 the ts-mls design check (P4C.1); a page's microphone, playback and kept
+                                 settings (microphone.ts, playback.ts, settings.ts: P4C.6); and, in
+                                 mls-vectors/, the MLS working group's test vectors against ts-mls
   voice/server.ts                the voice service's entry point, bundled into build/voice/ with mediasoup's
                                  worker by vite.voice.config.ts (P4C.4)
   voice/check/                   the voice checks' pages and Playwright checks (`pnpm voice:check`, in CI):
@@ -355,6 +357,10 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 - Never call `joinGroupExternal` with `resync` set for a member whose signature key may not be in the group. ts-mls 1.6.4 finds the old leaf by signature key alone and never returns when there is none. A reloaded page joins as a newcomer, and the service proposes its stale leaf's removal.
 - A ts-mls state is never changed in place: every call returns the next one. Keep the state a commit was made from until the service has accepted that commit.
 - The service gives a client the Router's capabilities without `urn:ietf:params:rtp-hdrext:ssrc-audio-level` and refuses a producer that names it. Audio levels on the wire would tell the server who is speaking.
+- Pages offer voice only where `GET /api/voice` says so (`RIVERMIND_VOICE_OFFER=1` with a voice service). Leave it off on the live unit until P4C.9 routes `/voice` in Caddy, and never set `RIVERMIND_VOICE_PROXY` there: it is for development and the browser tests, and a web deploy would cut every conversation it carried.
+- Chromium echo-cancels only what it plays from a peer connection, so in Chromium the voice mix goes through `Playback`'s local loopback into an audio element (`playback.ts`). Never play voice straight from Web Audio there. Tell Chromium apart by `navigator.userAgentData`, never the user agent string: Playwright gives every engine its project's string, and a Firefox page claiming Chrome took the loopback.
+- A page sends `status` only to a service whose welcome says `statuses: true`; a service from before P4C.6 closes a socket that sends a request it does not know.
+- A seat's voice glyph sits on an ink tag or plate, so every part of a voice sprite has a face colour inside its outline: a stand drawn in ink alone vanished.
 - mediasoup's install script downloads its worker binary from GitHub for the platform, the architecture and, on Linux, the kernel's major version. `allowBuilds` in `web/pnpm-workspace.yaml` permits it. A release carries no `node_modules`, so a bundled service needs the binary beside it and `MEDIASOUP_WORKER_BIN` naming it (`web/voice/prototype/bundle.ts` shows how).
 
 ### Styles

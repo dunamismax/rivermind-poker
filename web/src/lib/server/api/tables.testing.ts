@@ -65,6 +65,8 @@ export interface ServerOptions {
 	store?: TableStorage | null;
 	/** The wall clock, for sessions, wallets and reports. */
 	now?: () => number;
+	/** Whether pages offer table voice (`GET /api/voice`, P4C.6). */
+	voiceOffered?: boolean;
 }
 
 export class TestServer {
@@ -105,7 +107,10 @@ export class TestServer {
 				...options.runner
 			}
 		});
-		this.api = createApi(this.site, { tables: this.tables });
+		this.api = createApi(this.site, {
+			tables: this.tables,
+			voiceOffered: options.voiceOffered ?? false
+		});
 		this.sockets = createSocketServer(this.tables);
 	}
 

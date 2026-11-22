@@ -332,6 +332,13 @@ export function renderUi() {
 		out.set(`ui/avatar-${kind.replace('_', '-')}.png`, outlined(paint(sprite('bot'), colors)));
 	}
 	out.set('ui/emblem.png', paint(sprite('emblem')));
+	// Table voice's glyphs (P4C.6): bright for people in voice, dim for someone who is not.
+	const bright = { face: 'paper', shade: 'paper deep' };
+	const dim = { face: 'dusk', shade: 'slate' };
+	for (const name of ['mic', 'mic-muted', 'phones', 'phones-muted']) {
+		out.set(`ui/voice-${name}.png`, paint(sprite(`voice-${name}`), bright));
+	}
+	out.set('ui/voice-out.png', paint(sprite('voice-mic'), dim));
 	for (const [name, colors] of Object.entries(PANELS))
 		out.set(`ui/frame-${name}.png`, frame(colors));
 	for (const [name, colors] of Object.entries(BUTTONS)) {

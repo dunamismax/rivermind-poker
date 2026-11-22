@@ -3,6 +3,7 @@
 	import type { SeatInfo, Turn } from '../protocol-v2.ts';
 	import { avatarClass, botLabel, podName } from './faces.ts';
 	import { clockLeft } from './layout.ts';
+	import type { SeatVoice } from './voice.svelte.ts';
 
 	let {
 		info,
@@ -15,6 +16,7 @@
 		won = 0,
 		reaction = null,
 		relation = '',
+		voice = null,
 		onselect
 	}: {
 		info: SeatInfo;
@@ -31,6 +33,8 @@
 		reaction?: string | null;
 		/** `Muted` or `Blocked` when the viewer muted or blocked this player. */
 		relation?: string;
+		/** This person in table voice, while the viewer is in it (P4C.6). */
+		voice?: SeatVoice | null;
 		/** Opens the menu to mute, block or report this player; set only for other people. */
 		onselect?: () => void;
 	} = $props();
@@ -108,6 +112,20 @@
 	const parts = $derived(!me && info.kind === 'bot' ? podName(info.name) : null);
 	const tag =
 		'mt-1 bg-ink px-3 text-s leading-10 whitespace-nowrap phone:px-2 phone:text-xs phone:leading-7 tab:text-s tab:leading-10';
+	/** The glyph and the words for this person's place in table voice. */
+	const VOICE: Record<SeatVoice['state'], { glyph: string; text: string }> = {
+		talking: { glyph: 'voice-mic', text: 'In voice' },
+		muted: { glyph: 'voice-mic-muted', text: 'Muted' },
+		deafened: { glyph: 'voice-phones-muted', text: 'Deafened' },
+		listening: { glyph: 'voice-phones', text: 'Listening only' },
+		out: { glyph: 'voice-out', text: 'Not in voice' }
+	};
+	const voiceTag = $derived(voice ? VOICE[voice.state] : null);
+	const voiceText = $derived(
+		voice && voiceTag
+			? `${voiceTag.text}${voice.speaking ? ', speaking' : ''}${voice.mutedByMe ? ', muted by you' : ''}`
+			: ''
+	);
 	const lamp = $derived(
 		clock?.bank
 			? 'fill-red-light'
@@ -152,7 +170,8 @@
 			frame,
 			me ? 'phone:py-0' : 'phone:block phone:pt-1 phone:pb-0 phone:text-center',
 			dim && 'opacity-55',
-			acting && 'animate-nudge'
+			acting && 'animate-nudge',
+			voice?.speaking && 'speaking outline-2 outline-offset-2 outline-green-light animate-speak'
 		]}
 	>
 		<span
@@ -188,6 +207,24 @@
 			>
 				<span class="sprite chip chip-gold size-7 phone:size-[11px]" aria-hidden="true"
 				></span>{info.stack}
+				{#if voice && voiceTag}
+					<span
+						class={[
+							'voice ml-auto flex items-center',
+							!me && 'phone:ml-0',
+							voice.mutedByMe && 'opacity-60'
+						]}
+						title={voiceText}
+						data-voice={voice.state}
+						data-speaking={voice.speaking ? 'true' : undefined}
+					>
+						<span
+							class="sprite voice-glyph {voiceTag.glyph} size-11 phone:size-[11px] tab:size-11"
+							aria-hidden="true"
+						></span>
+						<span class="sr-only">{voiceText}</span>
+					</span>
+				{/if}
 			</div>
 		</div>
 		{#if reaction}<div

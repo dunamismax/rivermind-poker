@@ -1,7 +1,7 @@
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { WebSocket } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
 import { createApi } from '../src/lib/server/api/api.ts';
 import { UNLIMITED } from '../src/lib/server/api/safety.ts';
 import { Site } from '../src/lib/server/api/site.ts';
@@ -93,6 +93,10 @@ describe('the web server', () => {
 		expect(page.headers.get('x-frame-options')).toBe('DENY');
 		expect(page.headers.get('x-content-type-options')).toBe('nosniff');
 		expect(page.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
+		// Table voice may ask for the microphone; nothing may ask for the camera or the location.
+		expect(page.headers.get('permissions-policy')).toBe(
+			'camera=(), microphone=(self), geolocation=()'
+		);
 		expect(page.headers.get('cache-control')).toBe('no-cache');
 		const asset = await fetch(`http://${host}/_app/immutable/entry/start.js`);
 		expect(asset.headers.get('cache-control')).toBeNull();
@@ -110,6 +114,34 @@ describe('the web server', () => {
 		const ws = new WebSocket(`ws://${host}/elsewhere`);
 		const failed = new Promise((resolve) => ws.once('error', resolve));
 		await expect(failed).resolves.toBeInstanceOf(Error);
+		// /voice too, unless a voice service is named to pass it on to.
+		const voice = new WebSocket(`ws://${host}/voice`);
+		await expect(new Promise((resolve) => voice.once('error', resolve))).resolves.toBeInstanceOf(
+			Error
+		);
+	});
+
+	it('passes /voice on to the voice service it is given, handshake and frames unchanged', async () => {
+		const upstream = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+		running.push(() => new Promise((resolve) => upstream.close(() => resolve())));
+		await new Promise((resolve) => upstream.once('listening', resolve));
+		const seen: { path: string | undefined; origin: string | undefined }[] = [];
+		upstream.on('connection', (socket, req) => {
+			seen.push({ path: req.url, origin: req.headers.origin });
+			socket.on('message', (data) => socket.send(`echo ${data}`));
+		});
+		const port = (upstream.address() as AddressInfo).port;
+		const { host } = await start({ voiceProxy: new URL(`http://127.0.0.1:${port}`) });
+		const ws = new WebSocket(`ws://${host}/voice`, { origin: 'http://example.test' });
+		await opened(ws);
+		const reply = new Promise((resolve) => ws.once('message', (data) => resolve(String(data))));
+		ws.send('hello');
+		expect(await reply).toBe('echo hello');
+		expect(seen).toEqual([{ path: '/voice', origin: 'http://example.test' }]);
+		ws.close();
+		// Everything else is still the server's own.
+		const other = new WebSocket(`ws://${host}/ws`);
+		expect(await closed(other)).toBe(TRY_AGAIN_LATER);
 	});
 });
 

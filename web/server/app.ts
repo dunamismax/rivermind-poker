@@ -10,6 +10,7 @@
 // error, or a server shutting down, answers 503.
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { connect } from 'node:net';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer } from 'ws';
 import { serveApi, type ApiHandler } from './api.ts';
@@ -34,6 +35,12 @@ export interface Options {
 	origin?: URL | null;
 	/** Protocol v2's sockets (src/lib/server/api/socket.ts, P4B.5b), for /ws. */
 	sockets?: SocketServer | null;
+	/**
+	 * The voice service, to pass /voice handshakes on to unchanged, in development and
+	 * the browser tests only (P4C.6). The live site routes /voice in Caddy (P4C.9), so a
+	 * deploy of this server never cuts a conversation.
+	 */
+	voiceProxy?: URL | null;
 }
 
 /** One open socket, fed the frames that arrive. */
@@ -60,11 +67,15 @@ export const MAX_FRAME_BYTES = 64 * 1024;
 /** Close code for a frame the server cannot take (a binary one). */
 export const UNSUPPORTED_DATA = 1003;
 
-/** Headers every page and asset carries, as serve-nl and Caddy send them. */
+/**
+ * Headers every page and asset carries, as Caddy sends them. The page may ask for
+ * the microphone, for table voice, and never the camera or the location (P4C.6).
+ */
 export const SECURITY_HEADERS: Record<string, string> = {
 	'x-content-type-options': 'nosniff',
 	'x-frame-options': 'DENY',
-	'referrer-policy': 'strict-origin-when-cross-origin'
+	'referrer-policy': 'strict-origin-when-cross-origin',
+	'permissions-policy': 'camera=(), microphone=(self), geolocation=()'
 };
 
 /** Close code for a socket the server is not ready to serve (RFC 6455 "try again later"). */
@@ -96,7 +107,8 @@ export function createApp({
 	checks = {},
 	api = null,
 	origin = null,
-	sockets: tables = null
+	sockets: tables = null,
+	voiceProxy = null
 }: Options): App {
 	const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
 	let closing = false;
@@ -140,6 +152,10 @@ export function createApp({
 	});
 
 	server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+		if (!closing && voiceProxy && pathOf(req) === '/voice') {
+			relay(req, socket, head, voiceProxy);
+			return;
+		}
 		if (closing || pathOf(req) !== '/ws') {
 			socket.destroy();
 			return;
@@ -195,4 +211,26 @@ export function createApp({
 	}
 
 	return { server, close };
+}
+
+/** Pass a handshake and everything after it on to `target` byte for byte, both ways. */
+function relay(req: IncomingMessage, socket: Duplex, head: Buffer, target: URL): void {
+	const upstream = connect(Number(target.port || 80), target.hostname);
+	const end = () => {
+		socket.destroy();
+		upstream.destroy();
+	};
+	upstream.on('error', end);
+	socket.on('error', end);
+	upstream.on('close', end);
+	socket.on('close', end);
+	upstream.on('connect', () => {
+		const lines = [`${req.method} ${req.url} HTTP/1.1`];
+		for (let at = 0; at < req.rawHeaders.length; at += 2) {
+			lines.push(`${req.rawHeaders[at]}: ${req.rawHeaders[at + 1]}`);
+		}
+		upstream.write(`${lines.join('\r\n')}\r\n\r\n`);
+		if (head.length) upstream.write(head);
+		socket.pipe(upstream).pipe(socket);
+	});
 }

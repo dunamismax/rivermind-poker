@@ -17,6 +17,8 @@
 //   3. transport.*      a send and a receive WebRTC transport
 //      produce          the page's one audio track, once it is in the group
 //      consume          another person's track, paused until consumer.resume
+//   4. status           whether this person has muted themself or deafened,
+//                       which the service passes on to everyone else (P4C.6)
 //
 // MLS messages travel as base64 of their TLS encoding (group.ts). The service
 // passes on every commit it accepts, and proposes removals, in `mls` notices.
@@ -42,11 +44,31 @@ export type Base64 = string;
 // service on the site's own origin.
 export type VoiceTokenResponse = { table: string; seat: number; token: string; url: string };
 
+// What `GET /api/voice` answers (P4C.6): whether pages offer table voice. It is
+// off wherever the voice service cannot be reached from a page, as on the live
+// site until P4C.9 gives Caddy its route, so no table offers what cannot work.
+export type VoiceOffer = { offered: boolean };
+
 // Someone else in the room, as the service knows them: a name for their
 // socket, the leaf they hold in the group once they are in it, and their
 // audio once they send it. Who a leaf is, a page reads from its own copy of
 // the group, never from the service (docs/voice.md, threat model).
-export type PeerInfo = { peer: string; leaf: number | null; producer: string | null };
+//
+// `muted` and `deafened` are what that person last said of themself with
+// `status` (P4C.6). A service from before P4C.6 leaves them out: read them as
+// false.
+export type PeerInfo = {
+	peer: string;
+	leaf: number | null;
+	producer: string | null;
+	muted?: boolean;
+	deafened?: boolean;
+};
+
+// What a person says of themself (`status`): their own microphone is muted,
+// or they hear nobody. The service only passes it on; a muted page also
+// pauses its producer, so its silence does not depend on this.
+export type PeerStatus = { muted: boolean; deafened: boolean };
 
 // A WebRTC transport, for mediasoup-client's createSendTransport and
 // createRecvTransport (which call `transport` its `id`).
@@ -75,6 +97,10 @@ export type Requests = {
 			// The Router's capabilities, without the audio-level extension.
 			routerRtpCapabilities: msc.RtpCapabilities;
 			peers: PeerInfo[];
+			// The service takes `status` and passes it on (P4C.6). A page sends
+			// `status` only to a service that says so: one from before closes a
+			// socket that sends a request it does not know.
+			statuses?: true;
 		};
 	};
 	'group.create': {
@@ -106,6 +132,7 @@ export type Requests = {
 	};
 	'consumer.pause': { request: { consumer: string }; response: Record<string, never> };
 	'consumer.resume': { request: { consumer: string }; response: Record<string, never> };
+	status: { request: PeerStatus; response: Record<string, never> };
 };
 
 export type RequestType = keyof Requests;
@@ -120,7 +147,8 @@ export const REQUEST_TYPES: readonly RequestType[] = [
 	'producer.resume',
 	'consume',
 	'consumer.pause',
-	'consumer.resume'
+	'consumer.resume',
+	'status'
 ];
 
 export type ClientMessage = {
@@ -166,6 +194,8 @@ export type Notice =
 	| { notice: 'consumer.closed'; consumer: string }
 	// Someone's socket closed. Their leaf, if they had one, is proposed for removal.
 	| { notice: 'left'; peer: string }
+	// Someone said they muted themself or deafened, or no longer (`status`).
+	| { notice: 'peer'; peer: PeerInfo }
 	// The media server started again (its public address changed): every
 	// transport is gone. The group stands; make the transports again.
 	| { notice: 'media.reset' };

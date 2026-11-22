@@ -26,6 +26,14 @@
 		'px-paper'
 	];
 	const chips = ['white', 'red', 'blue', 'green', 'black', 'violet', 'gold'];
+	// Table voice's glyphs (P4C.6): talking, muted, listening only, deafened, not in voice.
+	const voiceGlyphs = [
+		'voice-mic',
+		'voice-mic-muted',
+		'voice-phones',
+		'voice-phones-muted',
+		'voice-out'
+	];
 	const avatars = [
 		...Array.from({ length: 6 }, (_, i) => `avatar-person-${i}`),
 		'avatar-heuristic',
@@ -211,6 +219,10 @@
 		</div>
 		<div class="{row} sprites">
 			{#each avatars as avatar (avatar)}<span class="sprite avatar size-32 {avatar}" title={avatar}
+				></span>{/each}
+		</div>
+		<div class="{row} sprites voice-glyphs">
+			{#each voiceGlyphs as glyph (glyph)}<span class="sprite voice-glyph {glyph}" title={glyph}
 				></span>{/each}
 		</div>
 	</section>

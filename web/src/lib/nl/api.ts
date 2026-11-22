@@ -24,6 +24,7 @@ import type {
 	WaitlistResponse,
 	WalletResponse
 } from '../protocol-v2.ts';
+import type { VoiceTokenResponse } from '../voice/signalling.ts';
 
 export class ApiError extends Error {
 	constructor(
@@ -358,4 +359,25 @@ export async function findHand(
 		before = hands[hands.length - 1].hand_id;
 	}
 	return null;
+}
+
+/** Whether pages offer table voice here (P4C.6). */
+export async function fetchVoiceOffer(fetcher: typeof fetch = fetch): Promise<boolean> {
+	const value = await body(await fetcher('/api/voice'));
+	return isRecord(value) && value.offered === true;
+}
+
+/** A voice token for the viewer's seat at a table (P4C.5), good once within a minute. */
+export async function fetchVoiceToken(
+	tableId: string,
+	fetcher: typeof fetch = fetch
+): Promise<VoiceTokenResponse> {
+	const response = await fetcher(`/api/tables/${encodeURIComponent(tableId)}/voice`, {
+		method: 'POST'
+	});
+	const value = await body(response);
+	if (!isRecord(value) || typeof value.token !== 'string' || typeof value.url !== 'string') {
+		throw new ApiError('The server did not give a voice token', 200);
+	}
+	return value as VoiceTokenResponse;
 }

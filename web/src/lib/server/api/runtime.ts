@@ -14,6 +14,10 @@
  *   RIVERMIND_VOICE_URL        the voice service on loopback, such as http://127.0.0.1:4323
  *                              (P4C.5): with it, seated people get voice tokens and the
  *                              voice service hears who each table has in voice.
+ *   RIVERMIND_VOICE_OFFER=1    pages offer table voice (GET /api/voice, P4C.6). Set it
+ *                              only where a page reaches the voice service on /voice:
+ *                              Caddy's route (P4C.9), or RIVERMIND_VOICE_PROXY in
+ *                              development and the browser tests (server/index.ts).
  *   RIVERMIND_PRACTICE_STACK   the chips a practice table gives (10,000).
  *   RIVERMIND_HAND_PAUSE       seconds between hands (3).
  *   RIVERMIND_BOT_DELAY        seconds a bot waits before acting (0.6).
@@ -238,7 +242,11 @@ export function createRuntime(env: Env = process.env): Runtime {
 	return {
 		site,
 		tables,
-		api: createApi(site, { allowedOrigins, tables }),
+		api: createApi(site, {
+			allowedOrigins,
+			tables,
+			voiceOffered: env.RIVERMIND_VOICE_OFFER === '1'
+		}),
 		sockets: createSocketServer(tables, { allowedOrigins }),
 		checks,
 		candidateChecks,

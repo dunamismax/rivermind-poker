@@ -20,7 +20,9 @@ afterEach(async () => {
 });
 
 // A table server whose voice service is a list of what it was sent.
-async function voiced(): Promise<{ server: TestServer; voice: Voice; lists: SeatList[] }> {
+async function voiced(
+	voiceOffered = false
+): Promise<{ server: TestServer; voice: Voice; lists: SeatList[] }> {
 	const lists: SeatList[] = [];
 	let server: TestServer | null = null;
 	const voice = new Voice({
@@ -30,7 +32,7 @@ async function voiced(): Promise<{ server: TestServer; voice: Voice; lists: Seat
 		now: () => NOW,
 		log: quietLog()
 	});
-	server = await new TestServer({ tables: { voice } }).start();
+	server = await new TestServer({ tables: { voice }, voiceOffered }).start();
 	servers.push(server);
 	return { server, voice, lists };
 }
@@ -65,6 +67,23 @@ async function untilBust(server: TestServer, runner: TableRunner): Promise<void>
 	throw new Error('nobody went bust');
 }
 const at = (player: Player, seat: number) => ({ seat, player: publicRef(player.playerId) });
+
+describe('whether pages offer voice (P4C.6)', () => {
+	it('says so only with a voice service and the word that pages can reach it', async () => {
+		const offer = async (server: TestServer) => {
+			const player = await Player.create(server);
+			const response = await player.request('GET', '/api/voice');
+			expect(response.status).toBe(200);
+			expect(response.headers.get('cache-control')).toBe('no-store');
+			return response.json();
+		};
+		expect(await offer((await voiced(true)).server)).toEqual({ offered: true });
+		expect(await offer((await voiced(false)).server)).toEqual({ offered: false });
+		const silent = await new TestServer({ voiceOffered: true }).start();
+		servers.push(silent);
+		expect(await offer(silent)).toEqual({ offered: false });
+	});
+});
 
 describe('voice tokens', () => {
 	it('go to people seated with someone else, naming the table, the seat and the public reference', async () => {
