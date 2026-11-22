@@ -101,6 +101,10 @@ export type Requests = {
 			// `status` only to a service that says so: one from before closes a
 			// socket that sends a request it does not know.
 			statuses?: true;
+			// Until when this person may not speak, in milliseconds since the
+			// epoch, after reports of what they said in voice (P4C.8); null when
+			// they may. The service refuses their `produce` until then.
+			silenced?: number | null;
 		};
 	};
 	'group.create': {
@@ -168,8 +172,8 @@ export type VoiceError =
 	| 'unknown'
 	// More of something than a person may have: transports, producers, consumers.
 	| 'too-many'
-	// Sending audio before joining the group, or with the audio-level extension,
-	// or hearing someone either of you blocked.
+	// Sending audio before joining the group, with the audio-level extension or
+	// while suspended from speaking, or hearing someone either of you blocked.
 	| 'not-allowed'
 	// The room is gone, or the media server could not do what was asked.
 	| 'failed'
@@ -198,7 +202,11 @@ export type Notice =
 	| { notice: 'peer'; peer: PeerInfo }
 	// The media server started again (its public address changed): every
 	// transport is gone. The group stands; make the transports again.
-	| { notice: 'media.reset' };
+	| { notice: 'media.reset' }
+	// This person's speaking is suspended until then, in milliseconds since the
+	// epoch, and their producer is closed; or, with null, they may speak again
+	// (P4C.8). A page from before ignores it, and nobody hears it anyway.
+	| { notice: 'silenced'; until: number | null };
 
 export type ServerMessage = Answer | Notice;
 
@@ -210,7 +218,7 @@ export const CLOSE = {
 	protocol: 4400,
 	// The hello's token was refused.
 	unauthorised: 4401,
-	// Too many messages.
+	// Too many messages, or hellos from one player.
 	rate: 4429,
 	// The same seat joined again from another socket.
 	replaced: 4409,

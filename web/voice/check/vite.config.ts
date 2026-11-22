@@ -11,6 +11,10 @@ export const VOICE_PORT = 4392;
 export const VOICE_URL = `ws://127.0.0.1:${VOICE_PORT}/voice`;
 // One the room checks start and restart themselves (room.check.ts).
 export const RESTART_PORT = 4393;
+// The test build with a keyless listener at the SFU (tap.check.ts), and where
+// it says what the listener kept.
+export const TAP_PORT = 4394;
+export const TAP_READ_PORT = 4395;
 // The site secret it runs with, from which the checks sign their voice tokens.
 export const VOICE_SECRET = 'the voice checks’ own secret';
 
@@ -20,7 +24,7 @@ const csp = [
 	"img-src 'self' data:",
 	"style-src 'self'",
 	"script-src 'self' 'wasm-unsafe-eval'",
-	`connect-src 'self' ws://127.0.0.1:${VOICE_PORT} ws://127.0.0.1:${RESTART_PORT}`,
+	`connect-src 'self' ws://127.0.0.1:${VOICE_PORT} ws://127.0.0.1:${RESTART_PORT} ws://127.0.0.1:${TAP_PORT}`,
 	"object-src 'none'",
 	"frame-ancestors 'none'",
 	"base-uri 'self'",

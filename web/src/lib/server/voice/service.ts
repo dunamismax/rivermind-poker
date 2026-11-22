@@ -30,6 +30,7 @@ import {
 	type Requests,
 	type VoiceError
 } from '../../voice/signalling.ts';
+import { Buckets, PLAYER_HELLOS, PLAYER_MESSAGES } from './limits.ts';
 import { redact, type Log } from './log.ts';
 import { AUDIO_LEVEL_URI, type Media } from './media.ts';
 import type { SeatList } from './seats.ts';
@@ -40,6 +41,10 @@ export const MAX_PEERS = 9;
 // What one socket may send: a burst, then a steady rate. Joining a full room
 // takes about twenty requests; a page then sends almost nothing.
 export const RATE = { burst: 60, perSecond: 20 };
+// How long a socket may stay open before its hello is answered (P4C.8). A page
+// says hello at once; a socket that said nothing would otherwise stay as long
+// as it answered pings.
+export const HELLO_MS = 10_000;
 
 // The service's end of one WebSocket.
 export interface Transport {
@@ -60,6 +65,10 @@ export type VoiceServiceOptions = {
 	// Seconds since the epoch.
 	now?: () => number;
 	rate?: { burst: number; perSecond: number };
+	// What one player may do across all their sockets (limits.ts).
+	playerHellos?: { burst: number; perSecond: number };
+	playerMessages?: { burst: number; perSecond: number };
+	helloMs?: number;
 };
 
 class Failure extends Error {
@@ -92,8 +101,14 @@ type Peer = {
 
 type Accepted = Extract<Outcome, { accepted: true }>;
 
-// Who a table lets into its voice room, from its last seat list (seats.ts).
-type Allowed = { at: number; seats: Set<string>; blocks: Set<string> };
+// Who a table lets into its voice room, from its last seat list (seats.ts),
+// and who of them may not speak, until when in milliseconds (P4C.8).
+type Allowed = {
+	at: number;
+	seats: Set<string>;
+	blocks: Set<string>;
+	silenced: Map<string, number>;
+};
 const seatKey = ({ seat, player }: Identity) => `${seat}:${player}`;
 const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 // A list that empties a room is kept this long, so a token issued just before
@@ -195,13 +210,32 @@ export class VoiceService {
 	#allowed = new Map<string, Allowed>();
 	#roomsOpened = 0;
 	#closing = false;
+	#hellos: Buckets;
+	#messages: Buckets;
+	#helloMs: number;
+	// Each suspended person's timer, which lets them speak again when it ends.
+	#lifts = new Map<Peer, ReturnType<typeof setTimeout>>();
 
-	constructor({ key, media, log, now, rate }: VoiceServiceOptions) {
+	constructor({
+		key,
+		media,
+		log,
+		now,
+		rate,
+		playerHellos,
+		playerMessages,
+		helloMs
+	}: VoiceServiceOptions) {
 		this.#key = key;
 		this.#media = media;
 		this.#log = (line) => log(redact(line));
 		this.#now = now ?? (() => Date.now() / 1000);
 		this.#rate = rate ?? RATE;
+		const hellos = playerHellos ?? PLAYER_HELLOS;
+		const messages = playerMessages ?? PLAYER_MESSAGES;
+		this.#hellos = new Buckets(hellos.perSecond, hellos.burst, this.#now);
+		this.#messages = new Buckets(messages.perSecond, messages.burst, this.#now);
+		this.#helloMs = helloMs ?? HELLO_MS;
 		media.onreset = () => this.#reset();
 	}
 
@@ -249,9 +283,17 @@ export class VoiceService {
 		const shut = (code: number, why: string) => {
 			if (gone) return;
 			gone = true;
+			clearTimeout(deadline);
 			transport.close(code, why);
 			void depart();
 		};
+		// A socket that has not been let in by then is closed.
+		const deadline = setTimeout(() => {
+			if (joined) return;
+			this.#log('closed a socket that said no hello');
+			shut(CLOSE.protocol, 'no hello');
+		}, this.#helloMs);
+		deadline.unref?.();
 
 		const handle = async (message: ClientMessage) => {
 			if (gone) return;
@@ -263,6 +305,7 @@ export class VoiceService {
 				try {
 					const { room, peer, welcome } = await this.#hello(message, transport);
 					joined = { room, peer };
+					clearTimeout(deadline);
 					answer({ ...welcome, id: message.id, ok: true });
 				} catch (error) {
 					refuse(message.id, error);
@@ -272,7 +315,9 @@ export class VoiceService {
 							? CLOSE.unauthorised
 							: code === 'not-seated'
 								? CLOSE.unseated
-								: CLOSE.protocol,
+								: code === 'too-many'
+									? CLOSE.rate
+									: CLOSE.protocol,
 						'hello refused'
 					);
 				}
@@ -311,7 +356,9 @@ export class VoiceService {
 				const now = this.#now();
 				tokens = Math.min(this.#rate.burst, tokens + (now - last) * this.#rate.perSecond);
 				last = now;
-				if (tokens < 1) {
+				// A socket's own limit, then its player's across all their sockets.
+				const player = (joined as { peer: Peer } | null)?.peer.identity.player;
+				if (tokens < 1 || (player !== undefined && !this.#messages.allow(player))) {
 					this.#log('closed a socket that sent too much');
 					shut(CLOSE.rate, 'too many messages');
 					return;
@@ -329,6 +376,7 @@ export class VoiceService {
 				});
 			},
 			closed: () => {
+				clearTimeout(deadline);
 				void depart();
 			}
 		};
@@ -370,6 +418,11 @@ export class VoiceService {
 		if (!this.#ledger.admit(token, now)) {
 			this.#log('refused a token: reused');
 			fail('bad-token');
+		}
+		// However many tokens they hold, a player comes in only so often.
+		if (!this.#hellos.allow(token.player)) {
+			this.#log('refused a hello: too many from one player');
+			fail('too-many');
 		}
 		const identity: Identity = { player: token.player, seat: token.seat };
 		// A room can close while someone waits to come in; they open the next one.
@@ -419,8 +472,10 @@ export class VoiceService {
 					groupInfo: room.groupInfo(),
 					routerRtpCapabilities: withoutAudioLevel(room.router.rtpCapabilities),
 					peers,
-					statuses: true
+					statuses: true,
+					silenced: this.#silencedUntil(room, peer)
 				};
+				if (welcome.silenced) this.#liftLater(room, peer, welcome.silenced);
 				return { room, peer, welcome };
 			});
 			if (entered) return entered;
@@ -433,6 +488,8 @@ export class VoiceService {
 	async #depart(room: Room, peer: Peer): Promise<void> {
 		if (room.peers.get(peer.id) !== peer) return;
 		room.peers.delete(peer.id);
+		clearTimeout(this.#lifts.get(peer));
+		this.#lifts.delete(peer);
 		// Their audio ends for everyone now, before anyone hears they left, rather
 		// than whenever mediasoup reports the producer closed.
 		if (peer.producer) {
@@ -524,6 +581,8 @@ export class VoiceService {
 				// Audio leaves a page only sealed under a key of the group, so a page
 				// sends nothing until it is in it.
 				if (peer.leaf === null) fail('not-allowed');
+				// Someone whose speaking is suspended is heard by nobody (P4C.8).
+				if (this.#silencedUntil(room, peer) !== null) fail('not-allowed');
 				const parameters = message.rtpParameters as unknown;
 				if (!isObject(parameters)) fail('bad-request');
 				const rtpParameters = parameters as unknown as ms.RtpParameters;
@@ -648,6 +707,48 @@ export class VoiceService {
 		}
 	}
 
+	// When this person's speaking suspension ends, in milliseconds, or null.
+	#silencedUntil(room: Room, peer: Peer): number | null {
+		const until = this.#allowed.get(room.table)?.silenced.get(peer.identity.player);
+		return until !== undefined && until > this.#now() * 1000 ? until : null;
+	}
+
+	// Stop someone's audio for everyone, and tell their page until when.
+	async #silence(room: Room, peer: Peer, until: number): Promise<void> {
+		const producer = peer.producer;
+		if (producer) {
+			peer.producer = null;
+			for (const other of room.peers.values()) {
+				for (const consumer of [...other.consumers.values()]) {
+					if (consumer.producerId !== producer.id) continue;
+					other.consumers.delete(consumer.id);
+					consumer.close();
+					room.tell(other, { notice: 'consumer.closed', consumer: consumer.id });
+				}
+			}
+			producer.close();
+			room.tellAll({ notice: 'peer', peer: room.info(peer) }, peer);
+		}
+		room.tell(peer, { notice: 'silenced', until });
+		this.#liftLater(room, peer, until);
+		this.#log(`room ${room.number}: someone's speaking is suspended`);
+	}
+
+	// When a suspension ends, the page hears it may speak again.
+	#liftLater(room: Room, peer: Peer, until: number): void {
+		clearTimeout(this.#lifts.get(peer));
+		const timer = setTimeout(
+			() => {
+				this.#lifts.delete(peer);
+				if (room.peers.get(peer.id) !== peer || this.#silencedUntil(room, peer) !== null) return;
+				room.tell(peer, { notice: 'silenced', until: null });
+			},
+			Math.max(0, until - this.#now() * 1000) + 50
+		);
+		timer.unref?.();
+		this.#lifts.set(peer, timer);
+	}
+
 	#blocked(room: Room, a: Peer, b: Peer): boolean {
 		const allowed = this.#allowed.get(room.table);
 		return allowed?.blocks.has(pairKey(a.identity.player, b.identity.player)) ?? false;
@@ -663,8 +764,10 @@ export class VoiceService {
 		const allowed: Allowed = {
 			at: list.at,
 			seats: new Set(list.seats.map(seatKey)),
-			blocks: new Set(list.blocks.map(([a, b]) => pairKey(a, b)))
+			blocks: new Set(list.blocks.map(([a, b]) => pairKey(a, b))),
+			silenced: new Map(list.silenced ?? [])
 		};
+		const before = known?.silenced ?? new Map<string, number>();
 		this.#allowed.set(list.table, allowed);
 		for (const [table, one] of this.#allowed) {
 			if (one.seats.size === 0 && one.at < list.at - EMPTY_KEPT_MS) this.#allowed.delete(table);
@@ -688,6 +791,20 @@ export class VoiceService {
 					room.tell(peer, { notice: 'consumer.closed', consumer: consumer.id });
 				}
 			}
+			// Someone newly suspended stops being heard at once, or for longer; someone
+			// whose suspension a moderator lifted may speak again.
+			const now = this.#now() * 1000;
+			for (const peer of [...room.peers.values()]) {
+				const until = this.#silencedUntil(room, peer);
+				const was = before.get(peer.identity.player);
+				if (until !== null && until !== was) {
+					await this.#silence(room, peer, until);
+				} else if (until === null && was !== undefined && was > now) {
+					clearTimeout(this.#lifts.get(peer));
+					this.#lifts.delete(peer);
+					room.tell(peer, { notice: 'silenced', until: null });
+				}
+			}
 		});
 		return true;
 	}
@@ -709,6 +826,8 @@ export class VoiceService {
 	// Stop: every socket is told the service is restarting.
 	close(): void {
 		this.#closing = true;
+		for (const timer of this.#lifts.values()) clearTimeout(timer);
+		this.#lifts.clear();
 		for (const room of this.#rooms.values()) {
 			for (const peer of room.peers.values()) {
 				peer.transport.close(CLOSE.restarting, 'the voice service is restarting');

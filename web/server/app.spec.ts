@@ -102,6 +102,24 @@ describe('the web server', () => {
 		expect(asset.headers.get('cache-control')).toBeNull();
 	});
 
+	it('serves the release’s hashes of the files its pages run, when it has them (P4C.8)', async () => {
+		const voiceFiles = '{"format":1,"voice":{},"page":{}}\n';
+		const { host } = await start({ voiceFiles });
+		const listed = await fetch(`http://${host}/voice-files.json`);
+		expect(listed.status).toBe(200);
+		expect(await listed.text()).toBe(voiceFiles);
+		expect(listed.headers.get('content-type')).toBe('application/json');
+		expect(listed.headers.get('cache-control')).toBe('no-cache');
+		expect(listed.headers.get('x-content-type-options')).toBe('nosniff');
+		// Anything but a read goes to the handler, as any other path does.
+		const posted = await fetch(`http://${host}/voice-files.json`, { method: 'POST' });
+		expect(await posted.text()).toBe('page /voice-files.json');
+		const without = await start();
+		expect(await (await fetch(`http://${without.host}/voice-files.json`)).text()).toBe(
+			'page /voice-files.json'
+		);
+	});
+
 	it('without the API, gives /api to the handler and turns sockets away', async () => {
 		const { host } = await start();
 		expect(await (await fetch(`http://${host}/api/config`)).text()).toBe('page /api/config');

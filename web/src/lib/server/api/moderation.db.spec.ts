@@ -10,7 +10,7 @@ import { migrate } from '../db/migrate.ts';
 import { resetDatabase, testDatabaseUrl } from '../db/testing.ts';
 import { USAGE, when } from './moderation.ts';
 import { DatabasePlayers } from './players.ts';
-import { DatabaseSafety, handleAllowed } from './safety.ts';
+import { DatabaseSafety, handleAllowed, suspendIfDue } from './safety.ts';
 
 const url = testDatabaseUrl();
 const SCRIPT = resolve(import.meta.dirname, '../../../../scripts/moderation.ts');
@@ -46,7 +46,7 @@ describe.skipIf(!url)('moderation on PostgreSQL', () => {
 
 	beforeEach(async () => {
 		await db.execute(
-			sql`TRUNCATE players, ledger_entries, player_reports, player_relations, safety_signals CASCADE`
+			sql`TRUNCATE players, ledger_entries, player_reports, player_relations, safety_signals, voice_suspensions CASCADE`
 		);
 	});
 
@@ -92,6 +92,66 @@ describe.skipIf(!url)('moderation on PostgreSQL', () => {
 		expect(renamed.out).toBe(`${bob.playerId}: ${bob.handle} -> ${after!.handle}\n`);
 		// The report keeps the handle the player had when it was made.
 		expect((await run(['reports'], database)).out).toContain(`${bob.handle} (${bob.playerId})`);
+	}, 60_000);
+
+	it('keeps voice reports with an address hash, suspends speaking, and lists and lifts it (P4C.8)', async () => {
+		const players = new DatabasePlayers(db);
+		const safety = new DatabaseSafety(db);
+		const target = await players.create();
+		const reporters = [await players.create(), await players.create(), await players.create()];
+		const now = Date.now() / 1000;
+		for (const [index, reporter] of reporters.entries()) {
+			expect(
+				await safety.report({
+					reporterId: reporter.playerId,
+					targetId: target.playerId,
+					targetHandle: target.handle,
+					reason: 'voice',
+					tableId: `table-${index}`,
+					handNo: null,
+					at: now - 60 + index,
+					reporterAddress: `${index}`.repeat(24)
+				})
+			).toBe(true);
+		}
+		// An abuse report and an old voice report are not among them.
+		await safety.report({
+			reporterId: reporters[0].playerId,
+			targetId: target.playerId,
+			targetHandle: target.handle,
+			reason: 'abuse',
+			tableId: 'table-0',
+			handNo: null,
+			at: now - 30
+		});
+		const recent = await safety.voiceReportsAgainst(target.playerId, now - 3600);
+		expect(recent.map((one) => [one.tableId, one.reporterAddress])).toEqual([
+			['table-0', '0'.repeat(24)],
+			['table-1', '1'.repeat(24)],
+			['table-2', '2'.repeat(24)]
+		]);
+		expect(await safety.voiceReportsAgainst(target.playerId, now)).toEqual([]);
+
+		expect(await safety.speakingSuspendedUntil(target.playerId, now)).toBeNull();
+		const until = await suspendIfDue(safety, target.playerId, now);
+		expect(until).toBe(now + 24 * 3600);
+		expect(await safety.speakingSuspendedUntil(target.playerId, now)).toBeCloseTo(until!, 3);
+		// A shorter one never shortens it.
+		await safety.suspendSpeaking(target.playerId, now + 60);
+		expect(await safety.speakingSuspendedUntil(target.playerId, now)).toBeCloseTo(until!, 3);
+		expect(await safety.speakingSuspendedUntil(target.playerId, until! + 1)).toBeNull();
+
+		const listed = await run(['suspensions'], database);
+		expect(listed).toMatchObject({ code: 0, err: '' });
+		expect(listed.out).toBe(`until ${when(until!)}  ${target.handle} (${target.playerId})\n`);
+		const lifted = await run(['lift', target.playerId], database);
+		expect(lifted).toMatchObject({
+			code: 0,
+			out: `${target.playerId} may speak in voice again.\n`
+		});
+		expect(await safety.speakingSuspendedUntil(target.playerId, now)).toBeNull();
+		expect((await run(['lift', target.playerId], database)).code).toBe(1);
+		expect((await run(['reports'], database)).out).toContain(`voice      ${target.handle}`);
 	}, 60_000);
 
 	it('says what went wrong, and exits non-zero', async () => {

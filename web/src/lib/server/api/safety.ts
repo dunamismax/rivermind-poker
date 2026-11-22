@@ -15,18 +15,24 @@
  *   seating the two together.
  * - **Collusion signals.** Two people at one table from one address raise a
  *   `same_address` signal. Addresses are stored only as keyed hashes.
+ * - **Voice reports** (P4C.8). Voice is never recorded, so a report of
+ *   something said in voice carries no audio. Voice reports from three people
+ *   at three different tables, from three different addresses, within a day
+ *   suspend that guest's speaking for a day ({@link speakingDue}); they may
+ *   still listen.
  *
  * {@link MemorySafety} keeps reports, relations and signals for a server
  * without a database, and {@link DatabaseSafety} keeps them in PostgreSQL.
  */
 import { createHmac } from 'node:crypto';
-import { and, asc, desc, eq, gt, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, or, sql } from 'drizzle-orm';
 import type { Database } from '../db/index.ts';
 import {
 	playerRelations,
 	playerReports,
 	players,
 	safetySignals,
+	voiceSuspensions,
 	type ReportReason
 } from '../db/schema.ts';
 import { isLoopbackAddress, type Secret } from './auth.ts';
@@ -103,6 +109,11 @@ export interface Limits {
 	/** Reports per player. */
 	reportRate: number;
 	reportBurst: number;
+	/** Voice tokens (`POST /api/tables/{id}/voice`) per player, and per address (P4C.8). */
+	voiceRate: number;
+	voiceBurst: number;
+	voiceAddressRate: number;
+	voiceAddressBurst: number;
 	clock: Clock;
 }
 
@@ -118,6 +129,13 @@ export const DEFAULT_LIMITS: Readonly<Limits> = Object.freeze({
 	reactionBurst: 3,
 	reportRate: 1 / 60,
 	reportBurst: 5,
+	// A page asks for a token as it joins voice and each time it comes back:
+	// ten at once, then one every six seconds.
+	voiceRate: 1 / 6,
+	voiceBurst: 10,
+	// Several guests can share an address, as a household does.
+	voiceAddressRate: 1 / 2,
+	voiceAddressBurst: 30,
 	clock: monotonic
 });
 
@@ -133,7 +151,11 @@ export const UNLIMITED: Readonly<Limits> = Object.freeze({
 	reactionRate: 1e9,
 	reactionBurst: 1e9,
 	reportRate: 1e9,
-	reportBurst: 1e9
+	reportBurst: 1e9,
+	voiceRate: 1e9,
+	voiceBurst: 1e9,
+	voiceAddressRate: 1e9,
+	voiceAddressBurst: 1e9
 });
 
 /** One {@link RateLimiter} per limit in {@link Limits}. */
@@ -143,6 +165,8 @@ export class Limiters {
 	readonly newPlayer: RateLimiter;
 	readonly reaction: RateLimiter;
 	readonly report: RateLimiter;
+	readonly voice: RateLimiter;
+	readonly voiceAddress: RateLimiter;
 
 	constructor(limits: Readonly<Limits> = DEFAULT_LIMITS) {
 		this.limits = limits;
@@ -151,6 +175,8 @@ export class Limiters {
 		this.newPlayer = new RateLimiter(limits.newPlayerRate, limits.newPlayerBurst, clock);
 		this.reaction = new RateLimiter(limits.reactionRate, limits.reactionBurst, clock);
 		this.report = new RateLimiter(limits.reportRate, limits.reportBurst, clock);
+		this.voice = new RateLimiter(limits.voiceRate, limits.voiceBurst, clock);
+		this.voiceAddress = new RateLimiter(limits.voiceAddressRate, limits.voiceAddressBurst, clock);
 	}
 
 	/** A bucket for one socket. */
@@ -276,7 +302,13 @@ export const REACTIONS = {
 } as const;
 export type Reaction = keyof typeof REACTIONS;
 
-export const REPORT_REASONS: readonly ReportReason[] = ['handle', 'abuse', 'collusion', 'other'];
+export const REPORT_REASONS: readonly ReportReason[] = [
+	'handle',
+	'abuse',
+	'collusion',
+	'other',
+	'voice'
+];
 export type { ReportReason };
 
 export const RELATION_KINDS = ['mute', 'block'] as const;
@@ -295,6 +327,55 @@ export interface Report {
 	handNo: number | null;
 	/** Seconds since the epoch. */
 	at: number;
+	/** The reporter's address as a keyed hash ({@link addressTag}), where known (P4C.8). */
+	reporterAddress?: string | null;
+}
+
+/** How many voice reports, from how many people, tables and addresses, suspend a guest's speaking (P4C.8). */
+export const VOICE_REPORTS_TO_SUSPEND = 3;
+/** The day within which they must come, and how long the suspension lasts. */
+export const VOICE_REPORT_WINDOW_SECONDS = 24 * 3600;
+export const VOICE_SUSPENSION_SECONDS = 24 * 3600;
+/** How many of a guest's newest voice reports the rule looks through. */
+const VOICE_REPORTS_LOOKED_AT = 30;
+
+/**
+ * Whether these voice reports against one guest suspend their speaking at
+ * `at`: {@link VOICE_REPORTS_TO_SUSPEND} of them from the day before, each
+ * from a different person, made at a different table and from a different
+ * address. A report without a table or an address cannot count, so a few
+ * friends at one table, or one person with several guests on one address,
+ * cannot silence anyone.
+ */
+export function speakingDue(reports: readonly Report[], at: number): boolean {
+	const counted = reports
+		.filter(
+			(one) =>
+				one.reason === 'voice' &&
+				one.tableId !== null &&
+				!!one.reporterAddress &&
+				one.at <= at &&
+				at - one.at < VOICE_REPORT_WINDOW_SECONDS
+		)
+		.slice(-VOICE_REPORTS_LOOKED_AT);
+	const apart = (chosen: Report[], one: Report) =>
+		chosen.every(
+			(other) =>
+				other.reporterId !== one.reporterId &&
+				other.tableId !== one.tableId &&
+				other.reporterAddress !== one.reporterAddress
+		);
+	// The smallest search there is: a few reports, a few to choose.
+	const choose = (from: number, chosen: Report[]): boolean => {
+		if (chosen.length === VOICE_REPORTS_TO_SUSPEND) return true;
+		for (let index = from; index < counted.length; index += 1) {
+			if (apart(chosen, counted[index]) && choose(index + 1, [...chosen, counted[index]])) {
+				return true;
+			}
+		}
+		return false;
+	};
+	return choose(0, []);
 }
 
 export interface Relation {
@@ -325,6 +406,35 @@ export interface SafetyStore {
 	reports(limit: number): Promise<Report[]>;
 	/** The newest signals first. */
 	signals(limit: number): Promise<Signal[]>;
+	/** Voice reports against `targetId` made since `since`, oldest first (P4C.8). */
+	voiceReportsAgainst(targetId: string, since: number): Promise<Report[]>;
+	/** Suspend `playerId`'s speaking in voice until `until`, unless it already lasts longer. */
+	suspendSpeaking(playerId: string, until: number): Promise<void>;
+	/** When `playerId`'s speaking suspension ends, if it has not ended by `at`. */
+	speakingSuspendedUntil(playerId: string, at: number): Promise<number | null>;
+	/** Speaking suspensions not ended by `at`, the latest to end first. */
+	suspensions(at: number): Promise<{ playerId: string; until: number }[]>;
+	/** End `playerId`'s speaking suspension now (a moderator's call). False if there was none. */
+	liftSuspension(playerId: string): Promise<boolean>;
+}
+
+/**
+ * Record a voice report's effect: when it completes {@link speakingDue}, the
+ * guest's speaking is suspended for a day from now. Returns when the
+ * suspension ends, or null when this report changed nothing.
+ */
+export async function suspendIfDue(
+	store: SafetyStore,
+	targetId: string,
+	at: number
+): Promise<number | null> {
+	const reports = await store.voiceReportsAgainst(targetId, at - VOICE_REPORT_WINDOW_SECONDS);
+	if (!speakingDue(reports, at)) return null;
+	const until = at + VOICE_SUSPENSION_SECONDS;
+	const before = await store.speakingSuspendedUntil(targetId, at);
+	if (before !== null && before >= until) return null;
+	await store.suspendSpeaking(targetId, until);
+	return until;
 }
 
 /** Reports, relations and signals for a server without a database. */
@@ -333,6 +443,7 @@ export class MemorySafety implements SafetyStore {
 	private readonly kept: Report[] = [];
 	private readonly related = new Map<string, Map<string, RelationKind>>();
 	private readonly raised: Signal[] = [];
+	private readonly suspended = new Map<string, number>();
 
 	constructor(handles: (playerId: string) => string | null | undefined = () => null) {
 		this.handles = handles;
@@ -394,6 +505,32 @@ export class MemorySafety implements SafetyStore {
 	async signals(limit: number): Promise<Signal[]> {
 		return [...this.raised].reverse().slice(0, limit);
 	}
+
+	async voiceReportsAgainst(targetId: string, since: number): Promise<Report[]> {
+		return this.kept
+			.filter((one) => one.targetId === targetId && one.reason === 'voice' && one.at > since)
+			.map((one) => ({ ...one }));
+	}
+
+	async suspendSpeaking(playerId: string, until: number): Promise<void> {
+		this.suspended.set(playerId, Math.max(until, this.suspended.get(playerId) ?? 0));
+	}
+
+	async speakingSuspendedUntil(playerId: string, at: number): Promise<number | null> {
+		const until = this.suspended.get(playerId);
+		return until !== undefined && until > at ? until : null;
+	}
+
+	async suspensions(at: number): Promise<{ playerId: string; until: number }[]> {
+		return [...this.suspended]
+			.filter(([, until]) => until > at)
+			.map(([playerId, until]) => ({ playerId, until }))
+			.sort((a, b) => b.until - a.until);
+	}
+
+	async liftSuspension(playerId: string): Promise<boolean> {
+		return this.suspended.delete(playerId);
+	}
 }
 
 /** Reports, relations and signals in PostgreSQL. */
@@ -433,7 +570,8 @@ export class DatabaseSafety implements SafetyStore {
 				reason: report.reason,
 				tableId: report.tableId,
 				handNo: report.handNo,
-				createdAt: new Date(report.at * 1000)
+				createdAt: new Date(report.at * 1000),
+				reporterAddress: report.reporterAddress ?? null
 			});
 			return true;
 		});
@@ -522,6 +660,69 @@ export class DatabaseSafety implements SafetyStore {
 			.orderBy(desc(safetySignals.id))
 			.limit(limit);
 		return rows;
+	}
+
+	async voiceReportsAgainst(targetId: string, since: number): Promise<Report[]> {
+		return this.db
+			.select({
+				reporterId: playerReports.reporterId,
+				targetId: playerReports.targetId,
+				targetHandle: playerReports.targetHandle,
+				reason: playerReports.reason,
+				tableId: playerReports.tableId,
+				handNo: playerReports.handNo,
+				at: epochOf(playerReports.createdAt),
+				reporterAddress: playerReports.reporterAddress
+			})
+			.from(playerReports)
+			.where(
+				and(
+					eq(playerReports.targetId, targetId),
+					eq(playerReports.reason, 'voice'),
+					gt(playerReports.createdAt, new Date(since * 1000))
+				)
+			)
+			.orderBy(asc(playerReports.id));
+	}
+
+	async suspendSpeaking(playerId: string, until: number): Promise<void> {
+		const ends = new Date(until * 1000);
+		await this.db
+			.insert(voiceSuspensions)
+			.values({ playerId, until: ends })
+			.onConflictDoUpdate({
+				target: voiceSuspensions.playerId,
+				set: { until: sql`greatest(${voiceSuspensions.until}, excluded.until)` }
+			});
+	}
+
+	async speakingSuspendedUntil(playerId: string, at: number): Promise<number | null> {
+		const [row] = await this.db
+			.select({ until: epochOf(voiceSuspensions.until) })
+			.from(voiceSuspensions)
+			.where(
+				and(
+					eq(voiceSuspensions.playerId, playerId),
+					gt(voiceSuspensions.until, new Date(at * 1000))
+				)
+			);
+		return row?.until ?? null;
+	}
+
+	async suspensions(at: number): Promise<{ playerId: string; until: number }[]> {
+		return this.db
+			.select({ playerId: voiceSuspensions.playerId, until: epochOf(voiceSuspensions.until) })
+			.from(voiceSuspensions)
+			.where(gt(voiceSuspensions.until, new Date(at * 1000)))
+			.orderBy(desc(voiceSuspensions.until));
+	}
+
+	async liftSuspension(playerId: string): Promise<boolean> {
+		const gone = await this.db
+			.delete(voiceSuspensions)
+			.where(eq(voiceSuspensions.playerId, playerId))
+			.returning({ playerId: voiceSuspensions.playerId });
+		return gone.length > 0;
 	}
 }
 

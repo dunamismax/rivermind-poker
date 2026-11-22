@@ -52,8 +52,8 @@ const identity = (name: string) => chips(name).generatedByDefaultAsIdentity();
 export const LEDGER_KINDS = ['grant', 'top_up', 'buy_in', 'rebuy', 'cash_out', 'refund'] as const;
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
 
-/** Why one player reported another (P4.5). */
-export const REPORT_REASONS = ['handle', 'abuse', 'collusion', 'other'] as const;
+/** Why one player reported another (P4.5); `voice` is something said in table voice (P4C.8). */
+export const REPORT_REASONS = ['handle', 'abuse', 'collusion', 'other', 'voice'] as const;
 export type ReportReason = (typeof REPORT_REASONS)[number];
 
 /** An anonymous player, made on their first visit (P4.1). Their session cookie is signed by the server, so no session rows are stored. */
@@ -127,7 +127,9 @@ export const playerReports = pgTable(
 			.$type<'open' | 'reviewed'>()
 			.default('open')
 			.notNull(),
-		createdAt: now('created_at')
+		createdAt: now('created_at'),
+		/** The reporter's address as a keyed hash (`addressTag`), never the address (P4C.8). */
+		reporterAddress: varchar('reporter_address', { length: 24 })
 	},
 	(t) => [
 		primaryKey({ name: 'pk_player_reports', columns: [t.id] }),
@@ -143,7 +145,10 @@ export const playerReports = pgTable(
 		}).onDelete('cascade'),
 		index('ix_player_reports_reporter_id').on(t.reporterId),
 		index('ix_player_reports_target_id').on(t.targetId),
-		check('ck_player_reports_reason', sql`reason IN ('handle', 'abuse', 'collusion', 'other')`),
+		check(
+			'ck_player_reports_reason',
+			sql`reason IN ('handle', 'abuse', 'collusion', 'other', 'voice')`
+		),
 		check('ck_player_reports_status', sql`status IN ('open', 'reviewed')`),
 		check('ck_player_reports_not_self', sql`reporter_id <> target_id`)
 	]
@@ -193,6 +198,28 @@ export const safetySignals = pgTable(
 	(t) => [
 		primaryKey({ name: 'pk_safety_signals', columns: [t.id] }),
 		check('ck_safety_signals_kind', sql`kind IN ('same_address')`)
+	]
+);
+
+/**
+ * A guest whose speaking in table voice is suspended (P4C.8), after voice
+ * reports from three people at three tables from three addresses within a
+ * day. Until `until` the voice service refuses their audio; they may still listen.
+ */
+export const voiceSuspensions = pgTable(
+	'voice_suspensions',
+	{
+		playerId: varchar('player_id', { length: 64 }).notNull(),
+		until: stamp('until').notNull(),
+		createdAt: now('created_at')
+	},
+	(t) => [
+		primaryKey({ name: 'pk_voice_suspensions', columns: [t.playerId] }),
+		foreignKey({
+			name: 'fk_voice_suspensions_player_id_players',
+			columns: [t.playerId],
+			foreignColumns: [players.id]
+		}).onDelete('cascade')
 	]
 );
 

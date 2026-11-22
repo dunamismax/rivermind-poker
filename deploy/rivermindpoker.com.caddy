@@ -64,6 +64,18 @@ rivermindpoker.com {
 			events 30
 			window 1m
 		}
+		# Table voice (P4C.8): a voice token, and the voice socket's handshake once
+		# P4C.9 routes /voice. Each token opens one connection; the app limits them
+		# per player and per address, and the voice service its sockets per address
+		# and what each player sends.
+		zone voice {
+			match {
+				path /api/tables/*/voice /voice
+			}
+			key {remote_host}
+			events 30
+			window 1m
+		}
 	}
 
 	# The Node server sends each page's policy itself, with the hash of SvelteKit's

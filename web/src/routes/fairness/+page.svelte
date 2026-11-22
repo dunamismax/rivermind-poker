@@ -119,6 +119,17 @@
 			</dl>
 		</section>
 
+		<section aria-labelledby="voice-code">
+			<h3 id="voice-code" class={heading}>Check the code that encrypts voice</h3>
+			<p>
+				Table voice is encrypted in your browser, by code this site sends it, so the encryption is
+				only as trustworthy as that code. The source is public, and each release publishes
+				<a class="text-gold-light" href="/voice-files.json" rel="external">
+					the hash of every file
+				</a> its pages run, voice’s own first. Anyone can build the same version from the source and compare.
+			</p>
+		</section>
+
 		<section aria-labelledby="conduct">
 			<h3 id="conduct" class={heading}>Playing fair</h3>
 			<p>

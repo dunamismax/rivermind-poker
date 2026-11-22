@@ -73,6 +73,10 @@ for path in /hands /fairness /bots /style; do
     status=$(fetch "$path")
     [[ $status == 200 ]] || fail "$path answered $status"
 done
+# The hashes of the files the release's pages run, which the fairness page links to (P4C.8).
+status=$(fetch /voice-files.json)
+[[ $status == 200 ]] || fail "/voice-files.json answered $status"
+grep -q 'sframe.worker' "$work/body" || fail "/voice-files.json does not list the voice worker"
 status=$(fetch "/no-such-page-$RANDOM")
 [[ $status == 404 ]] || fail "an unknown page answered $status, not 404"
 status=$(fetch /_app/immutable/missing.js)

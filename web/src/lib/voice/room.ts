@@ -150,6 +150,8 @@ class VoiceSession {
 	#sending: boolean;
 	#status: PeerStatus;
 	#deafened: boolean;
+	// Until when this person may not speak (P4C.8), in milliseconds; null when they may.
+	#silenced: number | null;
 	epoch: Epoch | null = null;
 	refused: string[] = [];
 
@@ -166,6 +168,7 @@ class VoiceSession {
 		this.#sending = options.sending ?? true;
 		this.#status = options.status ?? { muted: false, deafened: false };
 		this.#deafened = options.deafened ?? false;
+		this.#silenced = welcome.silenced ?? null;
 		this.#keys = new EpochKeys(this.#frames);
 		this.#keys.seats(options.seated);
 		this.#frames.onrefused = (asked, error) => this.refused.push(`${asked}: ${error}`);
@@ -226,6 +229,12 @@ class VoiceSession {
 
 	get producer(): msc.Producer | null {
 		return this.#producer;
+	}
+
+	// Until when the service refuses this person's audio, after voice reports
+	// from other players (P4C.8): milliseconds since the epoch, or null.
+	get silencedUntil(): number | null {
+		return this.#silenced;
 	}
 
 	// Everyone else in this page's group, by its own copy of the tree, with what
@@ -463,6 +472,8 @@ class VoiceSession {
 
 	async #produce(): Promise<void> {
 		if (!this.#send || !this.#options.track || this.#producer) return;
+		// The service would refuse it: this person listens until told otherwise.
+		if (this.#silenced !== null) return;
 		const bitrate = this.#options.bitrate ?? CODEC_OPTIONS.opusMaxAverageBitrate!;
 		this.#producer = await this.#send.produce({
 			track: this.#options.track,
@@ -558,6 +569,17 @@ class VoiceSession {
 				// The service's whole view of that socket now, someone who only
 				// listens included, whom no `producer` notice names.
 				this.#peers.set(notice.peer.peer, notice.peer);
+				this.#changed();
+				return;
+			case 'silenced':
+				// Suspended from speaking: the service has closed this page's producer,
+				// and says when it may send again (`until: null`).
+				this.#silenced = notice.until;
+				if (notice.until !== null && this.#producer) {
+					this.#producer.close();
+					this.#producer = null;
+				}
+				if (notice.until === null) await this.#produce();
 				this.#changed();
 				return;
 			case 'media.reset':
@@ -745,6 +767,10 @@ export class VoiceRoom {
 
 	get producer(): msc.Producer | null {
 		return this.#session?.producer ?? null;
+	}
+
+	get silencedUntil(): number | null {
+		return this.#session?.silencedUntil ?? null;
 	}
 
 	get people(): VoicePerson[] {

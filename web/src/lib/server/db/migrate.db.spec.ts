@@ -42,6 +42,15 @@ async function alembicDatabase(database: string, revision: string): Promise<void
 	await execute(database, 'INSERT INTO alembic_version VALUES ($1)', [revision]);
 }
 
+// Every migration in the folder, in order, and the tables they leave.
+const JOURNAL = JSON.parse(
+	readFileSync(join(MIGRATIONS_FOLDER, 'meta', '_journal.json'), 'utf8')
+) as {
+	entries: { tag: string; when: number }[];
+};
+const MIGRATIONS = JOURNAL.entries.map(({ tag }) => tag);
+const AFTER_BASELINE = MIGRATIONS.slice(1);
+
 const BASELINE_TABLES = [
 	'hand_histories',
 	'hand_players',
@@ -54,6 +63,8 @@ const BASELINE_TABLES = [
 	'safety_signals',
 	'seats'
 ];
+// Added since the baseline: voice suspensions (0001, P4C.8).
+const TABLES = [...BASELINE_TABLES, 'voice_suspensions'].sort();
 
 describe.skipIf(!url)('migrations against PostgreSQL', () => {
 	const database = url as string;
@@ -63,11 +74,11 @@ describe.skipIf(!url)('migrations against PostgreSQL', () => {
 	});
 
 	it('create the schema on an empty database, then have nothing left to do', async () => {
-		expect(await migrate(database)).toEqual({ adopted: false, applied: ['0000_baseline'] });
-		expect(await tables(database)).toEqual(BASELINE_TABLES);
-		expect(await journal(database)).toHaveLength(1);
+		expect(await migrate(database)).toEqual({ adopted: false, applied: MIGRATIONS });
+		expect(await tables(database)).toEqual(TABLES);
+		expect(await journal(database)).toHaveLength(MIGRATIONS.length);
 		expect(await migrate(database)).toEqual({ adopted: false, applied: [] });
-		expect(await journal(database)).toHaveLength(1);
+		expect(await journal(database)).toHaveLength(MIGRATIONS.length);
 	});
 
 	it(`adopt a database at Alembic ${ALEMBIC_HEAD} without changing a row`, async () => {
@@ -80,19 +91,17 @@ describe.skipIf(!url)('migrations against PostgreSQL', () => {
 			database,
 			"INSERT INTO ledger_entries (player_id, kind, amount, balance_after) VALUES ('p1', 'grant', 25, 25)"
 		);
-		expect(await migrate(database)).toEqual({ adopted: true, applied: [] });
+		// The baseline is taken as applied; what came after it runs.
+		expect(await migrate(database)).toEqual({ adopted: true, applied: AFTER_BASELINE });
 		const [entry] = await journal(database);
-		const journalFile = JSON.parse(
-			readFileSync(join(MIGRATIONS_FOLDER, 'meta', '_journal.json'), 'utf8')
-		) as { entries: { when: number }[] };
-		expect(Number(entry.created_at)).toBe(journalFile.entries[0].when);
+		expect(Number(entry.created_at)).toBe(JOURNAL.entries[0].when);
 		expect((await execute(database, 'SELECT id, balance FROM players')).rows).toEqual([
 			{ id: 'p1', balance: '25' }
 		]);
 		expect((await execute(database, 'SELECT version_num FROM alembic_version')).rows).toEqual([
 			{ version_num: ALEMBIC_HEAD }
 		]);
-		expect(await tables(database)).toEqual(['alembic_version', ...BASELINE_TABLES]);
+		expect(await tables(database)).toEqual(['alembic_version', ...TABLES]);
 		expect(await migrate(database)).toEqual({ adopted: false, applied: [] });
 	});
 
@@ -110,7 +119,7 @@ describe.skipIf(!url)('migrations against PostgreSQL', () => {
 		);
 		const me = (await execute(database, 'SELECT current_user AS name')).rows[0].name as string;
 		const result = await migrate(database, { role: me });
-		expect(result.applied).toEqual(['0000_baseline']);
+		expect(result.applied).toEqual(MIGRATIONS);
 		const owners = await execute(
 			database,
 			"SELECT DISTINCT tableowner FROM pg_tables WHERE schemaname IN ('public', 'drizzle')"

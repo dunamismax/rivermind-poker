@@ -40,6 +40,21 @@ describe('seat lists', () => {
 		expect(readSeats(key, body, time, undefined, now)).toBeNull();
 	});
 
+	it('carry who may not speak, and until when, or nobody (P4C.8)', () => {
+		const silenced: SeatList = { ...list, silenced: [['fedcba9876543210', now + 3_600_000]] };
+		const body = JSON.stringify(silenced);
+		expect(readSeats(key, body, ...signed(body), now)).toEqual(silenced);
+		for (const value of [
+			{ ...list, silenced: [['p_not-a-public-ref', now]] },
+			{ ...list, silenced: [['fedcba9876543210', 1.5]] },
+			{ ...list, silenced: [['fedcba9876543210']] },
+			{ ...list, silenced: 'fedcba9876543210' }
+		]) {
+			const refused = JSON.stringify(value);
+			expect(readSeats(key, refused, ...signed(refused), now)).toBeNull();
+		}
+	});
+
 	it('are refused when they are not a list of seats', () => {
 		for (const value of [
 			{ ...list, table: 'a.b' },

@@ -376,7 +376,8 @@ export interface RelationsResponse {
 	players: RelationItem[];
 }
 
-export type ReportReason = 'handle' | 'abuse' | 'collusion' | 'other';
+/** `voice` is something said in table voice (P4C.8), of which no recording exists. */
+export type ReportReason = 'handle' | 'abuse' | 'collusion' | 'other' | 'voice';
 
 /** `POST /api/reports`: report the person in a seat, for review. */
 export interface ReportRequest {

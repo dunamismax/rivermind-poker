@@ -36,6 +36,7 @@ import { resolve } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { AddressWatch } from '../src/lib/server/voice/address.ts';
+import { ADDRESS_SOCKETS, Buckets, addressKey, addressOf } from '../src/lib/server/voice/limits.ts';
 import { consoleLog } from '../src/lib/server/voice/log.ts';
 import { Media } from '../src/lib/server/voice/media.ts';
 import { MAX_SEATS_BYTES, SEATS_PATH, readSeats } from '../src/lib/server/voice/seats.ts';
@@ -131,6 +132,8 @@ media.ondied = () => {
 watch?.start();
 
 const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
+// How often one address may open a socket (P4C.8), kept by a keyed hash only.
+const handshakes = new Buckets(ADDRESS_SOCKETS.perSecond, ADDRESS_SOCKETS.burst);
 // The table server's seat lists. Only it holds the voice key they are signed with.
 function seats(request: IncomingMessage, response: ServerResponse): void {
 	const chunks: Buffer[] = [];
@@ -201,6 +204,18 @@ http.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
 	}
 	if (!origins.has(request.headers.origin ?? '')) {
 		socket.end('HTTP/1.1 403 Forbidden\r\nconnection: close\r\ncontent-length: 0\r\n\r\n');
+		return;
+	}
+	const forwarded = request.headers['x-forwarded-for'];
+	const address = addressOf(
+		request.socket.remoteAddress,
+		Array.isArray(forwarded) ? forwarded.join(',') : forwarded
+	);
+	if (address !== null && !handshakes.allow(addressKey(address))) {
+		log('refused a socket: too many from one address');
+		socket.end(
+			'HTTP/1.1 429 Too Many Requests\r\nretry-after: 2\r\nconnection: close\r\ncontent-length: 0\r\n\r\n'
+		);
 		return;
 	}
 	sockets.handleUpgrade(request, socket, head, (ws) => accept(ws));

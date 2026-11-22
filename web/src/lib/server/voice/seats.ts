@@ -2,8 +2,9 @@
 // voice service over loopback each time it changes: the people seated at a
 // table that is not a practice table, when there are two or more of them, and
 // the pairs of them who must never hear each other because one blocked the
-// other (P4.5). The voice service lets nobody else in, and takes out at once
-// whoever leaves the list, which starts a new epoch of the group.
+// other (P4.5), and those whose speaking is suspended (P4C.8). The voice
+// service lets nobody else in, takes out at once whoever leaves the list,
+// which starts a new epoch of the group, and hears nothing from the suspended.
 //
 // The table server signs each list with the voice key, so no other process on
 // the host can empty a room or put someone in one.
@@ -24,6 +25,10 @@ export type SeatList = {
 	seats: { seat: number; player: string }[];
 	// Public references of two people, either of whom blocked the other.
 	blocks: [string, string][];
+	// People whose speaking is suspended (P4C.8), each with when it ends, in
+	// milliseconds: the voice service refuses their audio until then. A list
+	// from before P4C.8 has none.
+	silenced?: [string, number][];
 };
 
 const sign = (key: Uint8Array, time: string, body: string) =>
@@ -59,7 +64,7 @@ export function readSeats(
 
 function isSeatList(value: unknown): value is SeatList {
 	if (typeof value !== 'object' || value === null) return false;
-	const { table, at, seats, blocks } = value as Record<string, unknown>;
+	const { table, at, seats, blocks, silenced } = value as Record<string, unknown>;
 	return (
 		typeof table === 'string' &&
 		TABLE.test(table) &&
@@ -83,6 +88,17 @@ function isSeatList(value: unknown): value is SeatList {
 				Array.isArray(pair) &&
 				pair.length === 2 &&
 				pair.every((one) => typeof one === 'string' && PLAYER.test(one))
-		)
+		) &&
+		(silenced === undefined ||
+			(Array.isArray(silenced) &&
+				silenced.length <= 9 &&
+				silenced.every(
+					(one) =>
+						Array.isArray(one) &&
+						one.length === 2 &&
+						typeof one[0] === 'string' &&
+						PLAYER.test(one[0]) &&
+						Number.isSafeInteger(one[1])
+				)))
 	);
 }

@@ -151,7 +151,8 @@ web/                             SvelteKit app (Node 26.13.1 from web/.node-vers
   voice/check/                   the voice checks' pages and Playwright checks (`pnpm voice:check`, in CI):
                                  SFrame's vectors and a call through the worker, and people in a room on
                                  the voice service (room.check.ts), and RNNoise under the site's CSP
-                                 (denoise.check.ts), in each browser
+                                 (denoise.check.ts), in each browser; tap-server.ts is a test build of
+                                 the voice service with a keyless listener at the SFU (tap.check.ts, P4C.8)
   voice/prototype/               the voice prototype (P4C.1): a mediasoup service, a test page and its
                                  Playwright checks (`pnpm voice:proto`); not part of the site or its build
   e2e/                           Playwright tests against the Node table server; journey.e2e.ts against one
@@ -262,7 +263,7 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 | Apply migrations (what production will run) | `pnpm db:migrate` |
 | Render the pixel art | `pnpm art`, or `pnpm art --preview <dir outside the repo>` for contact sheets |
 | Regenerate the short-deck `protocol.ts` | `pnpm protocol` |
-| Review reports and collusion signals, or give a player a new handle | `DATABASE_URL=… pnpm moderation reports`, `signals` or `rename PLAYER_ID`; `build/moderation.js` in a release |
+| Review reports and collusion signals, give a player a new handle, or list and lift speaking suspensions | `DATABASE_URL=… pnpm moderation reports`, `signals`, `rename PLAYER_ID`, `suspensions` or `lift PLAYER_ID`; `build/moderation.js` in a release |
 | Rewrite the table parity fixture (from the root) | `uv run --locked python -m test.server.table_differential --fixture` |
 | Check the TypeScript table against the Python one | `pnpm table:parity`, or `-- --sequences 400 --ops 300` for the long run |
 
@@ -323,6 +324,7 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 
 ### Client, CSP and Caddy
 
+- `@sveltejs/adapter-node` fixes its list of static files when `vite build` runs, so a file written into `build/client/` afterwards is a 404. `scripts/voice-files.js` writes `voice-files.json` after the build, and the Node server serves it itself (`voiceFiles` in `server/app.ts`).
 - Keep the client free of inline script and style: the site CSP blocks them, and `pnpm build` fails on them. The one exception is SvelteKit’s start-up script, whose hash each page’s policy carries. Svelte transitions inject styles at run time, so animate with CSS classes.
 - Caddy must never add a policy to a page or an asset from the Node server (it adds one to `/api/*`, `/ws` and its own error page). Node leaves the policy off a 304, and Chromium applies a 304’s headers to the cached page, so a Caddy policy there blanks the page on reload. The local Playwright suite does not go through Caddy, so check Caddy changes with `pnpm e2e:live`, against a local Caddy or the live site.
 - `adapter-node` assumes https unless `ORIGIN` or `PROTOCOL_HEADER` is set, so set `ORIGIN` when running `pnpm start` locally. Unknown paths are 404s, not an SPA fallback; invites use `/?invite=`.
@@ -362,6 +364,8 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 - Pages offer voice only where `GET /api/voice` says so (`RIVERMIND_VOICE_OFFER=1` with a voice service). Leave it off on the live unit until P4C.9 routes `/voice` in Caddy, and never set `RIVERMIND_VOICE_PROXY` there: it is for development and the browser tests, and a web deploy would cut every conversation it carried.
 - Chromium echo-cancels only what it plays from a peer connection, so in Chromium the voice mix goes through `Playback`'s local loopback into an audio element (`playback.ts`). Never play voice straight from Web Audio there. Tell Chromium apart by `navigator.userAgentData`, never the user agent string: Playwright gives every engine its project's string, and a Firefox page claiming Chrome took the loopback.
 - A page sends `status` only to a service whose welcome says `statuses: true`; a service from before P4C.6 closes a socket that sends a request it does not know.
+- The keyless listener exists only in `voice/check/tap-server.ts`, which runs `voice/server.ts` with mediasoup's observers attached and is never bundled. Never give the service itself a way to copy audio out, for tests or anything else.
+- A suspended person's speaking (P4C.8) is enforced by the voice service from the seat list's `silenced`, whose times end it by themselves: a page's own state only shows it. A list from before P4C.8 has no `silenced`, so keep the field optional.
 - RNNoise's worklet starts its WebAssembly asynchronously and plays silence until it has, so an `OfflineAudioContext` render must wait for it (`suspend` at the first block, or a lead of unmeasured audio in Firefox, which has no `suspend`); `voice/check/denoise.ts` does both. Import `denoise.ts` only dynamically: the library defines an `AudioWorkletNode` subclass on import, which Node and any page without voice have no use for.
 - A seat's voice glyph sits on an ink tag or plate, so every part of a voice sprite has a face colour inside its outline: a stand drawn in ink alone vanished.
 - mediasoup's install script downloads its worker binary from GitHub for the platform, the architecture and, on Linux, the kernel's major version. `allowBuilds` in `web/pnpm-workspace.yaml` permits it. A release carries no `node_modules`, so a bundled service needs the binary beside it and `MEDIASOUP_WORKER_BIN` naming it (`web/voice/prototype/bundle.ts` shows how).

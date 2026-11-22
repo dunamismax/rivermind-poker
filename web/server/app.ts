@@ -41,6 +41,12 @@ export interface Options {
 	 * deploy of this server never cuts a conversation.
 	 */
 	voiceProxy?: URL | null;
+	/**
+	 * The release's /voice-files.json (scripts/voice-files.js, P4C.8): the SHA-256 of
+	 * every file its pages run. Written after the client is built, so the adapter's
+	 * own list of static files does not hold it.
+	 */
+	voiceFiles?: string | null;
 }
 
 /** One open socket, fed the frames that arrive. */
@@ -95,6 +101,9 @@ function pathOf(req: IncomingMessage): string {
 	return end === -1 ? url : url.slice(0, end);
 }
 
+/** Where the release publishes the hashes of the files its pages run (P4C.8). */
+export const VOICE_FILES_PATH = '/voice-files.json';
+
 /** Paths the HTTP API answers. */
 export function isApiPath(path: string): boolean {
 	return path === '/api' || path.startsWith('/api/');
@@ -108,7 +117,8 @@ export function createApp({
 	api = null,
 	origin = null,
 	sockets: tables = null,
-	voiceProxy = null
+	voiceProxy = null,
+	voiceFiles = null
 }: Options): App {
 	const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
 	let closing = false;
@@ -145,6 +155,15 @@ export function createApp({
 			return;
 		}
 		for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value);
+		if (path === VOICE_FILES_PATH && voiceFiles !== null && /^(GET|HEAD)$/.test(req.method ?? '')) {
+			res.writeHead(200, {
+				'content-type': 'application/json',
+				'cache-control': 'no-cache',
+				'content-length': Buffer.byteLength(voiceFiles)
+			});
+			res.end(req.method === 'HEAD' ? undefined : voiceFiles);
+			return;
+		}
 		// Hashed assets are cached for a year by the handler; everything else revalidates,
 		// so a deploy reaches browsers on their next load.
 		if (!path.startsWith('/_app/immutable/')) res.setHeader('cache-control', 'no-cache');

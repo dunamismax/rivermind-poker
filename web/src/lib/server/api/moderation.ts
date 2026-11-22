@@ -1,6 +1,7 @@
 /**
  * The moderator's commands (P4.5, P4B.8a): list the newest reports and
- * collusion signals, and give a reported player a new random handle.
+ * collusion signals, give a reported player a new random handle, and list or
+ * lift the speaking suspensions that voice reports make (P4C.8).
  *
  * They replace `rivermind-poker moderation`, which went with the Python table
  * server at P4B.8, and print what it printed, with the reporter's handle
@@ -16,9 +17,11 @@ export const USAGE = `Usage: moderation <command>
   reports [--limit N]   the newest reports, newest first (50 by default)
   signals [--limit N]   the newest collusion signals, newest first (50 by default)
   rename PLAYER_ID      give a player a new random handle
+  suspensions           players who may not speak in voice now, and until when
+  lift PLAYER_ID        let a player speak in voice again
 
 Reads DATABASE_URL. Tables a renamed player sits at show the new handle after
-they sit down again.`;
+they sit down again. A lifted player speaks again when they next join voice.`;
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 1000;
@@ -84,6 +87,24 @@ export async function moderate(
 			if (!before) throw new ModerationError(`No player ${playerId}.`);
 			const after = await players.rename(playerId);
 			return [`${playerId}: ${before.handle} -> ${after.handle}`];
+		}
+		case 'suspensions': {
+			if (rest.length) throw new ModerationError(USAGE);
+			const now = Date.now() / 1000;
+			const lines: string[] = [];
+			for (const { playerId, until } of await safety.suspensions(now)) {
+				const handle = (await players.get(playerId))?.handle ?? '?';
+				lines.push(`until ${when(until)}  ${handle} (${playerId})`);
+			}
+			return lines;
+		}
+		case 'lift': {
+			if (rest.length !== 1 || rest[0].startsWith('-')) throw new ModerationError(USAGE);
+			const [playerId] = rest;
+			if (!(await safety.liftSuspension(playerId))) {
+				throw new ModerationError(`${playerId} may already speak in voice.`);
+			}
+			return [`${playerId} may speak in voice again.`];
 		}
 		default:
 			throw new ModerationError(USAGE);

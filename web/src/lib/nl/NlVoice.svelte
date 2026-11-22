@@ -238,6 +238,16 @@
 			{:else if voice.quality}
 				<p class="text-s" role="status">{QUALITY_TEXT[voice.quality]}</p>
 			{/if}
+			{#if voice.silencedUntil !== null}
+				<p class="px-danger p-3 text-s text-paper" role="alert" data-voice="silenced">
+					Other players reported what was said in voice, so nobody hears your microphone until
+					{new Date(voice.silencedUntil).toLocaleString([], {
+						weekday: 'short',
+						hour: 'numeric',
+						minute: '2-digit'
+					})}. You can still listen.
+				</p>
+			{/if}
 			{#if voice.strangers}
 				<p class="px-danger p-3 text-s text-paper" role="alert">
 					Someone who is not seated at this table is in the voice group. Your microphone is off

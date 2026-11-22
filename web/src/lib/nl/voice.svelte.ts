@@ -110,6 +110,9 @@ export class TableVoice {
 	code = $state<string[] | null>(null);
 	// The group holds someone who is not seated here, so this page sends nothing.
 	strangers = $state(false);
+	// Until when the voice service refuses this person's audio, after voice
+	// reports from other players (P4C.8), in milliseconds; null when it does not.
+	silencedUntil = $state<number | null>(null);
 	quality = $state<Quality | null>(null);
 	// The browser held playback back: a click on “Turn on sound” starts it.
 	needsGesture = $state(false);
@@ -473,6 +476,7 @@ export class TableVoice {
 			!this.selfMuted &&
 			!this.deafened &&
 			!this.strangers &&
+			this.silencedUntil === null &&
 			(!this.settings.pushToTalk || this.talking)
 		);
 	}
@@ -682,6 +686,7 @@ export class TableVoice {
 		this.#playback = null;
 		this.code = null;
 		this.strangers = false;
+		this.silencedUntil = null;
 		this.quality = null;
 		this.needsGesture = false;
 		this.talking = false;
@@ -721,6 +726,14 @@ export class TableVoice {
 		this.#people = room.people;
 		const epoch = room.epoch;
 		if (epoch) this.#epoch(epoch);
+		if (room.silencedUntil !== this.silencedUntil) {
+			this.silencedUntil = room.silencedUntil;
+			this.announcement =
+				this.silencedUntil === null
+					? 'You can speak in voice again.'
+					: 'Your speaking in voice is suspended for now. You can still listen.';
+			void this.#apply();
+		}
 		this.#place();
 	}
 

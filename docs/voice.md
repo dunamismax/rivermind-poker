@@ -1,6 +1,6 @@
 # Table voice design
 
-This is the design for live voice at the table (Phase 4C, D-15). It records what voice must do, the threat model, the tools chosen and the ones rejected, how keys are agreed and media is encrypted, and what the host has to provide. [BUILD.md](../BUILD.md#phase-4c--table-voice) holds the steps and their evidence. P4C.1 checked this design with a working prototype, and [what the prototype found](#what-the-prototype-found-p4c1) lists what it confirmed, what it corrected here and what it left for later steps. P4C.2 built the frame encryption, and [frame encryption as built](#frame-encryption-as-built-p4c2) says how it works, what it refuses and what it costs. P4C.3 built the group key, and [the group key as built](#the-group-key-as-built-p4c3) says the same of it. P4C.4 built the voice service, and [the voice service as built](#the-voice-service-as-built-p4c4) says what it does, what it refuses and how it runs on the host. P4C.6 put it in front of people: [voice at the table](#voice-at-the-table-as-a-person-sees-it-p4c6).
+This is the design for live voice at the table (Phase 4C, D-15). It records what voice must do, the threat model, the tools chosen and the ones rejected, how keys are agreed and media is encrypted, and what the host has to provide. [BUILD.md](../BUILD.md#phase-4c--table-voice) holds the steps and their evidence. P4C.1 checked this design with a working prototype, and [what the prototype found](#what-the-prototype-found-p4c1) lists what it confirmed, what it corrected here and what it left for later steps. P4C.2 built the frame encryption, and [frame encryption as built](#frame-encryption-as-built-p4c2) says how it works, what it refuses and what it costs. P4C.3 built the group key, and [the group key as built](#the-group-key-as-built-p4c3) says the same of it. P4C.4 built the voice service, and [the voice service as built](#the-voice-service-as-built-p4c4) says what it does, what it refuses and how it runs on the host. P4C.6 put it in front of people: [voice at the table](#voice-at-the-table-as-a-person-sees-it-p4c6). P4C.8 checked what a copy of the audio is worth to the server and added reports, suspensions and limits: [privacy, safety and moderation](#privacy-safety-and-moderation-p4c8).
 
 ## What voice is for
 
@@ -26,7 +26,7 @@ The people seated at a table talk to each other as they would at a real one. Voi
 
 - **The people at the table.** They hear you and can record you.
 - **The code the site serves.** Encryption runs in JavaScript that this server sends. A malicious operator could ship code that leaks keys. The source is public (GPL), and each release publishes a hash of its voice client files (P4C.8) so anyone can check that the code served is the code published.
-- **Metadata.** The voice server sees who joined voice at which table, their IP address, and when each person sends audio and how much. It does not see what they say. Audio levels stay off the wire: the RTP audio-level extension is not negotiated, and speaking indicators are computed in each browser after decryption.
+- **Metadata.** The voice server sees who joined voice at which table, their IP address, when each person sends audio and how much, whether they say they muted themself or deafened (P4C.6), and, from the table server, which pairs at the table blocked each other and who may not speak (P4C.5, P4C.8). It does not see what they say. Audio levels stay off the wire: the RTP audio-level extension is not negotiated, and speaking indicators are computed in each browser after decryption.
 - **A compromised device or browser.**
 
 ## Architecture
@@ -317,7 +317,7 @@ One JSON text frame a message, 32 KiB at most. A page's requests carry an `id`, 
 - **Live.** The unit is installed and `ufw` opened by the first deploy that carries it, an owner gate; until P4C.9 adds the `/voice` route nothing reaches its signalling.
 - **The table server's side** (P4C.5): `POST /api/tables/{id}/voice` issues tokens with `issueToken`, and the table tells the service when seats change.
 - **Recovery** (P4C.7): a restart, a dead worker or a changed address now costs a room its transports or its group, and pages start again by hand; P4C.7 makes it automatic and measures it.
-- **The prototype** keeps its keyless listener at the SFU and its audio-level control until P4C.8 moves them into a test build of this service.
+- **The prototype** kept its keyless listener at the SFU and its audio-level control until P4C.8 moved them into a test build of this service ([`tap-server.ts`](../web/voice/check/tap-server.ts)); nothing it holds is needed now.
 
 ## Voice at the table (P4C.5)
 
@@ -376,6 +376,76 @@ The delay is the lag at which the output best matches the input, 994 samples at 
 - **A page hidden and shown again** resumes the context, starts a microphone the system stopped and says why when it cannot; that is checked by hand on a phone (P4C.9), since Playwright does not hide pages.
 - **The warning for a stranger in the group** is P4C.3's check shown on screen, with no honest way to bring it about in a browser test.
 
+## Privacy, safety and moderation (P4C.8)
+
+### What a copy of the audio is worth: the keyless listener
+
+[`web/voice/check/tap-server.ts`](../web/voice/check/tap-server.ts) is a test build of the voice service: `voice/server.ts` as it is, with a listener attached at the SFU that holds no key, as the server's operator could attach one. Through mediasoup's observers it makes a consumer on a `DirectTransport` of each Router for every producer, from the moment the producer exists, and keeps each packet's payload, its RTP sequence number and the header extensions it carries. Nothing bundles or deploys it; only [`tap.check.ts`](../web/voice/check/tap.check.ts) starts it, in `pnpm voice:check`. It replaces the prototype's listener (P4C.1).
+
+In the check, three people in one engine talk through it: a alone (epoch 0), b arriving (1), c arriving (2), a leaving (3), each stage a second and a half or more. Then:
+
+- **The listener got every frame.** It held each producer's packets from its start, before any listener could consume it, with no sequence number skipped, and at least as many as any person received from that producer.
+- **Every frame is sealed, and nothing else.** Every payload it kept is an SFrame frame naming the producer's own leaf, under one of the room's four epochs, with room for a tag. Each packet carries the `mid` and transport-wide sequence number extensions, which the listener reads, and never the audio level.
+- **Each person opens exactly their own epochs.** The check page keeps the non-extractable base keys its room was given (a wrapper round `FrameCrypto.addEpoch` in [`voice/check/room.ts`](../web/voice/check/room.ts); the site's pages keep nothing of the kind) and tries them on every frame the listener kept. a opens every frame of epochs 0 to 2 and none of epoch 3, said after it left; c opens every frame of epochs 2 and 3 and none of 0 and 1, said before it arrived; b opens all but epoch 0. So every frame the listener holds is a ciphertext under a key of the group, and someone who left, or arrived, holding a copy of everything, opens nothing outside the epochs they were in.
+- **The copy holds no sound.** Three seconds of each person's frames under epoch 2 go through WebCodecs' Opus decoder twice: as the listener kept them, and as b opened them. Opened, they are the tone each person sent, standing 60 to 74 dB above the sound around it in Chromium and Firefox and 27 to 60 dB with WebKit's mock microphone. As kept, the decoder refused 0 to 6 of the 150 frames and made noise of the rest, in which the tone's frequency stood at most 3.1 dB above its surroundings (the check allows 10).
+
+On this Mac, in Chromium, Firefox and WebKit, about ten seconds each. Each person sealed 40 to 170 frames under each epoch they were in.
+
+### Voice reports and suspended speaking
+
+- **The reason.** A report can say “Something said in voice” (`voice`; a Drizzle migration, `0001_voice_reports`, allows it; `rivermind/db` is gone, so there is no Alembic revision). The report form then says that voice is never recorded, so no audio goes with the report, and what several reports do. Reports also keep the reporter's address as a keyed hash (`addressTag`), never the address.
+- **The rule** (`speakingDue` in [`safety.ts`](../web/src/lib/server/api/safety.ts)): voice reports against one guest from three different people, made at three different tables and from three different addresses, within a day. Reports without a table or an address do not count. A few friends at one table, or one person with several guests on one address, cannot silence anyone. The report that completes it suspends the guest's speaking for a day from then (`voice_suspensions`); a report that comes while three still count carries it on.
+- **How it reaches the voice service.** The table server's signed seat lists (P4C.5) gain `silenced`: each person in voice whose speaking is suspended, with when it ends, in milliseconds. A suspension sends the lists of every table the guest sits at at once; later lists, a token's included, carry it while it lasts. A list from before P4C.8 has no `silenced`, and a voice service from before ignores it.
+- **What the voice service does.** It refuses a suspended person's `produce` (`not-allowed`); when a list first names someone, it closes their producer and everyone's consumers of it, and sends their page `silenced` with the end. The welcome carries `silenced` too, for a page that joins while suspended. They stay in the room and the group, and hear everyone. When the time comes, or a later list no longer names them, their page hears `silenced` with `until: null` and sends again. In the browsers, the voice panel says why the microphone is off and until when, the “Live” mark goes, and screen readers are told.
+- **Moderators** list suspensions with `pnpm moderation suspensions` and end one with `pnpm moderation lift PLAYER_ID`; a lifted guest speaks again when they next join voice, whose token sends a fresh list.
+
+### Limits on joining and signalling
+
+| Where | What | Limit |
+| --- | --- | --- |
+| Table server | Voice tokens per player | 10 at once, then one every 6 s |
+| Table server | Voice tokens per address | 30 at once, then one every 2 s |
+| Voice service | Hellos per player, however many tokens they hold | 20 at once, then one every 3 s |
+| Voice service | Messages per socket (P4C.4), and per player across all their sockets | 60, then 20 a second; 120, then 40 a second |
+| Voice service | New sockets per address, from Caddy's `X-Forwarded-For` | 30 at once, then one every 2 s |
+| Voice service | Time to say hello | 10 s, then the socket is closed |
+| Caddy | `voice` zone: `/api/tables/*/voice` and `/voice` | 30 a minute per address |
+
+The voice service keys an address's limit by a keyed hash under a key made for the process, held in memory only, and logs only that it refused. A socket from this machine itself with no forwarded address (the checks, a development server passing `/voice` on) is not limited by address: the service listens on loopback alone, behind Caddy.
+
+### The code the site serves
+
+The encryption runs in JavaScript this site sends, so it is only as good as that code (the [threat model](#threat-model)). Every build now writes `voice-files.json` ([`scripts/voice-files.js`](../web/scripts/voice-files.js)): the SHA-256 of every file under `/_app/immutable/` that the release's pages run, with table voice's own first (`voice`: the chunks of `src/lib/voice/` and everything they import, the encoded-transform worker, and RNNoise's worklet and WebAssembly) and every other script, style and asset after (`page`), since any script on a page can reach its keys. The Node server serves it at `/voice-files.json` (the adapter's list of static files is fixed before it is written), and the fairness page links to it. `site.e2e.ts` fetches every file it names and checks each hash against the bytes served. What it does not cover: the HTML of each page, which the server renders, and whether a given build is reproducible byte for byte from the source, which nobody has checked yet.
+
+### For the privacy page (P6.7)
+
+Plain words for the privacy page to use, as they stand at P4C.8:
+
+> **Table voice.** When you talk at a table, your browser encrypts your voice before it leaves your device, and only the people in voice at that table can decrypt it. The key changes each time someone joins or leaves, so people who leave cannot hear what is said after, and people who join cannot hear what was said before.
+>
+> **What we never keep.** Our voice server passes the encrypted audio between the people at the table. It cannot decrypt it. Nothing said in voice is recorded, transcribed or stored, by us or by this site's code in anyone's browser. A report of something said in voice carries no audio, because there is none.
+>
+> **What our voice server does see.** That you joined voice at a table, and when you left. Your IP address, which it needs to send you audio; it does not write it down. When you send audio and how much, but not what you say, and not how loud: your browser works out who is speaking after it decrypts. Whether you muted yourself or turned everyone off. Which players at the table blocked each other, so it never connects them. It forgets all of this when the table's voice ends.
+>
+> **What encryption cannot protect.** The people at the table hear you and could record you on their own devices. Voice is for adults (18+).
+>
+> **The code.** The encryption runs in code this site sends your browser, so you are trusting that code. Its source is public, and each release publishes the hash of every file its pages run, linked from the fairness page, so anyone can check that what we serve is what the source builds.
+>
+> **Reports.** When people at three different tables, on three different networks, report the same player for what they said in voice within a day, nobody hears that player in voice for the next day. They can still listen.
+
+### Review of the voice service (for P7.5)
+
+| Area | Found | Done |
+| --- | --- | --- |
+| Dependencies | `pnpm audit`: one moderate advisory, [GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99), in esbuild 0.18 under drizzle-kit's loader, a development tool that no release or service runs. GitHub's advisories name none for mediasoup 3.32.2 (the one there is, an SCTP cookie, is for 3.20.0 to 3.20.5, and voice opens no data channel), mediasoup-client 3.26.0, ts-mls 1.6.4, ws 8.23.0 (every `ws` advisory is fixed by 8.21.0) or `@sapphi-red/web-noise-suppressor` 0.4.1. | Recorded; leaves with drizzle-kit's next release |
+| Tokens | HMAC-SHA256 under the voice key, compared in constant time, 60 s, once only, naming the public reference and never the player id (P4C.4). | Nothing to change |
+| Origin | Exact match against `VOICE_ORIGINS`; a handshake with no `Origin` is refused. | Nothing to change |
+| Limits | Each socket was limited; a player and an address were not, and a socket that never said hello stayed open as long as it answered pings. | Fixed (above) |
+| The media port | mediasoup's worker answers ICE only for a transport's own credentials, but keeps a TCP connection to 3478 that never sends a byte open: one was still open after 90 s on this Mac. Anyone could hold many. The voice service cannot close them; the host's firewall can cap TCP connections to 3478 per address (two transports a person, a few people behind one address). | Open, for the owner: a per-address cap on TCP 3478 in `ufw` or nftables on ubuntu-vm, sized with P4C.7's capacity work |
+| The unit's sandbox | `systemd-analyze security` scores it 3.0, as the web unit. Not set: `SystemCallFilter=@system-service`, `ProtectProc=invisible`, `ProcSubset=pid`, `PrivateUsers=yes`, each of which could stop mediasoup's worker or Node and none of which has been tried there. | Open, for the owner: try them under `update.sh voice-candidate` with a room through it at P4C.9's deploy |
+| `Permissions-Policy` | Pages send `microphone=(self)`; Caddy still sends `microphone=()` on the live site. | P4C.9 changes Caddy's |
+| CSP | `'wasm-unsafe-eval'` is the one addition (Q-11); `/voice-files.json` goes out with the site's headers. | Nothing to change |
+
 ## Tools considered
 
 | Option | Verdict |
@@ -399,7 +469,7 @@ The delay is the lag at which the output best matches the input, 994 samples at 
   - Firefox’s ICE fails against a media address on loopback alone, which Chromium and WebKit connect to; a test service also listens on the LAN address.
   - Without Web Audio, judge what a page hears by `inbound-rtp` statistics (`totalAudioEnergy`, `concealedSamples`). Chromium counts no energy for a track whose only output is a muted element, so there the analyser is the measure.
 - **The voice service:** Vitest drives it with a real mediasoup worker and real MLS members over the wire (`service.spec.ts`), and `pnpm voice:check` puts people in each engine in a room on it (`room.check.ts`), through the site's own `VoiceRoom`, with media over UDP and, for Chromium told to avoid UDP, TCP.
-- **The encryption itself:** a test listener attached at the SFU, holding no key, receives the forwarded frames and cannot decode them, while members decode the injected tone.
+- **The encryption itself:** a test build of the voice service with a listener attached at the SFU, holding no key, receives every forwarded frame and cannot decode them, while members decode the injected tone, and someone who left or arrived opens nothing outside their epochs (`tap.check.ts`, [P4C.8](#what-a-copy-of-the-audio-is-worth-the-keyless-listener)).
 - **Latency and loss:** mouth-to-ear delay measured with a marked tone, `getStats` jitter-buffer and round-trip figures, and packet loss and jitter added with `tc netem` on Linux.
 
 ## Sources

@@ -5,7 +5,17 @@
 // mediasoup. `window.room` is what room.check.ts drives.
 import type { Identity } from '../../src/lib/voice/group.ts';
 import { VoiceRoom, type Heard as Stream } from '../../src/lib/voice/room.ts';
+import { FrameCrypto } from '../../src/lib/voice/sframe-client.ts';
 import type { Tally } from '../../src/lib/voice/sframe-transform.ts';
+import {
+	LAYOUT,
+	decodeHeader,
+	deriveFrameKey,
+	open as openFrame,
+	partsOf,
+	type FrameKey
+} from '../../src/lib/voice/sframe.ts';
+import { fromBase64, toBase64 } from '../../src/lib/voice/signalling.ts';
 
 export type JoinOptions = {
 	url: string;
@@ -49,6 +59,24 @@ export type RoomReport = {
 	transforms: Tally[];
 	refused: string[];
 	heard: Heard[];
+	// Until when the service refuses this person's audio (P4C.8), or null.
+	silencedUntil: number | null;
+	// Whether the page has a producer: it sends audio.
+	producing: boolean;
+};
+
+// What a run of Opus frames decodes to (`decode`): how many the decoder
+// refused, the decoded sound's level, its loudest frequency, and how far a tone
+// at that frequency, or at `atHz` when given, stands above the sound around it
+// (`prominence`, in dB).
+export type Decoded = {
+	decoder: boolean;
+	failed: number;
+	samples: number;
+	rms: number;
+	peakHz: number | null;
+	prominence: number | null;
+	prominenceAt: number | null;
 };
 
 export type RoomCheck = {
@@ -57,6 +85,14 @@ export type RoomCheck = {
 	seats(seated: Identity[]): void;
 	mute(player: string, muted: boolean): Promise<void>;
 	leave(): void;
+	// The epochs this page was given a key for.
+	epochs(): number[];
+	// Each SFrame frame opened with the keys this page was given, or null where
+	// none of them opens it (P4C.8).
+	open(frames: string[]): Promise<(string | null)[]>;
+	// Decode Opus frames with the browser's own decoder (WebCodecs), whatever
+	// they hold, and say what came out (P4C.8).
+	decode(frames: string[], atHz?: number): Promise<Decoded>;
 };
 
 declare global {
@@ -70,6 +106,136 @@ const log = (line: string) => {
 	document.querySelector('#log')!.append(`${line}\n`);
 	console.log(line);
 };
+
+// Every epoch's base key this page's room was given, for the keyless
+// listener's check (tap.check.ts): the same non-extractable CryptoKeys the
+// worker holds, usable only on this page, so the check can try them on frames
+// captured at the voice service. The site's pages keep nothing of the kind.
+const held = new Map<bigint, CryptoKey>();
+const addEpoch = FrameCrypto.prototype.addEpoch;
+FrameCrypto.prototype.addEpoch = function (epoch: bigint, baseKey: CryptoKey) {
+	held.set(epoch, baseKey);
+	addEpoch.call(this, epoch, baseKey);
+};
+
+// A radix-2 FFT in place, for `analyse`.
+function fft(re: Float64Array, im: Float64Array): void {
+	const n = re.length;
+	for (let i = 1, j = 0; i < n; i++) {
+		let bit = n >> 1;
+		for (; j & bit; bit >>= 1) j ^= bit;
+		j ^= bit;
+		if (i < j) {
+			[re[i], re[j]] = [re[j], re[i]];
+			[im[i], im[j]] = [im[j], im[i]];
+		}
+	}
+	for (let size = 2; size <= n; size <<= 1) {
+		const angle = (-2 * Math.PI) / size;
+		for (let start = 0; start < n; start += size) {
+			for (let k = 0; k < size / 2; k++) {
+				const [cos, sin] = [Math.cos(angle * k), Math.sin(angle * k)];
+				const a = start + k;
+				const b = a + size / 2;
+				const tr = re[b] * cos - im[b] * sin;
+				const ti = re[b] * sin + im[b] * cos;
+				re[b] = re[a] - tr;
+				im[b] = im[a] - ti;
+				re[a] += tr;
+				im[a] += ti;
+			}
+		}
+	}
+}
+
+// The loudest frequency between 100 Hz and 4 kHz of 48 kHz audio, and how far
+// it stands out: the mean power within 10 Hz of it over the mean power from 30
+// to 300 Hz to either side, in dB. A tone stands tens of dB above its
+// surroundings; noise, however it is shaped, does not.
+function analyse(
+	pcm: Float32Array,
+	atHz?: number
+): Pick<Decoded, 'rms' | 'peakHz' | 'prominence' | 'prominenceAt'> {
+	const rms = Math.sqrt(pcm.reduce((sum, x) => sum + x * x, 0) / Math.max(1, pcm.length));
+	// A tenth of a second at least; less than the transform is padded with silence.
+	const n = 1 << 15;
+	if (pcm.length < 4800) return { rms, peakHz: null, prominence: null, prominenceAt: null };
+	const re = new Float64Array(n);
+	const im = new Float64Array(n);
+	const start = Math.max(0, Math.floor((pcm.length - n) / 2));
+	const length = Math.min(n, pcm.length);
+	for (let i = 0; i < length; i++) {
+		re[i] = pcm[start + i] * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (length - 1)));
+	}
+	fft(re, im);
+	const hzPerBin = 48000 / n;
+	const power = (bin: number) => re[bin] ** 2 + im[bin] ** 2;
+	const mean = (lo: number, hi: number) => {
+		let sum = 0;
+		let bins = 0;
+		for (let bin = Math.ceil(Math.max(50, lo) / hzPerBin); bin * hzPerBin <= hi; bin++) {
+			sum += power(bin);
+			bins += 1;
+		}
+		return bins ? sum / bins : 0;
+	};
+	const prominence = (hz: number) => {
+		const tone = mean(hz - 10, hz + 10);
+		const around = (mean(hz - 300, hz - 30) + mean(hz + 30, hz + 300)) / 2;
+		return 10 * Math.log10(Math.max(tone, 1e-30) / Math.max(around, 1e-30));
+	};
+	let peak = Math.ceil(100 / hzPerBin);
+	for (let bin = peak; bin * hzPerBin < 4000; bin++) if (power(bin) > power(peak)) peak = bin;
+	return {
+		rms,
+		peakHz: peak * hzPerBin,
+		prominence: prominence(peak * hzPerBin),
+		prominenceAt: atHz ? prominence(atHz) : null
+	};
+}
+
+// Opus frames through WebCodecs' decoder, as one stream. A frame it refuses
+// closes the decoder, so a run with any refused is decoded again a frame at a
+// time, each refusal counted and the next frame given a new decoder.
+async function decodeOpus(frames: Uint8Array[]): Promise<{ failed: number; pcm: Float32Array }> {
+	const run = async (batches: Uint8Array[][]) => {
+		const chunks: Float32Array[] = [];
+		let failed = 0;
+		let index = 0;
+		for (const batch of batches) {
+			const decoder = new AudioDecoder({
+				output: (data) => {
+					const samples = new Float32Array(data.numberOfFrames);
+					data.copyTo(samples, { planeIndex: 0, format: 'f32-planar' });
+					chunks.push(samples);
+					data.close();
+				},
+				error: () => {}
+			});
+			decoder.configure({ codec: 'opus', sampleRate: 48000, numberOfChannels: 1 });
+			try {
+				for (const frame of batch) {
+					decoder.decode(
+						new EncodedAudioChunk({ type: 'key', timestamp: index++ * 20_000, data: frame })
+					);
+				}
+				await decoder.flush();
+			} catch {
+				failed += 1;
+			}
+			if (decoder.state !== 'closed') decoder.close();
+		}
+		const pcm = new Float32Array(chunks.reduce((sum, one) => sum + one.length, 0));
+		let at = 0;
+		for (const one of chunks) {
+			pcm.set(one, at);
+			at += one.length;
+		}
+		return { failed, pcm };
+	};
+	const whole = await run([frames]);
+	return whole.failed ? run(frames.map((frame) => [frame])) : whole;
+}
 
 let room: VoiceRoom | null = null;
 let context: AudioContext | null = null;
@@ -201,7 +367,9 @@ window.room = {
 			path: { send: await pathOf(send), recv: await pathOf(recv) },
 			transforms: await now.tallies(),
 			refused: now.refused,
-			heard: heard.sort((a, b) => a.leaf - b.leaf)
+			heard: heard.sort((a, b) => a.leaf - b.leaf),
+			silencedUntil: now.silencedUntil,
+			producing: now.producer !== null && !now.producer.closed
 		};
 	},
 	seats(seated) {
@@ -212,6 +380,43 @@ window.room = {
 	},
 	leave() {
 		room?.close();
+	},
+	epochs() {
+		return [...held.keys()].map(Number).sort((a, b) => a - b);
+	},
+	async open(frames) {
+		const slots = 1n << BigInt(LAYOUT.epochBits);
+		const keys = new Map<string, Promise<FrameKey>>();
+		return Promise.all(
+			frames.map(async (text) => {
+				const frame = fromBase64(text);
+				const header = frame && decodeHeader(frame);
+				const parts = header && partsOf(LAYOUT, header.kid);
+				if (!frame || !header || !parts) return null;
+				for (const [epoch, baseKey] of held) {
+					if (Number(epoch % slots) !== parts.slot) continue;
+					const id = `${epoch}:${header.kid}`;
+					let key = keys.get(id);
+					if (!key) keys.set(id, (key = deriveFrameKey(baseKey, header.kid, 'decrypt')));
+					try {
+						return toBase64(new Uint8Array(await openFrame(await key, header, frame)));
+					} catch {
+						// Not this epoch's: try the next that shares its low bits.
+					}
+				}
+				return null;
+			})
+		);
+	},
+	async decode(frames, atHz) {
+		const none = { failed: frames.length, samples: 0, rms: 0, peakHz: null, prominence: null };
+		if (typeof AudioDecoder !== 'function') return { decoder: false, ...none, prominenceAt: null };
+		const config = { codec: 'opus', sampleRate: 48000, numberOfChannels: 1 };
+		if (!(await AudioDecoder.isConfigSupported(config)).supported) {
+			return { decoder: false, ...none, prominenceAt: null };
+		}
+		const { failed, pcm } = await decodeOpus(frames.map((text) => fromBase64(text)!));
+		return { decoder: true, failed, samples: pcm.length, ...analyse(pcm, atHz) };
 	}
 };
 

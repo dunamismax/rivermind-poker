@@ -8,7 +8,8 @@
 // table has in voice change (someone stands up, busts, leaves, a table
 // closes, or one of them blocks another), the table server sends the voice
 // service the new list at once, and the voice service takes out whoever is
-// no longer on it, which starts a new epoch of the group.
+// no longer on it, which starts a new epoch of the group. A list also names
+// whoever may not speak, because voice reports suspended them (P4C.8).
 import { publicRef } from './auth.ts';
 import { HttpError } from './errors.ts';
 import type { Log, TableRunner } from '../table/runner.ts';
@@ -66,6 +67,9 @@ export type VoiceOptions = {
 	link: VoiceLink;
 	// The people a player has blocked or been blocked by (SafetyStore.blocksInvolving).
 	blocksOf: (playerId: string) => Promise<Set<string>>;
+	// When a player's speaking suspension ends, in seconds since the epoch, or
+	// null without one (SafetyStore.speakingSuspendedUntil, P4C.8).
+	silencedUntil?: (playerId: string) => Promise<number | null>;
 	// Seconds since the epoch, for tokens; milliseconds order the lists.
 	now: () => number;
 	log: Log;
@@ -75,6 +79,7 @@ export class Voice {
 	#key: Buffer;
 	#link: VoiceLink;
 	#blocksOf: (playerId: string) => Promise<Set<string>>;
+	#silencedUntil: (playerId: string) => Promise<number | null>;
 	#now: () => number;
 	// The people each table last sent, so a change of stacks or turns sends nothing.
 	#sent = new Map<string, string>();
@@ -82,10 +87,11 @@ export class Voice {
 	#queues = new Map<string, Promise<void>>();
 	#at = 0;
 
-	constructor({ secret, link, blocksOf, now }: VoiceOptions) {
+	constructor({ secret, link, blocksOf, silencedUntil, now }: VoiceOptions) {
 		this.#key = voiceKey(secret);
 		this.#link = link;
 		this.#blocksOf = blocksOf;
+		this.#silencedUntil = silencedUntil ?? (async () => null);
 		this.#now = now;
 	}
 
@@ -166,13 +172,21 @@ export class Voice {
 				}
 			}
 		}
+		// Whoever may not speak, and until when: the voice service refuses their
+		// audio until then by itself, so the end needs no list of its own.
+		const silenced: [string, number][] = [];
+		for (const one of people) {
+			const until = await this.#silencedUntil(one.playerId);
+			if (until !== null) silenced.push([publicRef(one.playerId), Math.ceil(until * 1000)]);
+		}
 		// Lists are ordered by when they were made, never twice at the same instant.
 		this.#at = Math.max(this.#at + 1, Math.floor(this.#now() * 1000));
 		return {
 			table: tableId,
 			at: this.#at,
 			seats: people.map(({ seat, playerId }) => ({ seat, player: publicRef(playerId) })),
-			blocks
+			blocks,
+			...(silenced.length ? { silenced } : {})
 		};
 	}
 }

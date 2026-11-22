@@ -217,6 +217,7 @@ export function createRuntime(env: Env = process.env): Runtime {
 				secret,
 				link: httpVoiceLink(env.RIVERMIND_VOICE_URL, voiceKey(secret), log),
 				blocksOf: (playerId) => site.safety.blocksInvolving(playerId),
+				silencedUntil: (playerId) => site.safety.speakingSuspendedUntil(playerId, site.clock()),
 				now: () => Date.now() / 1000,
 				log
 			})

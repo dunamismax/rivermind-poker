@@ -2,121 +2,28 @@
 // engine a project: they make and join the table's MLS group over voice
 // signalling v1, key every frame from its epochs, and hear each other through
 // mediasoup, on a page built as the site's client is and served under its CSP.
-import { spawn, type ChildProcess } from 'node:child_process';
-import { networkInterfaces } from 'node:os';
-import path from 'node:path';
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import { expect, test, type Browser } from '@playwright/test';
 import { WebSocket } from 'ws';
-import { publicRef } from '../../src/lib/server/api/auth.ts';
-import { issueToken, voiceKey } from '../../src/lib/server/voice/tokens.ts';
-import type { Identity } from '../../src/lib/voice/group.ts';
-import { launch, canCapture, canTransform } from './browsers.ts';
-import type { JoinOptions, RoomReport } from './room.ts';
-import { ORIGIN, RESTART_PORT, VOICE_PORT, VOICE_SECRET, VOICE_URL } from './vite.config.ts';
+import { launch, canTransform } from './browsers.ts';
+import {
+	everyoneHearsEveryone,
+	identity,
+	join,
+	joining,
+	newTable,
+	none,
+	open,
+	report,
+	startVoice,
+	stopVoice,
+	token,
+	type Person
+} from './people.ts';
+import { signSeats } from '../../src/lib/server/voice/seats.ts';
+import { voiceKey } from '../../src/lib/server/voice/tokens.ts';
+import { ORIGIN, RESTART_PORT, VOICE_PORT, VOICE_SECRET } from './vite.config.ts';
 
 const key = voiceKey(new TextEncoder().encode(VOICE_SECRET));
-const identity = (seat: number): Identity => ({ player: publicRef(`p_check-seat-${seat}`), seat });
-const token = (table: string, seat: number) =>
-	issueToken(key, { table, ...identity(seat) }, Date.now() / 1000);
-let tables = 0;
-const newTable = () => `check-${process.pid}-${(tables += 1)}`;
-
-type Person = { page: Page; seat: number };
-
-// A person's page. WebKit lets one page of a browser capture at a time, so a
-// WebKit person has a browser of their own (browsers.ts).
-async function open(browser: Browser): Promise<Page> {
-	const engine = browser.browserType().name();
-	const own = engine === 'webkit' ? await browser.browserType().launch(launch.webkit) : null;
-	const context = await (own ?? browser).newContext(
-		engine === 'firefox' ? {} : { permissions: ['microphone'] }
-	);
-	const page = await context.newPage();
-	page.on('close', () => void own?.close());
-	if (process.env.VOICE_DEBUG) {
-		page.on('console', (message) => console.log(`[room] ${message.text()}`));
-		page.on('pageerror', (error) => console.log(`[room] ${error}`));
-	}
-	await page.goto('/room.html');
-	await expect(page.locator('body')).toHaveAttribute('data-room', 'ready');
-	return page;
-}
-
-// Someone sits at `seat` and joins voice: a fake microphone where the engine's
-// works here and a tone where it does not. Only Chromium is given Web Audio;
-// the others are judged by WebRTC's statistics (browsers.ts).
-function joining(engine: string, table: string, seat: number, seated: number[]): JoinOptions {
-	return {
-		url: VOICE_URL,
-		table,
-		token: token(table, seat),
-		seated: seated.map(identity),
-		source: canCapture(engine) ? 'capture' : 'tone',
-		freq: 400 + 150 * seat,
-		webAudio: engine === 'chromium'
-	};
-}
-
-async function join(
-	browser: Browser,
-	table: string,
-	seat: number,
-	seated: number[],
-	muted: number[] = []
-) {
-	const page = await open(browser);
-	const options = joining(browser.browserType().name(), table, seat, seated);
-	options.muted = muted.map((one) => identity(one).player);
-	await page.evaluate((given) => window.room.join(given), options);
-	return { page, seat };
-}
-
-const report = (person: Person, listenMs = 0): Promise<RoomReport> =>
-	person.page.evaluate((ms) => window.room.report(ms), listenMs);
-
-const none = {
-	malformed: 0,
-	'unknown-key': 0,
-	'stale-epoch': 0,
-	'wrong-sender': 0,
-	tampered: 0,
-	replayed: 0
-};
-
-// Everyone is on one epoch with one voice code, hears everyone else's audio
-// opened under the group's keys, and refused nothing.
-async function everyoneHearsEveryone(people: Person[]): Promise<RoomReport[]> {
-	let reports: RoomReport[] = [];
-	await expect(async () => {
-		reports = await Promise.all(people.map((person) => report(person, 1200)));
-		const [first] = reports;
-		expect(first.epoch).not.toBeNull();
-		for (const mine of reports) {
-			expect(mine.epoch).toBe(first.epoch);
-			expect(mine.code).toEqual(first.code);
-			expect(mine.code).toHaveLength(4);
-			expect(mine.seatsOk).toBe(true);
-			expect(mine.connection).toEqual({ send: 'connected', recv: 'connected' });
-			const others = reports.filter((other) => other !== mine).map((other) => other.leaf);
-			expect(mine.heard.map(({ leaf }) => leaf)).toEqual(others.sort((a, b) => a! - b!));
-			for (const heard of mine.heard) {
-				const label = `leaf ${heard.leaf} at leaf ${mine.leaf}`;
-				if (heard.rms !== null) expect(heard.rms, `${label}: rms`).toBeGreaterThan(0.005);
-				else expect(heard.energy, `${label}: energy`).toBeGreaterThan(0.0001);
-				expect(heard.totalSamplesReceived, `${label}: samples`).toBeGreaterThan(24_000);
-				expect(heard.concealedSamples / heard.totalSamplesReceived, label).toBeLessThan(0.5);
-			}
-			const sent = mine.transforms.find(({ direction }) => direction === 'encrypt')!;
-			expect(sent.frames).toBeGreaterThan(50);
-			expect(sent.unsent).toBe(0);
-			for (const one of mine.transforms.filter(({ direction }) => direction === 'decrypt')) {
-				expect(one.refused, `${one.id} at leaf ${mine.leaf}`).toEqual(none);
-			}
-			expect(mine.refused).toEqual([]);
-		}
-	}).toPass({ timeout: 60_000 });
-	return reports;
-}
 
 test.beforeEach(({ browserName }) => {
 	test.skip(!canTransform(browserName), 'this build of the engine has no RTCRtpScriptTransform');
@@ -225,51 +132,14 @@ test('a mute stops that person’s audio at the service, from the start and when
 	for (const person of [a, b, c]) await person.page.context().close();
 });
 
-// A voice service of the test's own, on RESTART_PORT, as the config starts the other.
-async function startVoice(): Promise<ChildProcess> {
-	const lan = Object.values(networkInterfaces())
-		.flat()
-		.find((address) => address?.family === 'IPv4' && !address.internal)?.address;
-	const child = spawn(process.execPath, [path.resolve(import.meta.dirname, '../server.ts')], {
-		env: {
-			...process.env,
-			PORT: String(RESTART_PORT),
-			RIVERMIND_SECRET: VOICE_SECRET,
-			VOICE_ORIGINS: ORIGIN,
-			VOICE_MEDIA_PORT: '0',
-			VOICE_LISTEN_IPS: ['127.0.0.1', ...(lan ? [lan] : [])].join(',')
-		},
-		stdio: process.env.VOICE_DEBUG ? 'inherit' : 'ignore'
-	});
-	const health = `http://127.0.0.1:${RESTART_PORT}/healthz`;
-	await expect
-		.poll(
-			() =>
-				fetch(health).then(
-					(response) => response.ok,
-					() => false
-				),
-			{ timeout: 30_000 }
-		)
-		.toBe(true);
-	return child;
-}
-
-async function stopVoice(child: ChildProcess): Promise<void> {
-	if (child.exitCode !== null || child.signalCode !== null) return;
-	const exited = new Promise((resolve) => child.once('exit', resolve));
-	child.kill('SIGTERM');
-	await exited;
-}
-
 test('after the voice service restarts, everyone is back in a new group within 5 seconds, mutes kept', async ({
 	browser
 }) => {
-	let service = await startVoice();
+	let service = await startVoice(RESTART_PORT);
 	try {
 		await restartCheck(browser, async () => {
 			await stopVoice(service);
-			service = await startVoice();
+			service = await startVoice(RESTART_PORT);
 		});
 	} finally {
 		await stopVoice(service);
@@ -355,18 +225,79 @@ test('a page with a token that is not genuine gets no voice', async ({ browser }
 	await page.context().close();
 });
 
+// Tell the voice service who a table has in voice, as the table server does,
+// signed with the voice key (P4C.5), with whoever may not speak (P4C.8).
+async function seatList(table: string, seats: number[], silenced: [number, number][] = []) {
+	const body = JSON.stringify({
+		table,
+		at: Date.now(),
+		seats: seats.map((seat) => ({ seat, player: identity(seat).player })),
+		blocks: [],
+		silenced: silenced.map(([seat, until]) => [identity(seat).player, until])
+	});
+	const response = await fetch(`http://127.0.0.1:${VOICE_PORT}/seats`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json', ...signSeats(key, body, Date.now()) },
+		body
+	});
+	expect(response.status).toBe(204);
+}
+
+test('someone suspended from speaking is heard by nobody, still hears, and speaks again after (P4C.8)', async ({
+	browser
+}) => {
+	const table = newTable();
+	await seatList(table, [0, 1]);
+	const a = await join(browser, table, 0, [0, 1]);
+	const b = await join(browser, table, 1, [0, 1]);
+	await everyoneHearsEveryone([a, b]);
+	// Voice reports suspend a for four seconds: a's page stops sending, and b's
+	// stream of a ends at the service.
+	const until = Date.now() + 4000;
+	await seatList(table, [0, 1], [[0, until]]);
+	await expect
+		.poll(async () => {
+			const [mine, theirs] = [await report(a), await report(b)];
+			return [mine.silencedUntil, mine.producing, theirs.heard.length];
+		})
+		.toEqual([until, false, 0]);
+	// a still hears b.
+	const before = (await report(a)).heard[0].packetsReceived;
+	await a.page.waitForTimeout(1000);
+	expect((await report(a)).heard[0].packetsReceived - before).toBeGreaterThan(25);
+	// When it ends, a sends again and b hears a.
+	await expect.poll(async () => (await report(a)).silencedUntil, { timeout: 10_000 }).toBeNull();
+	await everyoneHearsEveryone([a, b]);
+	for (const person of [a, b]) await person.page.context().close();
+});
+
+// What the service answers a handshake: 101 when it opens the socket.
+const handshake = (origin: string, headers: Record<string, string> = {}) =>
+	new Promise<number>((resolve) => {
+		const socket = new WebSocket(`ws://127.0.0.1:${VOICE_PORT}/voice`, { origin, headers });
+		socket.on('open', () => {
+			socket.close();
+			resolve(101);
+		});
+		socket.on('unexpected-response', (_request, response) => resolve(response.statusCode ?? 0));
+		socket.on('error', () => {});
+	});
+
 test('the service refuses a socket opened from another origin', async ({ browserName }) => {
 	test.skip(browserName !== 'chromium', 'one engine is enough: no browser is involved');
-	const status = (origin: string) =>
-		new Promise<number>((resolve) => {
-			const socket = new WebSocket(`ws://127.0.0.1:${VOICE_PORT}/voice`, { origin });
-			socket.on('open', () => {
-				socket.close();
-				resolve(101);
-			});
-			socket.on('unexpected-response', (_request, response) => resolve(response.statusCode ?? 0));
-			socket.on('error', () => {});
-		});
-	expect(await status('https://elsewhere.example')).toBe(403);
-	expect(await status(ORIGIN)).toBe(101);
+	expect(await handshake('https://elsewhere.example')).toBe(403);
+	expect(await handshake(ORIGIN)).toBe(101);
+});
+
+test('the service lets one address open only so many sockets (P4C.8)', async ({ browserName }) => {
+	test.skip(browserName !== 'chromium', 'one engine is enough: no browser is involved');
+	// As Caddy passes them on: the client's address last in X-Forwarded-For.
+	const from = (address: string) => handshake(ORIGIN, { 'x-forwarded-for': address });
+	const answers: number[] = [];
+	for (let tries = 0; tries < 31; tries += 1) answers.push(await from('203.0.113.50'));
+	expect(answers.slice(0, 30)).toEqual(Array(30).fill(101));
+	expect(answers[30]).toBe(429);
+	// Another address is not held back, nor is this machine itself.
+	expect(await from('203.0.113.51')).toBe(101);
+	expect(await handshake(ORIGIN)).toBe(101);
 });

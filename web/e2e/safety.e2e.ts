@@ -64,6 +64,16 @@ test('people react, mute, block and report at the table', async ({
 	await expect(menu.getByRole('status')).toHaveText(
 		'You already reported this today; it counts once.'
 	);
+	// A report of something said in voice says no audio goes with it (P4C.8).
+	await expect(menu.locator('[data-report="voice"]')).toHaveCount(0);
+	await menu
+		.getByRole('combobox', { name: 'Reason' })
+		.selectOption({ label: 'Something said in voice' });
+	await expect(menu.locator('[data-report="voice"]')).toContainText(
+		'Voice is never recorded, so there is no audio to send with this report.'
+	);
+	await menu.getByRole('button', { name: 'Report' }).click();
+	await expect(menu.getByRole('status')).toHaveText('Thanks: the report was sent for review.');
 
 	// A block replaces the mute; unblocking clears it.
 	await menu.getByRole('button', { name: 'Block' }).click();

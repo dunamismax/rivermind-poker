@@ -749,6 +749,169 @@ describe("the table's word on who is in voice (P4C.5)", () => {
 	});
 });
 
+describe('speaking suspended by voice reports, and limits on players (P4C.8)', () => {
+	const listOf = (at: number, silenced: [number, number][] = []) => ({
+		table: TABLE,
+		at,
+		seats: [0, 1, 2].map((seat) => ({ seat, player: who(seat).player })),
+		blocks: [],
+		silenced: silenced.map(([seat, until]) => [who(seat).player, until] as [string, number])
+	});
+
+	// Three people in the group, each sending and each with a receive transport.
+	async function room(voice: VoiceService) {
+		const pages = [new Page(voice, 0), new Page(voice, 1), new Page(voice, 2)];
+		const producers: string[] = [];
+		const receivers: string[] = [];
+		const senders: string[] = [];
+		for (const page of pages) {
+			await page.hello();
+			await page.joinGroup();
+			const send = await page.ok('transport.create', { direction: 'send' });
+			senders.push(send.transport);
+			producers.push(
+				(
+					await page.ok('produce', {
+						transport: send.transport,
+						rtpParameters: OPUS(8000 + page.identity.seat) as never
+					})
+				).producer
+			);
+			receivers.push((await page.ok('transport.create', { direction: 'recv' })).transport);
+		}
+		const consume = (index: number, from: number) =>
+			pages[index].ask('consume', {
+				transport: receivers[index],
+				producer: producers[from],
+				rtpCapabilities: pages[index].welcome!.routerRtpCapabilities
+			});
+		return { pages, producers, senders, consume };
+	}
+
+	it('stops a suspended person being heard at once, lets them listen, and lets them speak when it ends', async () => {
+		const voice = service();
+		await voice.seats(listOf(clock * 1000));
+		const { pages, senders, consume } = await room(voice);
+		const [a, b, c] = pages;
+		const heardByB = (await consume(1, 0)) as unknown as { consumer: string };
+		const heardByC = (await consume(2, 0)) as unknown as { consumer: string };
+		for (const page of pages) page.pending();
+		// Voice reports suspend a: their audio ends for everyone, and their page hears until when.
+		const until = clock * 1000 + 300;
+		expect(await voice.seats(listOf(clock * 1000 + 1, [[0, until]]))).toBe(true);
+		expect(b.pending()).toContainEqual({ notice: 'consumer.closed', consumer: heardByB.consumer });
+		expect(c.pending()).toContainEqual({ notice: 'consumer.closed', consumer: heardByC.consumer });
+		expect(a.pending()).toEqual([{ notice: 'silenced', until }]);
+		expect(
+			await a.ask('produce', { transport: senders[0], rtpParameters: OPUS(8100) as never })
+		).toMatchObject({ ok: false, error: 'not-allowed' });
+		expect(await consume(1, 0)).toMatchObject({ ok: false, error: 'unknown' });
+		// They still hear everyone, and nobody left the room.
+		expect((await consume(0, 1)).ok).toBe(true);
+		expect((await consume(0, 2)).ok).toBe(true);
+		expect(pages.map((page) => page.closed)).toEqual([null, null, null]);
+		expect(lines.some((line) => line.endsWith("someone's speaking is suspended"))).toBe(true);
+		// When it ends, their page hears so, and they may send again.
+		clock += 1;
+		expect(await a.notices()).toEqual([{ notice: 'silenced', until: null }]);
+		expect(
+			(await a.ask('produce', { transport: senders[0], rtpParameters: OPUS(8101) as never })).ok
+		).toBe(true);
+		clock -= 1;
+		for (const page of pages) page.leave();
+	});
+
+	it('tells a page that joins while suspended, and one a moderator lets speak again', async () => {
+		const voice = service();
+		const until = (clock + 3600) * 1000;
+		await voice.seats(listOf(clock * 1000, [[1, until]]));
+		const b = new Page(voice, 1);
+		await b.hello();
+		expect(b.welcome!.silenced).toBe(until);
+		const a = new Page(voice, 0);
+		await a.hello();
+		expect(a.welcome!.silenced).toBeNull();
+		await b.joinGroup();
+		const send = await b.ok('transport.create', { direction: 'send' });
+		expect(
+			await b.ask('produce', { transport: send.transport, rtpParameters: OPUS(8200) as never })
+		).toMatchObject({ ok: false, error: 'not-allowed' });
+		b.pending();
+		// The table's next list no longer names them: a moderator lifted it.
+		expect(await voice.seats(listOf(clock * 1000 + 1))).toBe(true);
+		expect(b.pending()).toEqual([{ notice: 'silenced', until: null }]);
+		expect(
+			(await b.ask('produce', { transport: send.transport, rtpParameters: OPUS(8201) as never })).ok
+		).toBe(true);
+		for (const page of [a, b]) page.leave();
+	});
+
+	it('lets a player say hello only so often, however many tokens they hold', async () => {
+		const voice = new VoiceService({
+			key,
+			media,
+			log: (line) => lines.push(line),
+			now: () => clock,
+			playerHellos: { burst: 2, perSecond: 1e-6 }
+		});
+		for (let tries = 0; tries < 2; tries += 1) {
+			const page = new Page(voice, 4);
+			expect((await page.hello()).ok).toBe(true);
+			page.leave();
+		}
+		const third = new Page(voice, 4);
+		expect(await third.hello()).toEqual({ id: 1, ok: false, error: 'too-many' });
+		expect(third.closed?.code).toBe(CLOSE.rate);
+		// Someone else is not held back by it.
+		const other = new Page(voice, 5);
+		expect((await other.hello()).ok).toBe(true);
+		other.leave();
+		expect(lines).toContain('refused a hello: too many from one player');
+	});
+
+	it('closes a socket that has not said hello in time', async () => {
+		const voice = new VoiceService({
+			key,
+			media,
+			log: (line) => lines.push(line),
+			now: () => clock,
+			helloMs: 100
+		});
+		const silent = new Page(voice, 6);
+		const prompt = new Page(voice, 7);
+		await prompt.hello();
+		await new Promise((resolve) => setTimeout(resolve, 250));
+		expect(silent.closed).toEqual({ code: CLOSE.protocol, reason: 'no hello' });
+		expect(prompt.closed).toBeNull();
+		expect(lines).toContain('closed a socket that said no hello');
+		prompt.leave();
+	});
+
+	it('limits what one player sends across all their sockets', async () => {
+		const voice = new VoiceService({
+			key,
+			media,
+			log: (line) => lines.push(line),
+			now: () => clock,
+			playerMessages: { burst: 6, perSecond: 1e-6 }
+		});
+		// One player at two tables, a socket at each.
+		const here = new Page(voice, 3);
+		const there = new Page(voice, 3);
+		await here.hello();
+		await there.hello(there.token('Tc2y-3_zA1bR'), 'Tc2y-3_zA1bR');
+		for (let sent = 0; sent < 3; sent += 1)
+			await here.ok('status', { muted: false, deafened: false });
+		for (let sent = 0; sent < 3; sent += 1) {
+			await there.ok('status', { muted: false, deafened: false });
+		}
+		expect(here.closed).toBeNull();
+		there.raw(JSON.stringify({ id: 99, type: 'status', muted: true, deafened: false }));
+		expect(there.closed?.code).toBe(CLOSE.rate);
+		here.leave();
+	});
+});
+
 describe('the table server and the voice service together (P4C.5)', () => {
 	it('takes someone who stands up out of the room within a second, and the rest move on', async () => {
 		const voice = new VoiceService({

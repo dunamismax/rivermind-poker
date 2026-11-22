@@ -69,7 +69,10 @@ const app = createApp({
 	voiceProxy:
 		!candidate && process.env.RIVERMIND_VOICE_PROXY
 			? new URL(process.env.RIVERMIND_VOICE_PROXY)
-			: null
+			: null,
+	voiceFiles: existsSync(resolve(build, 'client', 'voice-files.json'))
+		? readFileSync(resolve(build, 'client', 'voice-files.json'), 'utf8')
+		: null
 });
 
 app.server.listen(port, host, () => {

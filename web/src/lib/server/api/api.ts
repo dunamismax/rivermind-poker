@@ -39,7 +39,7 @@ import {
 	SessionRequest,
 	WaitlistRequest
 } from './protocol.ts';
-import { clientAddress, REACTIONS } from './safety.ts';
+import { addressTag, clientAddress, REACTIONS, suspendIfDue } from './safety.ts';
 import { STAKES, type Site } from './site.ts';
 import { parseCookies } from './socket.ts';
 import type { Tables } from './tables.ts';
@@ -415,7 +415,7 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 		};
 
 		/** Report the person in a seat for review (P4.5). */
-		const report: Route = async (request) => {
+		const report: Route = async (request, _params, info) => {
 			const asked = await body(request, ReportRequest);
 			const player = await playerOf(request);
 			const runner = tables.lobbyRunner(asked.table_id, player.playerId);
@@ -433,12 +433,22 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 				reason: asked.reason,
 				tableId: runner.tableId,
 				handNo: runner.table.handNo || null,
-				at: site.clock()
+				at: site.clock(),
+				reporterAddress: addressTag(site.secret, address(request, info))
 			});
 			if (recorded) {
 				console.log(
 					`${player.playerId} reported ${target.playerId} at table ${runner.tableId}: ${asked.reason}`
 				);
+			}
+			// Enough voice reports from far enough apart stop that guest speaking
+			// in voice for a day, at every table they sit at (P4C.8).
+			if (recorded && asked.reason === 'voice') {
+				const until = await suspendIfDue(site.safety, target.playerId, site.clock());
+				if (until !== null) {
+					console.log(`${target.playerId}'s speaking in voice is suspended for a day`);
+					await tables.voiceRefresh(target.playerId);
+				}
 			}
 			const response: p.ReportResponse = { recorded };
 			return json(response, 201);
@@ -457,9 +467,21 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 		};
 
 		/** A voice token for the person in a seat at this table (P4C.5, Q-10). */
-		const voiceToken: Route = async (request, [tableId]) => {
+		const voiceToken: Route = async (request, [tableId], info) => {
 			const player = await playerOf(request);
 			if (tables.voice === null) throw new HttpError(503, 'Voice is not available here.');
+			// Each token opens one connection to the voice service, so these limit
+			// how often a player, or an address, can join voice (P4C.8).
+			const from = address(request, info);
+			if (!limiters.voice.allow(player.playerId) || !limiters.voiceAddress.allow(from)) {
+				const wait = Math.max(
+					limiters.voice.retryAfter(player.playerId),
+					limiters.voiceAddress.retryAfter(from)
+				);
+				throw new HttpError(429, 'Joining voice that often is not allowed; wait a moment.', {
+					'retry-after': String(Math.max(1, Math.round(wait)))
+				});
+			}
 			const runner = tables.lobbyRunner(tableId, player.playerId);
 			const { token, seat } = await tables.voice.token(runner, player.playerId);
 			const response: VoiceTokenResponse = { table: tableId, seat, token, url: VOICE_PATH };

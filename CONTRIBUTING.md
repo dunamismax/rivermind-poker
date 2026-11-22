@@ -147,9 +147,11 @@ cd web
 DATABASE_URL=postgresql://localhost/rivermind pnpm moderation reports             # newest first; --limit N
 DATABASE_URL=postgresql://localhost/rivermind pnpm moderation signals --limit 20
 DATABASE_URL=postgresql://localhost/rivermind pnpm moderation rename p_0123abcd   # a new random handle
+DATABASE_URL=postgresql://localhost/rivermind pnpm moderation suspensions          # who may not speak in voice
+DATABASE_URL=postgresql://localhost/rivermind pnpm moderation lift p_0123abcd     # let them speak again
 ```
 
-A report line gives the time, the reason, the reported player's handle as it was then and their id, the reporter, and the table and hand when there were any. `rename` prints the old and the new handle; tables the player sits at show the new one after they sit down again. `pnpm build` bundles the script as `build/moderation.js`, so a release runs it with no `node_modules`. On ubuntu-vm, as root:
+A report line gives the time, the reason, the reported player's handle as it was then and their id, the reporter, and the table and hand when there were any. `rename` prints the old and the new handle; tables the player sits at show the new one after they sit down again. Voice reports (P4C.8) from three people at three tables on three addresses within a day suspend that guest's speaking in voice for a day (`voice_suspensions`, [docs/voice.md](docs/voice.md#voice-reports-and-suspended-speaking)); `suspensions` lists who may not speak now and until when, and `lift` ends one, which takes effect when the guest next joins voice. `pnpm build` bundles the script as `build/moderation.js`, so a release runs it with no `node_modules`. On ubuntu-vm, as root:
 
 ```sh
 set -a; . /etc/web-apps/rivermind_poker/web.env; set +a
@@ -352,6 +354,14 @@ node build/voice/voice.js derive-key < secret   # the voice key for a site secre
 The table server's side (P4C.5) is [`api/voice.ts`](web/src/lib/server/api/voice.ts): `POST /api/tables/{id}/voice` issues a seated person's token, and every change in who a table has in voice sends the voice service a signed list ([`server/voice/seats.ts`](web/src/lib/server/voice/seats.ts)) at `POST /seats`. Both are on when the Node server has `RIVERMIND_VOICE_URL` (the live unit sets `http://127.0.0.1:4323`); without it the token route answers 503 and nothing is sent.
 
 `room.check.ts` also starts a voice service of its own on 4393 (the check page's CSP allows it) and restarts it with SIGTERM, to show pages coming back by themselves; a run that is stopped can leave it holding the port (`lsof -ti tcp:4393 | xargs kill`).
+
+`tap.check.ts` (P4C.8) starts the test build [`voice/check/tap-server.ts`](web/voice/check/tap-server.ts) on 4394, which keeps every packet the SFU forwards and says what it kept on 4395 (`GET /tap`), and checks that copy against what each person can open ([docs/voice.md](docs/voice.md#what-a-copy-of-the-audio-is-worth-the-keyless-listener)):
+
+```sh
+pnpm voice:check tap.check   # the keyless listener, in three browsers
+```
+
+The voice service limits hellos and messages per player and new sockets per address, and closes a socket that has not said hello within 10 seconds; the table server limits voice tokens per player and per address ([docs/voice.md](docs/voice.md#limits-on-joining-and-signalling)). `pnpm build` also writes `build/client/voice-files.json`, the SHA-256 of every file the pages run ([`scripts/voice-files.js`](web/scripts/voice-files.js)), which the Node server serves at `/voice-files.json`.
 
 The voice service takes its settings from the environment (the comment at the top of `voice/server.ts` lists them). Locally, `RIVERMIND_SECRET` stands in for the live unit's `VOICE_KEY_FILE`. `pnpm voice:check` starts it from the source on `127.0.0.1:4392`, with media on loopback and this machine's first LAN address (for Firefox) and a secret of the checks' own, and its room checks sign their tokens with the same secret. With `VOICE_REMOTE=1` it starts no service and the room checks talk to whatever answers on 4392, such as a service on ubuntu-vm through `ssh -N -L 4392:127.0.0.1:4323 root@ubuntu-vm`, with media over the host's public address (how P4C.4 was checked; docs/voice.md has the host setup).
 

@@ -1371,7 +1371,7 @@
 					"headers": {
 						"content-type": "application/json"
 					},
-					"body": "{\"detail\":\"Invalid request body: reason: Input should be 'handle', 'abuse', 'collusion' or 'other'\"}"
+					"body": "{\"detail\":\"Invalid request body: reason: Input should be 'handle', 'abuse', 'collusion', 'other' or 'voice'\"}"
 				}
 			}
 		},

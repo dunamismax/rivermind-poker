@@ -19,7 +19,7 @@
 	import { betClass, clockLeft, placeClass, sideClass } from './layout.ts';
 	import NlSeat from './NlSeat.svelte';
 	import NlVoice from './NlVoice.svelte';
-	import { REACTIONS, REPORT_REASONS, relationText } from './safety.ts';
+	import { REACTIONS, REPORT_REASONS, VOICE_REPORT_NOTE, relationText } from './safety.ts';
 	import { TableVoice } from './voice.svelte.ts';
 	import './seat-places.css';
 
@@ -463,6 +463,9 @@
 					</label>
 					<button type="submit" class="px-btn small amber" disabled={busy}>Report</button>
 				</form>
+				{#if reason === 'voice'}<p class="hint text-s text-paper-shade" data-report="voice">
+						{VOICE_REPORT_NOTE}
+					</p>{/if}
 				{#if reported}<p class={note} role="status">{reported}</p>{/if}
 			</div>
 		{/if}
