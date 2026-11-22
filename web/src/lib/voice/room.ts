@@ -16,6 +16,12 @@
 //
 // It sends audio only once it is in the group, and each stream it hears is
 // opened only as the leaf the service says it is from.
+//
+// `VoiceRoom` is what a page holds. Each connection to the service is a
+// `VoiceSession` of its own; when the service restarts or the connection
+// drops, the room asks for a new token and joins a new group, keeping the
+// person's mutes (P4C.5). A new group starts again at epoch 0, which a key
+// store never goes back to, so each session has a worker and keys of its own.
 import { Device, type types as msc } from 'mediasoup-client';
 import { EpochKeys, type Epoch } from './group-keys.ts';
 import { Member, type Identity } from './group.ts';
@@ -48,7 +54,10 @@ export type VoiceRoomOptions = {
 	// The service's WebSocket, such as wss://rivermindpoker.com/voice.
 	url: string;
 	table: string;
-	token: string;
+	// A token for this seat (POST /api/tables/{id}/voice). Each is good for one
+	// connection, so a room that is to come back by itself is given a way to get
+	// another; with a token alone, a lost connection ends the room.
+	token: string | (() => Promise<string>);
 	// The microphone, or null to listen only.
 	track: MediaStreamTrack | null;
 	// Who the table shows seated, for the check of the group's members (group-keys.ts).
@@ -61,9 +70,15 @@ export type VoiceRoomOptions = {
 	// A stream was added, or ended.
 	onheard?: (heard: Heard) => void;
 	onended?: (heard: Heard) => void;
+	// The room ended: closed here, refused, or lost for good (a code from CLOSE).
 	onclose?: (code: number, reason: string) => void;
+	// The connection was lost and the room is coming back, or has.
+	onreconnecting?: (code: number) => void;
+	onreconnected?: () => void;
 	log?: (line: string) => void;
 };
+
+type SessionOptions = Omit<VoiceRoomOptions, 'token'> & { token: string };
 
 // One person this page hears, or would but for a mute.
 export type Heard = {
@@ -78,8 +93,8 @@ export type Heard = {
 	track: MediaStreamTrack;
 };
 
-export class VoiceRoom {
-	#options: VoiceRoomOptions;
+class VoiceSession {
+	#options: SessionOptions;
 	#socket: VoiceSocket;
 	#welcome: Requests['hello']['response'];
 	#identity: Identity;
@@ -102,7 +117,7 @@ export class VoiceRoom {
 	refused: string[] = [];
 
 	private constructor(
-		options: VoiceRoomOptions,
+		options: SessionOptions,
 		socket: VoiceSocket,
 		welcome: Requests['hello']['response']
 	) {
@@ -117,20 +132,35 @@ export class VoiceRoom {
 		for (const peer of welcome.peers) this.#peers.set(peer.peer, peer);
 	}
 
-	static async join(options: VoiceRoomOptions): Promise<VoiceRoom> {
+	static async join(options: SessionOptions): Promise<VoiceSession> {
 		const socket = await VoiceSocket.open(options.url);
-		const welcome = await socket.request('hello', {
-			v: VOICE_PROTOCOL,
-			table: options.table,
-			token: options.token
-		});
-		const room = new VoiceRoom(options, socket, welcome);
+		let welcome: Requests['hello']['response'];
+		try {
+			welcome = await socket.request('hello', {
+				v: VOICE_PROTOCOL,
+				table: options.table,
+				token: options.token
+			});
+		} catch (error) {
+			socket.close();
+			throw error;
+		}
+		const room = new VoiceSession(options, socket, welcome);
 		socket.onnotice = (notice) => room.#later(() => room.#notice(notice));
 		socket.onclose = (code, reason) => {
-			room.#shut();
-			options.onclose?.(code, reason);
+			options.log?.(`voice: the service closed the connection (${code})`);
+			try {
+				room.#shut();
+			} finally {
+				options.onclose?.(code, reason);
+			}
 		};
-		await room.#later(() => room.#start());
+		try {
+			await room.#later(() => room.#start());
+		} catch (error) {
+			room.close();
+			throw error;
+		}
 		return room;
 	}
 
@@ -199,9 +229,22 @@ export class VoiceRoom {
 		if (this.#closed) return;
 		this.#closed = true;
 		if (this.#commitTimer) clearTimeout(this.#commitTimer);
-		this.#keys.close();
-		this.#send?.close();
-		this.#recv?.close();
+		// Each step on its own: one that fails in some browser must not keep the
+		// rest, or the room, from hearing that this session is over.
+		const steps: (() => void)[] = [
+			() => this.#keys.close(),
+			...[...this.#heard.values()].map((heard) => () => this.#drop(heard)),
+			() => this.#send?.close(),
+			() => this.#recv?.close(),
+			() => this.#frames.close()
+		];
+		for (const step of steps) {
+			try {
+				step();
+			} catch (error) {
+				this.#log(`voice: closing: ${error}`);
+			}
+		}
 	}
 
 	async #start(): Promise<void> {
@@ -279,6 +322,8 @@ export class VoiceRoom {
 		if (!this.#send || !this.#options.track || this.#producer) return;
 		this.#producer = await this.#send.produce({
 			track: this.#options.track,
+			// The microphone outlives this session: the next one sends it again.
+			stopTracks: false,
 			codecOptions: CODEC_OPTIONS,
 			onRtpSender: (sender) => this.#frames.encrypt(sender)
 		});
@@ -413,5 +458,140 @@ export class VoiceRoom {
 		}
 		await this.#enter(candidate.member);
 		this.#plan();
+	}
+}
+
+// Codes after which a room comes back by itself: the service restarted, or
+// the connection went (a phone that lost its signal, a server that died).
+// Not after it was refused, replaced by another page in the seat, taken out
+// for leaving the seat, or closed on purpose. Playwright's WebKit reports the
+// service's 1012 (service restart) as 1005 (no status); a room's own close
+// never gets here, since it marks itself closed first.
+const COME_BACK = new Set([1001, 1005, 1006, 1011, 1012, 1013]);
+const RETRY_MS = [250, 500, 1000];
+
+export class VoiceRoom {
+	#options: VoiceRoomOptions;
+	#session: VoiceSession | null = null;
+	#muted: Set<string>;
+	#closed = false;
+	#tries = 0;
+	#retry: ReturnType<typeof setTimeout> | null = null;
+
+	private constructor(options: VoiceRoomOptions) {
+		this.#options = options;
+		this.#muted = new Set(options.muted ?? []);
+	}
+
+	// Join the table's voice room. A first connection that fails throws.
+	static async join(options: VoiceRoomOptions): Promise<VoiceRoom> {
+		const room = new VoiceRoom(options);
+		await room.#connect();
+		return room;
+	}
+
+	async #connect(): Promise<void> {
+		const given = this.#options.token;
+		const token = typeof given === 'string' ? given : await given();
+		const session = await VoiceSession.join({
+			...this.#options,
+			token,
+			muted: [...this.#muted],
+			onclose: (code, reason) => this.#lost(session, code, reason)
+		});
+		if (this.#closed) {
+			session.close();
+			return;
+		}
+		this.#session = session;
+		this.#tries = 0;
+	}
+
+	#lost(session: VoiceSession, code: number, reason: string): void {
+		// A session that failed before it was taken on is its connect's to report.
+		if (this.#session !== session) return;
+		this.#session = null;
+		if (this.#closed) return;
+		if (typeof this.#options.token === 'string' || !COME_BACK.has(code)) {
+			this.#closed = true;
+			this.#options.onclose?.(code, reason);
+			return;
+		}
+		this.#options.onreconnecting?.(code);
+		this.#again();
+	}
+
+	#again(): void {
+		const wait = RETRY_MS[Math.min(this.#tries, RETRY_MS.length - 1)];
+		this.#tries += 1;
+		this.#retry = setTimeout(() => {
+			this.#retry = null;
+			if (this.#closed) return;
+			this.#connect().then(
+				() => {
+					if (this.#session) this.#options.onreconnected?.();
+				},
+				(error: unknown) => {
+					this.#options.log?.(`voice: coming back: ${error}`);
+					if (!this.#closed) this.#again();
+				}
+			);
+		}, wait);
+	}
+
+	get connected(): boolean {
+		return this.#session !== null;
+	}
+
+	get leaf(): number | null {
+		return this.#session?.leaf ?? null;
+	}
+
+	get epoch(): Epoch | null {
+		return this.#session?.epoch ?? null;
+	}
+
+	get refused(): string[] {
+		return this.#session?.refused ?? [];
+	}
+
+	get handler(): string {
+		return this.#session?.handler ?? '';
+	}
+
+	get heard(): Heard[] {
+		return this.#session?.heard ?? [];
+	}
+
+	get transports(): { send: msc.Transport | null; recv: msc.Transport | null } {
+		return this.#session?.transports ?? { send: null, recv: null };
+	}
+
+	get member(): Member | null {
+		return this.#session?.member ?? null;
+	}
+
+	async tallies(): Promise<Tally[]> {
+		return this.#session ? this.#session.tallies() : [];
+	}
+
+	// Mute or unmute someone, by public reference: kept across reconnections.
+	async mute(player: string, muted: boolean): Promise<void> {
+		if (muted) this.#muted.add(player);
+		else this.#muted.delete(player);
+		await this.#session?.mute(player, muted);
+	}
+
+	// The table's seats changed.
+	seats(seated: Identity[]): void {
+		this.#options.seated = seated;
+		this.#session?.seats(seated);
+	}
+
+	close(): void {
+		this.#closed = true;
+		if (this.#retry) clearTimeout(this.#retry);
+		this.#session?.close();
+		this.#session = null;
 	}
 }

@@ -19,6 +19,9 @@ export type JoinOptions = {
 	webAudio: boolean;
 	// Public references this person has muted.
 	muted?: string[];
+	// Ask the test for each token (`window.voiceToken`), so the room can come
+	// back by itself after the service restarts.
+	refresh?: boolean;
 };
 
 export type Heard = {
@@ -34,6 +37,7 @@ export type Heard = {
 };
 
 export type RoomReport = {
+	connected: boolean;
 	leaf: number | null;
 	epoch: number | null;
 	code: string[];
@@ -58,10 +62,14 @@ export type RoomCheck = {
 declare global {
 	interface Window {
 		room: RoomCheck;
+		voiceToken?: () => Promise<string>;
 	}
 }
 
-const log = (line: string) => document.querySelector('#log')!.append(`${line}\n`);
+const log = (line: string) => {
+	document.querySelector('#log')!.append(`${line}\n`);
+	console.log(line);
+};
 
 let room: VoiceRoom | null = null;
 let context: AudioContext | null = null;
@@ -127,7 +135,7 @@ window.room = {
 		room = await VoiceRoom.join({
 			url: options.url,
 			table: options.table,
-			token: options.token,
+			token: options.refresh ? () => window.voiceToken!() : options.token,
 			seated: options.seated,
 			muted: options.muted,
 			track: await track(options),
@@ -138,6 +146,8 @@ window.room = {
 				elements.delete(stream.peer);
 			},
 			onclose: (code) => document.body.setAttribute('data-closed', String(code)),
+			onreconnecting: (code) => log(`lost the voice service (${code}); coming back`),
+			onreconnected: () => log('back in voice'),
 			log
 		});
 		log(`joined as leaf ${room.leaf} with ${room.handler}`);
@@ -181,6 +191,7 @@ window.room = {
 			return remote ? `${remote.protocol} ${remote.address ?? remote.ip}:${remote.port}` : null;
 		};
 		return {
+			connected: now.connected,
 			leaf: now.leaf,
 			epoch: now.epoch ? Number(now.epoch.epoch) : null,
 			code: now.epoch?.code ?? [],

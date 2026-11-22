@@ -9,6 +9,8 @@ export const ORIGIN = `http://127.0.0.1:${PORT}`;
 // The voice service the room page talks to (playwright.voice-check.config.ts starts it).
 export const VOICE_PORT = 4392;
 export const VOICE_URL = `ws://127.0.0.1:${VOICE_PORT}/voice`;
+// One the room checks start and restart themselves (room.check.ts).
+export const RESTART_PORT = 4393;
 // The site secret it runs with, from which the checks sign their voice tokens.
 export const VOICE_SECRET = 'the voice checks’ own secret';
 
@@ -18,7 +20,7 @@ const csp = [
 	"img-src 'self' data:",
 	"style-src 'self'",
 	"script-src 'self'",
-	`connect-src 'self' ${VOICE_URL.replace(/\/voice$/, '')}`,
+	`connect-src 'self' ws://127.0.0.1:${VOICE_PORT} ws://127.0.0.1:${RESTART_PORT}`,
 	"object-src 'none'",
 	"frame-ancestors 'none'",
 	"base-uri 'self'",
