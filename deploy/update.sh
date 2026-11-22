@@ -405,7 +405,8 @@ activate)
     # Its media port, which nothing else on the host uses (Q-9).
     if ufw status | grep -q '^Status: active'; then
         for proto in udp tcp; do
-            if ! ufw status | grep -qE "^$VOICE_MEDIA_PORT/$proto +ALLOW IN +Anywhere$"; then
+            # `ufw status` prints "3478/udp   ALLOW   Anywhere   # comment".
+            if ! ufw status | grep -qE "^$VOICE_MEDIA_PORT/$proto +ALLOW +Anywhere( |$)"; then
                 ufw allow "$VOICE_MEDIA_PORT/$proto" comment 'RiverMind table voice (rivermind-poker-voice)'
             fi
         done
