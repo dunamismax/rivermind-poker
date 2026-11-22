@@ -365,6 +365,24 @@ The voice service limits hellos and messages per player and new sockets per addr
 
 The voice service takes its settings from the environment (the comment at the top of `voice/server.ts` lists them). Locally, `RIVERMIND_SECRET` stands in for the live unit's `VOICE_KEY_FILE`. `pnpm voice:check` starts it from the source on `127.0.0.1:4392`, with media on loopback and this machine's first LAN address (for Firefox) and a secret of the checks' own, and its room checks sign their tokens with the same secret. With `VOICE_REMOTE=1` it starts no service and the room checks talk to whatever answers on 4392, such as a service on ubuntu-vm through `ssh -N -L 4392:127.0.0.1:4323 root@ubuntu-vm`, with media over the host's public address (how P4C.4 was checked; docs/voice.md has the host setup).
 
+### Recovery, measurements and capacity (P4C.7)
+
+[docs/voice.md](docs/voice.md#audio-quality-resilience-and-capacity-p4c7) has what was measured and how a room comes back by itself. The checks and tools:
+
+| Command (from `web/`) | What it does |
+| --- | --- |
+| `pnpm voice:check recovery` | In each browser: a media worker killed under four people, a network that goes away and comes back as another, and a service with no room left ([`recovery.check.ts`](web/voice/check/recovery.check.ts)). It starts services of its own on 4393 and 4396. CI runs it with the rest of `pnpm voice:check`. |
+| `pnpm voice:measure delay` | Mouth-to-ear delay with a marked tone, for pairs in each engine, across engines and nine in a room, as each track arrives and as the site sends and plays it. Prints `[delay]` lines; `MEASURE_SECONDS` sets each run's length (40). |
+| `pnpm voice:measure loss` | Speech from one person to another through a network that loses and delays packets, in each engine. Prints `[loss]` lines and writes what the listener heard to `artifacts/voice-loss/*.wav`. On macOS the speech is the system's own voice (`say`); elsewhere `MEASURE_SPEECH` names a WAVE file. |
+| `scripts/voice-measure-linux.sh` | The loss measure in Playwright's Linux browsers in Docker, the network impaired by `tc netem` on the container's loopback (`IMPAIR=netem`). |
+| `pnpm voice:load` | Fills a mediasoup worker with synthetic rooms and prints its share of a core, its memory and what it sent: `--rooms 1,2,4,8 --talking 9,2 --seconds 20`. Run it on the machine being sized. |
+
+`pnpm voice:measure` is not in CI and asserts almost nothing: its figures mean little on a shared runner. Run it on a quiet machine and record what it prints with the machine and its load.
+
+The network in the recovery check and the loss measure is [`relay.ts`](web/voice/check/relay.ts), a UDP relay between the pages and the service's media port: the service listens on loopback and announces the relay's address (`VOICE_ANNOUNCED_ADDRESS`), so all audio passes through it. `relay.gap(ms)` takes the network away and brings back another; `relay.impairment` loses and delays packets in either direction.
+
+The voice service takes `VOICE_MAX_ROOMS` and `VOICE_MAX_PEOPLE`; at either limit a hello is refused with `full` and the table says voice is full.
+
 ### Voice at the table (P4C.6)
 
 Pages offer voice only where `GET /api/voice` says so: a voice service in `RIVERMIND_VOICE_URL` and `RIVERMIND_VOICE_OFFER=1`. A page reaches the voice service on its own origin's `/voice`, which Caddy will route on the live site (P4C.9). Locally the Node server passes `/voice` on itself when given `RIVERMIND_VOICE_PROXY`, and `vite dev` forwards it to `RIVERMIND_VOICE_BACKEND` (127.0.0.1:4323 by default). Both servers need the same secret, and the voice service the page's origin:

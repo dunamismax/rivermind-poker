@@ -912,6 +912,155 @@ describe('speaking suspended by voice reports, and limits on players (P4C.8)', (
 	});
 });
 
+describe('recovery and capacity (P4C.7)', () => {
+	const capped = (limits: { maxRooms?: number; maxPeople?: number }) =>
+		new VoiceService({ key, media, log: (line) => lines.push(line), now: () => clock, ...limits });
+
+	it('gives a transport new ICE credentials, and leaves what is on it alone', async () => {
+		const voice = service();
+		const a = new Page(voice, 0);
+		await a.hello();
+		expect(a.welcome!.restarts).toBe(true);
+		await a.joinGroup();
+		const send = await a.ok('transport.create', { direction: 'send' });
+		const { producer } = await a.ok('produce', {
+			transport: send.transport,
+			rtpParameters: OPUS(4444) as never
+		});
+		const again = await a.ok('transport.restart', { transport: send.transport });
+		expect(again.iceParameters.usernameFragment).not.toBe(send.iceParameters.usernameFragment);
+		expect(again.iceParameters.password).not.toBe(send.iceParameters.password);
+		expect(again.iceParameters.iceLite).toBe(true);
+		// The producer is still there: a second is refused as before.
+		expect(
+			await a.ask('produce', { transport: send.transport, rtpParameters: OPUS(5555) as never })
+		).toMatchObject({ ok: false, error: 'too-many' });
+		await a.ok('producer.pause', {});
+		expect(producer).toBeTruthy();
+		// Only a transport of one's own.
+		expect(await a.ask('transport.restart', { transport: 'nobody' })).toMatchObject({
+			ok: false,
+			error: 'unknown'
+		});
+		a.leave();
+	});
+
+	it('carries only as many people as it is set to, and says it is full', async () => {
+		const voice = capped({ maxPeople: 3 });
+		const pages = [new Page(voice, 0), new Page(voice, 1)];
+		for (const page of pages) expect((await page.hello()).ok).toBe(true);
+		const elsewhere = new Page(voice, 0);
+		expect((await elsewhere.hello(elsewhere.token('other-table'), 'other-table')).ok).toBe(true);
+		// A fourth person, at either table, finds voice full.
+		const fourth = new Page(voice, 2);
+		expect(await fourth.hello()).toEqual({ id: 1, ok: false, error: 'full' });
+		expect(fourth.closed?.code).toBe(CLOSE.full);
+		const fifth = new Page(voice, 1);
+		expect((await fifth.hello(fifth.token('other-table'), 'other-table')).ok).toBe(false);
+		expect(fifth.closed?.code).toBe(CLOSE.full);
+		expect(voice.counts).toEqual({ rooms: 2, people: 3 });
+		// A page that comes back to its own seat is not one more person.
+		const reloaded = new Page(voice, 1);
+		expect((await reloaded.hello()).ok).toBe(true);
+		expect(pages[1].closed?.code).toBe(CLOSE.replaced);
+		// When someone leaves, there is room again.
+		elsewhere.leave();
+		await settle();
+		const next = new Page(voice, 2);
+		expect((await next.hello()).ok).toBe(true);
+		expect(lines).toContain('refused a hello: voice is full');
+		for (const page of [pages[0], reloaded, next]) page.leave();
+		await settle();
+		expect(voice.counts).toEqual({ rooms: 0, people: 0 });
+	});
+
+	it('opens only as many rooms as it is set to', async () => {
+		const voice = capped({ maxRooms: 2 });
+		const first = new Page(voice, 0);
+		expect((await first.hello(first.token('table-one'), 'table-one')).ok).toBe(true);
+		const second = new Page(voice, 0);
+		expect((await second.hello(second.token('table-two'), 'table-two')).ok).toBe(true);
+		const third = new Page(voice, 0);
+		expect(await third.hello(third.token('table-three'), 'table-three')).toEqual({
+			id: 1,
+			ok: false,
+			error: 'full'
+		});
+		expect(third.closed?.code).toBe(CLOSE.full);
+		// Someone else at a table whose room is open still gets in.
+		const joiner = new Page(voice, 1);
+		expect((await joiner.hello(joiner.token('table-one'), 'table-one')).ok).toBe(true);
+		// A room that closes makes way for another.
+		second.leave();
+		await settle();
+		const later = new Page(voice, 0);
+		expect((await later.hello(later.token('table-three'), 'table-three')).ok).toBe(true);
+		expect(lines).toContain('refused a hello: every room is taken');
+		for (const page of [first, joiner, later]) page.leave();
+		await settle();
+		expect(voice.counts).toEqual({ rooms: 0, people: 0 });
+	});
+
+	it('does not leave a room open for someone it then refused', async () => {
+		const voice = capped({ maxRooms: 1 });
+		await voice.seats({
+			table: TABLE,
+			at: clock * 1000,
+			seats: [{ seat: 0, player: who(0).player }],
+			blocks: []
+		});
+		// Seat 3 holds a token, but the table no longer lists them.
+		const gone = new Page(voice, 3);
+		expect(await gone.hello()).toMatchObject({ ok: false, error: 'not-seated' });
+		expect(voice.counts).toEqual({ rooms: 0, people: 0 });
+		// The one room the service may open is still free.
+		const seated = new Page(voice, 0);
+		expect((await seated.hello()).ok).toBe(true);
+		seated.leave();
+		await settle();
+	});
+
+	it('sends everyone away when the media worker dies, and has them back on the next one', async () => {
+		const voice = service();
+		const [a, b] = [new Page(voice, 0), new Page(voice, 1)];
+		await a.hello();
+		await a.joinGroup();
+		await b.hello();
+		await b.joinGroup();
+		const send = await a.ok('transport.create', { direction: 'send' });
+		await a.ok('produce', { transport: send.transport, rtpParameters: OPUS(6666) as never });
+		const before = media.worker.pid;
+		const died = performance.now();
+		process.kill(before, 'SIGKILL');
+		await expect.poll(() => [a.closed?.code, b.closed?.code]).toEqual([1012, 1012]);
+		expect(voice.counts).toEqual({ rooms: 0, people: 0 });
+		// Pages come back at once: their hello waits for the worker, not the other
+		// way about, and the room, the group and the audio are all made anew.
+		const [c, d] = [new Page(voice, 0), new Page(voice, 1)];
+		expect((await c.hello()).ok).toBe(true);
+		const back = performance.now() - died;
+		expect(media.alive).toBe(true);
+		expect(media.worker.pid).not.toBe(before);
+		expect(c.welcome!.groupInfo).toBeNull();
+		expect(await c.joinGroup()).toBe(0);
+		await d.hello();
+		expect(await d.joinGroup()).toBe(1);
+		await c.apply(await c.notices());
+		await agree([c, d]);
+		const again = await c.ok('transport.create', { direction: 'send' });
+		expect(
+			(await c.ok('produce', { transport: again.transport, rtpParameters: OPUS(7777) as never }))
+				.producer
+		).toBeTruthy();
+		expect(back).toBeLessThan(5000);
+		expect(lines.some((line) => line.startsWith('the media worker died'))).toBe(true);
+		expect(lines).toContain('the media worker started again');
+		c.leave();
+		d.leave();
+		await settle();
+	});
+});
+
 describe('the table server and the voice service together (P4C.5)', () => {
 	it('takes someone who stands up out of the room within a second, and the rest move on', async () => {
 		const voice = new VoiceService({

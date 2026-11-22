@@ -1,6 +1,6 @@
 # Table voice design
 
-This is the design for live voice at the table (Phase 4C, D-15). It records what voice must do, the threat model, the tools chosen and the ones rejected, how keys are agreed and media is encrypted, and what the host has to provide. [BUILD.md](../BUILD.md#phase-4c--table-voice) holds the steps and their evidence. P4C.1 checked this design with a working prototype, and [what the prototype found](#what-the-prototype-found-p4c1) lists what it confirmed, what it corrected here and what it left for later steps. P4C.2 built the frame encryption, and [frame encryption as built](#frame-encryption-as-built-p4c2) says how it works, what it refuses and what it costs. P4C.3 built the group key, and [the group key as built](#the-group-key-as-built-p4c3) says the same of it. P4C.4 built the voice service, and [the voice service as built](#the-voice-service-as-built-p4c4) says what it does, what it refuses and how it runs on the host. P4C.6 put it in front of people: [voice at the table](#voice-at-the-table-as-a-person-sees-it-p4c6). P4C.8 checked what a copy of the audio is worth to the server and added reports, suspensions and limits: [privacy, safety and moderation](#privacy-safety-and-moderation-p4c8).
+This is the design for live voice at the table (Phase 4C, D-15). It records what voice must do, the threat model, the tools chosen and the ones rejected, how keys are agreed and media is encrypted, and what the host has to provide. [BUILD.md](../BUILD.md#phase-4c--table-voice) holds the steps and their evidence. P4C.1 checked this design with a working prototype, and [what the prototype found](#what-the-prototype-found-p4c1) lists what it confirmed, what it corrected here and what it left for later steps. P4C.2 built the frame encryption, and [frame encryption as built](#frame-encryption-as-built-p4c2) says how it works, what it refuses and what it costs. P4C.3 built the group key, and [the group key as built](#the-group-key-as-built-p4c3) says the same of it. P4C.4 built the voice service, and [the voice service as built](#the-voice-service-as-built-p4c4) says what it does, what it refuses and how it runs on the host. P4C.6 put it in front of people: [voice at the table](#voice-at-the-table-as-a-person-sees-it-p4c6). P4C.8 checked what a copy of the audio is worth to the server and added reports, suspensions and limits: [privacy, safety and moderation](#privacy-safety-and-moderation-p4c8). P4C.7 measured the delay and what packet loss does, made rooms come back by themselves, and gave the service a limit: [audio quality, resilience and capacity](#audio-quality-resilience-and-capacity-p4c7).
 
 ## What voice is for
 
@@ -90,7 +90,7 @@ This is the design Discord adopted for its own end-to-end encrypted voice ([DAVE
 ## What the host needs
 
 - **A reachable port.** ubuntu-vm (192.168.50.2) is a VM on a Windows host on the home network, behind the router’s public address. Voice media needs one UDP port, and the same port on TCP as a fallback. It is 3478, the STUN and TURN port that many restrictive networks already allow: the router forwards it to the Windows host, the Windows host passes it to the VM, and `ufw` allows it (Q-9). On the Windows host, `netsh interface portproxy` carries only TCP, so UDP needs another path (the one already used for UDP 443 and RustDesk’s UDP port). The voice service announces the host’s current public address and notices if it changes. A player on the home network itself reaches that address only if the router loops traffic back, so P4C.4 checks from both inside and outside it.
-- **Upload bandwidth.** The SFU sends each speaker’s audio to every other person in the room. The prototype measured 92 kbps to each listener for each person speaking, as mediasoup counts it (161-byte Opus frames at 64 kbps, the frame’s encryption, RTP, SRTP and RTCP); the UDP and IP headers of fifty packets a second add 11 kbps, so about 103 kbps leaves the host. A nine-seat table with everyone talking at once sent 6.6 Mbps so counted, about 7.4 Mbps on the wire; each person talking costs a nine-seat table about 0.8 Mbps. P4C.7 measures the real uplink and sets a cap on concurrent voice rooms with headroom for the site, and the table says plainly when voice is full.
+- **Upload bandwidth.** The SFU sends each speaker’s audio to every other person in the room. The prototype measured 92 kbps to each listener for each person speaking, as mediasoup counts it (161-byte Opus frames at 64 kbps, the frame’s encryption, RTP, SRTP and RTCP); the UDP and IP headers of fifty packets a second add 11 kbps, so about 103 kbps leaves the host. A nine-seat table with everyone talking at once sent 6.6 Mbps so counted, about 7.4 Mbps on the wire; each person talking costs a nine-seat table about 0.8 Mbps. [P4C.7](#capacity) measured the line at 556 Mbps and more up, and gave the service a limit on rooms and people, at which the table says plainly that voice is full.
 - **Networks that block UDP and the voice port.** ICE over TCP 3478 covers most. A network that allows only TCP 443 would need a TURN server on 443, which shares the port with Caddy. P4C.9 measures connection success across real networks before deciding whether that is needed.
 
 ## What the prototype found (P4C.1)
@@ -117,7 +117,7 @@ Thirty seconds of nine continuous senders and 72 consumers, on this Mac (Apple M
 | Firefox | 9.6% | 14 MB | 0.01% | 891 kbps | 6,608 kbps | 0.06% | 36 ms |
 | WebKit | 5.9% | 14 MB | 0.02% | 903 kbps | 6,709 kbps | 0.05% | 174 ms |
 
-The Node side of a service holding only mediasoup was 75 to 100 MB (the self-test); the prototype’s 175 MB includes Vite, which builds its page in the same process. Signalling costs nothing once a room is up. These are this Mac’s figures: P4C.7 measures ubuntu-vm.
+The Node side of a service holding only mediasoup was 75 to 100 MB (the self-test); the prototype’s 175 MB includes Vite, which builds its page in the same process. Signalling costs nothing once a room is up. These are this Mac’s figures; so are [P4C.7’s](#capacity), and ubuntu-vm’s own are still to measure.
 
 **Corrected here**
 
@@ -130,7 +130,7 @@ The Node side of a service holding only mediasoup was 75 to 100 MB (the self-tes
 
 **Left for later steps**
 
-- **WebKit’s jitter buffer** held 174 ms in the nine-person room against about 35 ms in the others (29 ms with two people). The mock microphone and nine browsers on one machine may be the cause. P4C.7’s delay target is 150 ms, so it measures Safari first.
+- **WebKit’s jitter buffer** held 174 ms in the nine-person room against about 35 ms in the others (29 ms with two people). The mock microphone and nine browsers on one machine may be the cause. It was the mock microphone: [P4C.7](#delay) found every listener's buffer grows for a speaker in Playwright's WebKit, in any engine, while WebKit as a listener held 56 ms of well-paced speakers.
 - **Capture in Chromium** was not exercised on this Mac (see [testing](#testing)); P4C.2 ran it on Linux, where its fake microphone works. Safari itself has not been tried at all: a real iPhone and Mac are P4C.9.
 - **The prototype’s frame was not SFrame.** P4C.2 built the real one, and the prototype now seals its frames with the site’s own worker ([as built](#frame-encryption-as-built-p4c2)). Its cost a frame on a phone is still to measure (P4C.2a).
 - **ICE through the home network.** The prototype connected over loopback and the LAN. The announced public address and the path through the router are P4C.4.
@@ -245,8 +245,8 @@ A listener behind the speaker waited for the key at each of the two changes and 
 **Left for later steps**
 
 - **The wire.** Members and the service are driven directly in the tests. Voice signalling v1 (P4C.4) carries the messages, and P4C.5’s client decides when to act: it commits after `commitRank` turns of a timeout, joins again when its commit loses, and asks for a new group when its state cannot follow.
-- **Timing over a real network.** The measurements are two pages on one machine. P4C.7 measures the skew between pages across the service, and whether the 250 ms wait and the 2 s grace fit it.
-- **A member the service cannot hear from.** If nobody commits a removal, the leaf stays, and after three seconds every page holds. P4C.7’s recovery (a new group) is what ends that.
+- **Timing over a real network.** The measurements are two pages on one machine. [P4C.7](#recovery) put a join and a leave through a network that delays and loses audio, and the 250 ms wait and the 2 s grace held.
+- **A member the service cannot hear from.** If nobody commits a removal, the leaf stays, and after three seconds every page holds. [P4C.7](#recovery) says why the members' turns are enough, and why a page that holds should go on holding.
 
 ## The working group’s test vectors (P4C.3)
 
@@ -269,6 +269,7 @@ One JSON text frame a message, 32 KiB at most. A page's requests carry an `id`, 
 | `hello` | The first message, with `v: 1`, the table and a voice token. The answer has the page's seat and player as the token names them, the service's signature key and the group id for `Member.create` and `Member.join`, the GroupInfo to join from (or none, to create the group), the Router's capabilities without the audio-level extension, and who else is in the room. |
 | `group.create`, `group.commit` | The delivery rules of [`delivery.ts`](../web/src/lib/voice/delivery.ts). A refusal carries the GroupInfo to start again from: none to create the group, else join it. |
 | `transport.create`, `transport.connect` | A send and a receive WebRTC transport, one of each. |
+| `transport.restart` | New ICE credentials for a transport that lost its path ([P4C.7](#recovery)). |
 | `produce`, `producer.pause`, `producer.resume` | The page's one audio track. |
 | `consume`, `consumer.pause`, `consumer.resume` | Another person's track, paused until the page resumes it. |
 
@@ -277,7 +278,7 @@ One JSON text frame a message, 32 KiB at most. A page's requests carry an `id`, 
 | `mls` | A commit the service accepted (to everyone but its author), or a removal it proposes (to everyone, the author and a newcomer included). |
 | `producer` | Someone in the room sends audio, with the leaf it is sealed as. |
 | `consumer.closed`, `left` | A stream ended; someone's socket closed. |
-| `media.reset` | The media server started again under a new public address: make the transports again. The group stands. |
+| `media.reset` | The media server's listener started again under a new public address: make the transports again. The group stands. |
 
 **What it lets in**
 
@@ -299,7 +300,7 @@ One JSON text frame a message, 32 KiB at most. A page's requests carry an `id`, 
 
 **On the host** ([`deploy/rivermind-poker-voice.service`](../deploy/rivermind-poker-voice.service), [`deploy/update.sh`](../deploy/update.sh)):
 
-- A unit of its own, `rivermind-poker-voice`, running `build/voice/voice.js` of the current release on `/opt/node-26/bin/node` as a dynamic user, with the web unit's sandbox and `SocketBindAllow=` for its signalling port (TCP 4323 on loopback) and its media port (UDP and TCP 3478), and `SocketBindDeny=any`: on ubuntu-vm a process under those rules got EPERM binding any other port, TCP or UDP. Memory is the platform's 256 MB high and 512 MB most. The voice key comes as a credential from root-only `/var/lib/rivermind-poker/voice-key`, which `update.sh` derives from the session secret as a dynamic user (`voice.js derive-key`). `Restart=always`: a dead media worker stops the service, and systemd starts it again.
+- A unit of its own, `rivermind-poker-voice`, running `build/voice/voice.js` of the current release on `/opt/node-26/bin/node` as a dynamic user, with the web unit's sandbox and `SocketBindAllow=` for its signalling port (TCP 4323 on loopback) and its media port (UDP and TCP 3478), and `SocketBindDeny=any`: on ubuntu-vm a process under those rules got EPERM binding any other port, TCP or UDP. Memory is the platform's 256 MB high and 512 MB most. The voice key comes as a credential from root-only `/var/lib/rivermind-poker/voice-key`, which `update.sh` derives from the session secret as a dynamic user (`voice.js derive-key`). `Restart=always`: since [P4C.7](#recovery) a dead media worker is replaced inside the service, and only when none can be started does the service stop for systemd to start it again.
 - `pnpm build` bundles the service into `build/voice/` on its own, with mediasoup's worker binary beside it, sharing nothing with the site's server, so `build/voice/` changes only when voice does. `update.sh` checks every release's voice service as a candidate before the switch (on loopback and free ports in 4400-4499, under the unit's sandbox: `/healthz`, and a socket from another origin refused), and after the switch restarts `rivermind-poker-voice` only if its unit, its key or `build/voice/` changed or it is not running. A deploy that does not touch voice leaves every conversation alone, and keeps the release the voice service runs from when it clears old ones.
 - `ufw` allows UDP and TCP 3478, added by `update.sh` when it installs the unit (Q-9).
 - Port 4322, which the plan named for signalling, belongs to fieldcadence.app on this host; the voice service takes 4323, the next free one in the host's table.
@@ -316,7 +317,7 @@ One JSON text frame a message, 32 KiB at most. A page's requests carry an `id`, 
 - **From outside the home network.** Checked from inside it only, through the router's loopback; a phone on a mobile network is P4C.9's, or the owner's sooner.
 - **Live.** The unit is installed and `ufw` opened by the first deploy that carries it, an owner gate; until P4C.9 adds the `/voice` route nothing reaches its signalling.
 - **The table server's side** (P4C.5): `POST /api/tables/{id}/voice` issues tokens with `issueToken`, and the table tells the service when seats change.
-- **Recovery** (P4C.7): a restart, a dead worker or a changed address now costs a room its transports or its group, and pages start again by hand; P4C.7 makes it automatic and measures it.
+- **Recovery**: a restart, a dead worker or a lost path cost a room its transports or its group until [P4C.7](#recovery) made each mend itself and measured it.
 - **The prototype** kept its keyless listener at the SFU and its audio-level control until P4C.8 moved them into a test build of this service ([`tap-server.ts`](../web/voice/check/tap-server.ts)); nothing it holds is needed now.
 
 ## Voice at the table (P4C.5)
@@ -375,6 +376,152 @@ The delay is the lag at which the output best matches the input, 994 samples at 
 - **RNNoise against the browser's own suppression**, and its cost on a phone: P4C.6's last measurements (above).
 - **A page hidden and shown again** resumes the context, starts a microphone the system stopped and says why when it cannot; that is checked by hand on a phone (P4C.9), since Playwright does not hide pages.
 - **The warning for a stranger in the group** is P4C.3's check shown on screen, with no honest way to bring it about in a browser test.
+
+## Audio quality, resilience and capacity (P4C.7)
+
+How late a voice arrives, what a bad network does to it, what brings a room back by itself, and how much voice the host carries. The measuring tools are `pnpm voice:measure` ([`delay.measure.ts`](../web/voice/check/delay.measure.ts), [`loss.measure.ts`](../web/voice/check/loss.measure.ts)) and `pnpm voice:load` ([`scripts/voice-load.ts`](../web/scripts/voice-load.ts)); the recovery checks are in `pnpm voice:check` ([`recovery.check.ts`](../web/voice/check/recovery.check.ts)) and run in CI.
+
+### Delay
+
+**How it is measured.** Each person's page plays marks into the call and times the marks it hears from the others ([`delay.ts`](../web/voice/check/delay.ts), [`marks.worklet.js`](../web/voice/check/marks.worklet.js)). A mark is made by an AudioWorklet, which notes the wall clock in the block it starts in, as if a microphone had delivered it then; an AudioWorklet at the listener notes the clock in the block where the sound passes a threshold. Both read the clock on the audio thread, never the page's, so the two ends of a call on one machine agree to within a block or two (3 to 5 ms). Marks come every 487 ms from one seat and 513 ms from the next, so they fall everywhere in a 20 ms frame. The figure runs from the mark's making to its arrival in the listener's playback graph, after the decoder and the jitter buffer: it leaves out the microphone's own delay and the speakers', which the browsers put at 19 to 25 ms for this Mac's output. A run is 40 seconds and about 80 marks each way. `pnpm voice:measure delay` prints them.
+
+**On this Mac** (Apple M5, macOS 27.2, Playwright 1.65.1's browsers, both people on the same machine through the voice service from the source, round trip to it 0 to 1 ms, load 4 to 8). Milliseconds, mouth to ear; a range is the two listeners of a pair, or several runs.
+
+| What the audio passes | Listener | Median | 95th percentile | Jitter buffer |
+| --- | --- | --- | --- | --- |
+| The call alone: Opus, SFrame, the service, the jitter buffer, the decoder | Chromium | 64 to 107 | 67 to 112 | 30 to 41 |
+| | Firefox | 59 to 65 | 61 to 69 | 30 to 33 |
+| | Chromium and Firefox, each hearing the other | 60 to 68 | 64 to 75 | 31 to 33 |
+| The call and the site's playback graph (volume, panning) | Firefox | 46 to 64 | 49 to 70 | 20 to 33 |
+| | Chromium, through its loopback | 131 to 144 | 135 to 145 | 30 to 35 |
+| RNNoise at the speaker, the call, the playback graph: what a table gets by default | Firefox | 77 to 80 | 91 to 97 | 29 to 39 |
+| | Firefox, of a Chromium speaker | 98 | 117 | 36 |
+| | Chromium | 167 to 187 | 170 to 189 | 30 |
+| | Chromium, of a Firefox speaker | 158 | 188 | 41 |
+| Nine in a room, one playing marks, the call alone | Chromium, eight listeners | 64 to 78 | 67 to 80 | 31 to 33 |
+| | Firefox, eight listeners | 61 to 86 | 158 to 204 | 51 to 69 |
+
+**What each part costs**
+
+- **The call itself** is 60 to 105 ms on a perfect network: a 20 ms Opus frame has to fill before it is sent, the codec looks 6.5 ms ahead, and the listener's jitter buffer holds 30 to 40 ms even when every packet is on time. The service adds nothing that shows.
+- **RNNoise** adds 30 to 40 ms as the page uses it: the 20.7 ms of its own (P4C.6), and the rest in carrying the microphone into its AudioContext and out again to the encoder.
+- **Chromium's loopback** (the pair of local peer connections that lets Chromium cancel the echo of what the graph plays, P4C.6) is a second Opus encoder and a second jitter buffer on the listener's side. Measured alone it added 73 ms with 20 ms frames and 53 ms with 10 ms frames, so it now asks for 10 ms frames (`forLoopback`); before that the graph's row read 138 to 148 and 139 to 152, and the default row 179 to 188 and 183 to 190. Asking its jitter buffer for less (`jitterBufferTarget = 0`) changed nothing: it held 31 ms either way, 22 at the least. The request stays in, for the day it is honoured.
+- **Firefox's nine-person tail** is nine pages, each decoding eight streams, in one browser on one machine; the median is the pair's. One listener's own machine decodes eight streams, not seventy-two.
+- **WebKit** cannot be measured with marks here: Playwright's build stops rendering Web Audio once it captures (see [testing](#testing)). Its jitter buffer held 56 ms of two well-paced speakers in a room with Chromium and Firefox, against their 31 to 33 ms. And the 174 ms that P4C.1 saw was not the listener: whenever the speaker is Playwright's WebKit, every listener's buffer for that stream grows to 200 to 250 ms, in Chromium and Firefox too, because its mock microphone delivers audio in bursts. A real Safari, with a real microphone, is P4C.9's to measure.
+
+**Against the target** (a 95th percentile under 150 ms). The call alone meets it in every engine measured, with 40 ms to spare. As a table plays it by default, Firefox meets it (91 to 117 ms) and Chromium does not (170 to 189 ms): RNNoise and the loopback together cost it 80 to 90 ms. Without RNNoise, Chromium is just inside (135 to 145 ms). Three ways out, which are the owner's to choose between, since two give up something D-15 asked for:
+
+1. **Drop the loopback where Chromium does not need it.** If Chrome on the hardware people use cancels the echo of what Web Audio plays (its newer echo canceller runs for the whole browser on some platforms), the mix can play straight from the graph, and Chromium would read as Firefox does. Nothing here can tell: it takes a real microphone and speakers. For a session by hand, setting `rivermind.voice.direct` to `1` in a browser's `localStorage` plays the mix without the loopback (P4C.9).
+2. **Leave RNNoise off by default in Chromium**, whose own noise suppression still runs: 135 to 145 ms.
+3. **Accept about 180 ms in Chromium.** ITU-T G.114 puts most conversations untroubled under 150 ms one way and still workable well beyond it; P4C.9's own target between two networks is 250 ms.
+
+### Packet loss and jitter
+
+**How it is measured.** One person plays recorded speech to another through a network that loses a share of the packets and holds the rest 30 ms, give or take 30 (so packets also arrive out of order), and the listener's own WebRTC statistics say how much of what it played was made up to cover a gap (`concealedSamples` over `totalSamplesReceived`). Each condition runs 30 seconds after 10 to settle. The speech is the Mac's own voice reading four sentences, round and round; a tone would measure the wrong thing, as below. `pnpm voice:measure loss` prints the figures and writes ten seconds of what the listener heard under each condition to `artifacts/voice-loss/`, for a person to listen to.
+
+The network is one of two. On this Mac it is a relay between the pages and the service's media port ([`relay.ts`](../web/voice/check/relay.ts)), which works for all three engines. On Linux it is the kernel's own `tc netem` on the loopback interface, for packets to or from the media port (`scripts/voice-measure-linux.sh`, in Playwright's Linux browsers in a container). Loss “to the listener” is on the leg from the service to the listener, “from the speaker” on the leg from the speaker to the service, and “both ways” on both, as when both people are on bad networks: a packet then crosses two lossy legs.
+
+Concealed audio, as a share of what the listener played, through the relay on this Mac (the listener's engine; the speaker is the same engine, or Firefox for WebKit, which plays no Web Audio here):
+
+| Network | Chromium | Firefox | WebKit |
+| --- | --- | --- | --- |
+| Clear | 0% | 0% | 0% |
+| 30 ms of jitter both ways, nothing lost | 0.63% | 0.06% | 0.17% |
+| 2% lost to the listener | 0.28% | 0.20% | 0.32% |
+| 5% lost to the listener | 0.73% | 0.82% | 0.48% |
+| 10% lost to the listener | 2.25% | 1.55% | 2.11% |
+| 2% lost from the speaker | 0.46% | 0.32% | 0.50% |
+| 5% lost from the speaker | 0.74% | 0.99% | 0.92% |
+| 10% lost from the speaker | 2.21% | 2.04% | 1.99% |
+| 5% lost both ways | 1.11% | 2.54% | 2.14% |
+
+Every row with loss also has the 30 ms of jitter. The target, under 5% concealed at 5% lost, is met five times over on one bad leg and twice over on two.
+
+The same through `tc netem` in Playwright 1.65.1's Linux browsers, in an arm64 container on this Mac (Playwright's WebKit for Linux cannot seal frames, so it has no row; Firefox there plays no Web Audio and listens to a Chromium speaker):
+
+| Network | Chromium | Firefox |
+| --- | --- | --- |
+| Clear | 0% | 0% |
+| 30 ms of jitter both ways, nothing lost | 0.14% | 0.32% |
+| 2% lost to the listener | 0.32% | 0.12% |
+| 5% lost to the listener | 0.77% | 0.86% |
+| 10% lost to the listener | 1.91% | 1.34% |
+| 2% lost from the speaker | 0.31% | 0.39% |
+| 5% lost from the speaker | 0.85% | 1.04% |
+| 10% lost from the speaker | 1.46% | 1.93% |
+| 5% lost both ways | 1.57% | 0.87% |
+
+The relay and the kernel agree to within what one 30-second run varies by. Firefox's column is its second run: in the first, one condition (10% to the listener) read no loss and no concealment at all with half the usual count of repaired packets, as if its statistics had stood still for the window, and the rest matched this one.
+
+**What was found**
+
+- **Opus repairs most of it, for speech.** The encoder adds a coarse copy of each frame to the packet after it (in-band FEC), so a single lost packet is rebuilt from the next. It does so only when told the listener is losing packets, and mediasoup tells each speaker the worst loss among their listeners, as the design meant: the listener's statistics count a repaired frame in nearly every packet (`fecPacketsReceived`) from the first lossy condition on. At 5% lost with 30 ms of jitter, under 1% of what a listener played was concealed, and about 2% at 10%.
+- **A tone gets none of this.** The first run of this measure used the delay measure's marked tone, and concealment matched the loss one for one: 2.0% at 2% lost, 4.7% at 5%, 8.5% at 10%, whichever leg lost them. Opus encodes a tone in its music mode, which has no FEC. Speech is what voice carries, so speech is what is measured; a test that plays tones at a lossy network will mislead.
+- **Nothing is sent again.** mediasoup offers retransmission (NACK) for Opus, but no browser here lists it for audio, so none is negotiated. FEC covers single losses without it and without the wait.
+- **Jitter costs delay, not sound.** With 30 ms of jitter each way and no loss, 0.1 to 0.6% was concealed, and the jitter buffer grew from 30 to 50 ms to about 80; with loss too it held 65 to 120 ms. That is on top of the network's own delay.
+- **`packetsLost` is no guide here.** With packets arriving out of order, the browsers' count of lost packets ran to 10 to 38% under conditions that lost 2 to 10%; what was concealed is the measure.
+
+### Recovery
+
+Three things take a room's audio away without anyone leaving, and each now mends itself. The target for each is five seconds.
+
+| What happened | What the page does | The group | Measured, in Chromium, Firefox and WebKit |
+| --- | --- | --- | --- |
+| The voice service restarted (a deploy that changed it) | Its socket closes with 1012; it asks the table for a new token and joins again (P4C.5) | A new one | 0.7 to 0.8 s from the SIGTERM to three people talking again |
+| The media worker died | The same: the service closes every socket with 1012 the moment the worker goes, and has another worker on the same port for the pages that come back | A new one | 0.66, 0.76 and 0.86 s from the kill to four people talking again (0.99 and 0.79 s in Linux Chromium and Firefox) |
+| The person's network went and came back as another | ICE starts again on both transports under new credentials from the service (`transport.restart`) | The same one, with every stream | 0.24, 0.18 and 0.35 s from the network's return to audio both ways (0.49 and 0.20 s on Linux) |
+
+- **A media worker that dies** used to stop the whole service, which systemd started again three seconds later (`RestartSec=3`): five to six seconds of silence, and every table's seat list forgotten. Now [`Media`](../web/src/lib/server/voice/media.ts) starts another worker in the same process and takes the same port, and the service ends every room at once, since nothing of a Router outlives its worker: every socket is closed with 1012, as for a restart, and pages come back into new rooms and new groups on the next worker, their hello waiting for it if it is not up yet. The tables' seat lists stand. A worker that dies more than three times in a minute, or cannot be started, stops the service as before, and systemd takes over. `/healthz` answers 503 while there is no worker.
+- **A network that changes** is seen two ways. The browser says so (`online`), and the page starts ICE again on both transports at once without waiting to find out what broke. Or a transport reports that it lost its path (`disconnected`, `failed`), and the page does the same for that transport. The service gives the transport new ICE credentials (`transport.restart`, voice signalling v1's one new request, asked only of a service whose welcome says `restarts: true`), mediasoup-client restarts ICE with them, and the transport, its producer and consumers, the group and its epoch all stand. A transport that is still not connected three seconds later ends the session, and the room makes a new one, as after a restart; with a service from before P4C.7, that is all that happens.
+- **A network that lets no audio through.** Signalling goes through Caddy on 443; audio needs UDP or TCP 3478 ([what the host needs](#what-the-host-needs)). On a network that blocks both, a page used to sit in voice, connected and silent, with nothing to say why. Now a transport that has not connected ten seconds after it began is treated as one that lost its path, and when two sessions in a row end without their audio ever reaching the media server, the room ends with a reason of its own (`unreachable`, 4504, a code only the page uses) and the table says the network may block the port voice uses. The check takes a relay that passes nothing and finds both people told so.
+- **A service that stays away.** A room that lost the service used to ask again every second for as long as the page stayed open, a new token each time. It now waits 0.25, 0.5, 1, 2, 4 and then 8 seconds between tries and gives up after two minutes, when the table says the connection to voice was lost and offers to join again. A hello the service refuses for good (voice is full, the seat is gone, the token is bad) ends the room at once with that reason.
+- **Every control's state is kept** by `VoiceRoom`, which outlives its sessions: the person's own mute, deafen and push-to-talk, their mutes of others (paused at the service again from the first moment), and the bitrate. The check has four people, one who muted another, one who muted themself and one who deafened, and finds each as it was after the worker died: the mute still holding at the service, the deafened page still sent nothing, and everyone else still shown who is muted and deafened.
+
+How the network change is checked: a UDP relay ([`relay.ts`](../web/voice/check/relay.ts)) stands between the pages and the service's media port, as a home router does, with a mapping for each page. It drops everything for a second and a half and forgets every mapping, so the service then hears each page from an address it has never seen, as when a phone moves from Wi-Fi to its mobile network; the pages are told the network is back, as the browser tells them. What the relay cannot do is change a browser's own address, the case where ICE must gather again; the same request covers it, and a real phone at P4C.9 checks it.
+
+**Epochs over a bad network.** P4C.3 measured a join and a leave between two pages on one machine and left the real network to this step. Through the relay, with audio up to 60 ms late each way, out of order and 5% of it lost, a third person joined and left a call of two, and nobody refused a frame for want of its key in any engine: frames sealed under the epoch before arrive well inside the two-second grace, and the group's own messages, which travel on the signalling socket, are not held up with the audio. What would cost frames is the opposite, signalling that lags the audio by more than the 250 ms a listener waits for a key, as a stalled TCP connection could for a moment; a listener then conceals those frames, at a join or a leave only.
+
+**Someone nobody removes.** P4C.3 also left the case where a removal the service proposed is never committed. The members' turns cover it: whoever is first commits at once, and each one after takes their turn a second later, so one person whose page has hung delays a removal by a second, and a page that waits longer than the three-second grace holds its microphone until it is done. If the group holds someone the service is not removing at all, holding is the protection working, not a fault to mend: the page keeps its microphone off and the table says why. That warning used to wait for the next change at the table; `EpochKeys.onseats` now tells the table the moment the grace runs out.
+
+**Signalling, added to.** `transport.restart` `{ transport }` answers `{ iceParameters }`. The welcome gains `restarts: true`. A hello may now be refused with `full`, and the socket closed with 4503. `/healthz` also counts `rooms` and `people`. A page from before P4C.7 never asks for a restart, and shows `full` as a failure to start; a service from before never offers one, and the page falls back to a new session.
+
+**Found on the way**
+
+- **A room left open for nobody.** A hello that opened a room and was then refused (a seat the table no longer listed) left the room open, with a Router, for as long as the service ran. Rooms are now closed when their last person goes or their first is refused; with a limit on rooms, each one left behind would have been a table's place lost for good.
+- **A relay on loopback, and Firefox.** The service tells each page the address it saw the page at. Through a relay whose own sockets were on loopback, that address was 127.0.0.1, and Firefox's ICE dropped the path, as it drops a loopback media address ([testing](#testing)). The relay now reaches the service from its LAN address.
+- **A worklet as a `data:` URL.** Vite inlines a small asset, and the site's CSP then blocks it as a worklet module. The check pages now never inline, as the site's build already did for scripts.
+
+### Capacity
+
+**The uplink.** Voice leaves the host over the home line. This Mac is on the same line (it reaches the internet from the address `rivermindpoker.com` resolves to), and from it 200 MB went up to Cloudflare's speed-test endpoint at 556, 578 and 686 Mbps, with 776 Mbps coming down and 11 ms to the nearest edge. That is the line; whether ubuntu-vm's own path to it (a VM on a Windows host) is as fast is still to measure there.
+
+**What a room costs.** `pnpm voice:load` fills a mediasoup worker, set up as the service sets its own, with rooms of nine whose audio arrives encrypted and is forwarded, encrypted again, to the other eight: the work of a call without the browsers. On this Mac (Apple M5, load 5 to 10), fifteen seconds each:
+
+| Rooms of nine | Talking at once | Worker, of one core | Worker memory | Sent |
+| --- | --- | --- | --- | --- |
+| 1 | all 9 | 2.9% | 20 MB | 6.5 Mbps |
+| 2 | all 18 | 4.4% | 38 MB | 13.0 Mbps |
+| 4 | all 36 | 11.5% | 59 MB | 26.0 Mbps |
+| 8 | all 72 | 27.5% | 117 MB | 52.0 Mbps |
+| 16 | all 144 | 37.8% | 237 MB | 104.1 Mbps |
+| 1 | 2 | 2.2% | 13 MB | 1.4 Mbps |
+| 4 | 8 | 7.3% | 29 MB | 5.8 Mbps |
+| 8 | 16 | 11.1% | 41 MB | 11.6 Mbps |
+| 16 | 32 | 21.4% | 84 MB | 23.1 Mbps |
+
+One room with everyone talking reads as P4C.1's nine real browsers did (6.6 Mbps, 6 to 12% of a core, 14 MB), so the tool stands in for them. “Sent” is as mediasoup counts it; the UDP and IP headers add an eighth, 7.4 Mbps on the wire for a room with all nine talking and 1.6 Mbps with two. A room where two people talk at once, which is what a table sounds like, costs a quarter of one where all nine do. Memory follows the streams in flight, about 14 MB a room at the worst.
+
+**The limit.** The voice service takes `VOICE_MAX_ROOMS` and `VOICE_MAX_PEOPLE`. At either, a hello is refused with `full` and the socket closed with 4503; the table says “Table voice is full right now” and offers to try again, and plays on. Someone coming back to their own seat is not counted twice, a room nobody is in is closed at once and frees its place, and a room that comes back after a restart to find no place is told the same, not left trying. The live unit sets **8 rooms and 72 people**, which on these figures is cautious:
+
+| | 8 rooms, all 72 talking | 8 rooms, two talking in each | The host's limit |
+| --- | --- | --- | --- |
+| Uplink | 59 Mbps | 13 Mbps | 70% of the line, about 390 Mbps of 556 |
+| Worker memory | 117 MB, beside 75 to 100 MB of Node | 41 MB | `MemoryHigh=256M` |
+| Worker CPU, this Mac | 28% of a core | 11% | one core; ubuntu-vm's is unmeasured |
+
+The uplink leaves room for six times that. What holds the number down is what has not been measured: ubuntu-vm's own CPU and its own path to the line. With `pnpm voice:load` run there, and the memory limit raised to match, the limit can follow; nothing on the site needs more yet.
+
+**The media port.** P4C.8's review asked for a limit on TCP connections to 3478 from one address, sized here. A person holds two (a send and a receive transport) when their network blocks UDP, and none otherwise; a household or an office behind one address might be a full table, so 9 people and 18 connections. A limit of **32 TCP connections to 3478 per address** leaves that room and stops one address holding hundreds. It is the owner's to apply (P4C.8's Remaining).
 
 ## Privacy, safety and moderation (P4C.8)
 
@@ -470,7 +617,8 @@ Plain words for the privacy page to use, as they stand at P4C.8:
   - Without Web Audio, judge what a page hears by `inbound-rtp` statistics (`totalAudioEnergy`, `concealedSamples`). Chromium counts no energy for a track whose only output is a muted element, so there the analyser is the measure.
 - **The voice service:** Vitest drives it with a real mediasoup worker and real MLS members over the wire (`service.spec.ts`), and `pnpm voice:check` puts people in each engine in a room on it (`room.check.ts`), through the site's own `VoiceRoom`, with media over UDP and, for Chromium told to avoid UDP, TCP.
 - **The encryption itself:** a test build of the voice service with a listener attached at the SFU, holding no key, receives every forwarded frame and cannot decode them, while members decode the injected tone, and someone who left or arrived opens nothing outside their epochs (`tap.check.ts`, [P4C.8](#what-a-copy-of-the-audio-is-worth-the-keyless-listener)).
-- **Latency and loss:** mouth-to-ear delay measured with a marked tone, `getStats` jitter-buffer and round-trip figures, and packet loss and jitter added with `tc netem` on Linux.
+- **Recovery:** `recovery.check.ts` in `pnpm voice:check` kills a service's media worker under four people, takes the network away with a relay and brings back another, has someone join and leave through a network that loses and delays packets, blocks all audio, and fills a service ([P4C.7](#recovery)).
+- **Latency and loss:** `pnpm voice:measure`, by hand on a quiet machine: mouth-to-ear delay with a marked tone timed on each page's audio thread, with `getStats` jitter-buffer and round-trip figures, and speech through packet loss and jitter from a relay or from `tc netem` on Linux ([P4C.7](#audio-quality-resilience-and-capacity-p4c7)). Playwright's WebKit can take no part in the marks, and its mock microphone delivers audio in bursts, which fills every listener's jitter buffer: never judge a listener's delay by a WebKit speaker there.
 
 ## Sources
 

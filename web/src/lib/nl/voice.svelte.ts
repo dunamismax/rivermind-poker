@@ -77,11 +77,19 @@ export function socketUrl(path: string, at: Location = location): string {
 	return `${at.protocol === 'https:' ? 'wss:' : 'ws:'}//${at.host}${path}`;
 }
 
+// What the table says when the voice service has no room left (P4C.7).
+const FULL =
+	'Table voice is full right now: as many people are talking across the site as it can carry. Try again in a few minutes. The table plays as before.';
+
 // Why a room ended, for the table.
 function closedWhy(code: number): string | null {
 	switch (code) {
 		case CLOSE.unseated:
 			return null;
+		case CLOSE.full:
+			return FULL;
+		case CLOSE.unreachable:
+			return 'Voice could not connect from this network: it may block the port voice uses. The table plays as before.';
 		case CLOSE.replaced:
 			return 'Voice moved to another tab or window of yours at this table.';
 		case CLOSE.removed:
@@ -502,6 +510,10 @@ export class TableVoice {
 					}
 					return null;
 				},
+				// For a session by hand (P4C.9): `rivermind.voice.direct` set to 1 in
+				// this browser plays Chromium's mix without the loopback, to hear
+				// whether echo is still cancelled and what the loopback's delay buys.
+				...(storage()?.getItem('rivermind.voice.direct') === '1' ? { loopback: false } : {}),
 				log: this.#log
 			});
 			playback.onchange = () => this.#syncPlayback();
@@ -656,7 +668,11 @@ export class TableVoice {
 			if (attempt !== this.#joining) return;
 			this.#closeMic();
 			this.phase = 'failed';
-			this.failure = `Voice could not start: ${error instanceof Error ? error.message : String(error)}. The table plays as before.`;
+			// The service's own word for it (`Refused` in signalling-client.ts).
+			this.failure =
+				(error as { code?: unknown } | null)?.code === 'full'
+					? FULL
+					: `Voice could not start: ${error instanceof Error ? error.message : String(error)}. The table plays as before.`;
 		}
 	}
 

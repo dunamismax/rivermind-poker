@@ -14,7 +14,8 @@
 //   2. group.create     the first person makes the group (docs/voice.md)
 //      group.commit     everyone after joins by external commit, and members
 //                       commit the removals the service proposes
-//   3. transport.*      a send and a receive WebRTC transport
+//   3. transport.*      a send and a receive WebRTC transport, and a new start
+//                       for one's ICE when its path was lost (P4C.7)
 //      produce          the page's one audio track, once it is in the group
 //      consume          another person's track, paused until consumer.resume
 //   4. status           whether this person has muted themself or deafened,
@@ -105,6 +106,9 @@ export type Requests = {
 			// epoch, after reports of what they said in voice (P4C.8); null when
 			// they may. The service refuses their `produce` until then.
 			silenced?: number | null;
+			// The service takes `transport.restart` (P4C.7). A page asks only a
+			// service that says so, as with `status`.
+			restarts?: true;
 		};
 	};
 	'group.create': {
@@ -123,6 +127,13 @@ export type Requests = {
 	'transport.connect': {
 		request: { transport: string; dtlsParameters: msc.DtlsParameters };
 		response: Record<string, never>;
+	};
+	// A transport lost its path (the person's network changed): ICE starts
+	// again under new credentials, and the transport, its streams and the
+	// group all stand (P4C.7).
+	'transport.restart': {
+		request: { transport: string };
+		response: { iceParameters: msc.IceParameters };
 	};
 	produce: {
 		request: { transport: string; rtpParameters: msc.RtpParameters };
@@ -146,6 +157,7 @@ export const REQUEST_TYPES: readonly RequestType[] = [
 	'group.commit',
 	'transport.create',
 	'transport.connect',
+	'transport.restart',
 	'produce',
 	'producer.pause',
 	'producer.resume',
@@ -175,6 +187,8 @@ export type VoiceError =
 	// Sending audio before joining the group, with the audio-level extension or
 	// while suspended from speaking, or hearing someone either of you blocked.
 	| 'not-allowed'
+	// The service is carrying as many rooms or people as it is set to (P4C.7).
+	| 'full'
 	// The room is gone, or the media server could not do what was asked.
 	| 'failed'
 	| 'malformed'
@@ -200,8 +214,8 @@ export type Notice =
 	| { notice: 'left'; peer: string }
 	// Someone said they muted themself or deafened, or no longer (`status`).
 	| { notice: 'peer'; peer: PeerInfo }
-	// The media server started again (its public address changed): every
-	// transport is gone. The group stands; make the transports again.
+	// The media server's listener started again (its public address changed):
+	// every transport is gone. The group stands; make the transports again.
 	| { notice: 'media.reset' }
 	// This person's speaking is suspended until then, in milliseconds since the
 	// epoch, and their producer is closed; or, with null, they may speak again
@@ -226,7 +240,12 @@ export const CLOSE = {
 	removed: 4410,
 	// The table no longer has this person in voice: they stood up, went bust or
 	// left, the table closed, or nobody else is seated (P4C.5).
-	unseated: 4403
+	unseated: 4403,
+	// The service is full: the hello was refused for that alone (P4C.7).
+	full: 4503,
+	// Never sent: what a page's own room ends with when its audio could not
+	// reach the media server at all, though signalling did (room.ts, P4C.7).
+	unreachable: 4504
 } as const;
 
 // Base64 both ways, in the browser and in Node.

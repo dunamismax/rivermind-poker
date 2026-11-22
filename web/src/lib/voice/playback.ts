@@ -141,6 +141,18 @@ export class Playback {
 		return this.#context;
 	}
 
+	// Where the mix can be listened in on, for measuring how late it is
+	// (P4C.7): the node every voice ends in, and, through the loopback, the
+	// stream the audio element plays.
+	get mix(): AudioNode | null {
+		return this.#master;
+	}
+
+	get played(): MediaStream | null {
+		const stream = this.#mode === 'loopback' ? this.#out?.srcObject : null;
+		return stream instanceof MediaStream ? stream : null;
+	}
+
 	// Whether this page can choose the speakers.
 	get canChooseOutput(): boolean {
 		const element = this.#mode === 'loopback' ? this.#out : null;
@@ -372,18 +384,30 @@ export class Playback {
 			this.#loop = [a, b];
 			a.onicecandidate = ({ candidate }) => candidate && void b.addIceCandidate(candidate);
 			b.onicecandidate = ({ candidate }) => candidate && void a.addIceCandidate(candidate);
-			b.ontrack = ({ track }) => {
+			b.ontrack = ({ track, receiver }) => {
+				// Nothing on this pair crosses a network, so its jitter buffer is asked
+				// to hold as little as it can (P4C.7): the default kept 30 ms more.
+				for (const [name, value] of [
+					['jitterBufferTarget', 0],
+					['playoutDelayHint', 0]
+				] as const) {
+					try {
+						if (name in receiver) (receiver as unknown as Record<string, number>)[name] = value;
+					} catch {
+						// An engine that will not take it keeps its own depth.
+					}
+				}
 				out.srcObject = new MediaStream([track]);
 				void this.#play(out);
 			};
 			for (const track of destination.stream.getAudioTracks())
 				a.addTrack(track, destination.stream);
 			const offer = await a.createOffer();
-			await a.setLocalDescription({ type: 'offer', sdp: stereo(offer.sdp ?? '') });
-			await b.setRemoteDescription({ type: 'offer', sdp: stereo(offer.sdp ?? '') });
+			await a.setLocalDescription({ type: 'offer', sdp: forLoopback(offer.sdp ?? '') });
+			await b.setRemoteDescription({ type: 'offer', sdp: forLoopback(offer.sdp ?? '') });
 			const answer = await b.createAnswer();
-			await b.setLocalDescription({ type: 'answer', sdp: stereo(answer.sdp ?? '') });
-			await a.setRemoteDescription({ type: 'answer', sdp: stereo(answer.sdp ?? '') });
+			await b.setLocalDescription({ type: 'answer', sdp: forLoopback(answer.sdp ?? '') });
+			await a.setRemoteDescription({ type: 'answer', sdp: forLoopback(answer.sdp ?? '') });
 			const connected = await new Promise<boolean>((resolve) => {
 				const timer = setTimeout(() => resolve(false), 4000);
 				b.onconnectionstatechange = () => {
@@ -491,14 +515,23 @@ export class Playback {
 	}
 }
 
-// Ask for stereo Opus on the loopback, so the panning survives it.
-export function stereo(sdp: string): string {
+// What the loopback asks of Opus: stereo, so the panning survives it, and
+// 10 ms frames in place of 20, since every millisecond a frame waits to be
+// filled is added to what the listener hears (P4C.7). Nothing here leaves the
+// machine, so the bitrate and the smaller frames cost no one's network.
+export function forLoopback(sdp: string): string {
 	const opus = /a=rtpmap:(\d+) opus\/48000\/2/i.exec(sdp)?.[1];
 	if (!opus) return sdp;
-	return sdp.replace(new RegExp(`a=fmtp:${opus} ([^\\r\\n]*)`), (line, params: string) => {
-		const kept = params
-			.split(';')
-			.filter((one) => !/^(stereo|sprop-stereo|maxaveragebitrate)=/.test(one.trim()));
-		return `a=fmtp:${opus} ${[...kept, 'stereo=1', 'sprop-stereo=1', 'maxaveragebitrate=256000'].join(';')}`;
-	});
+	return sdp
+		.replace(/a=(max)?ptime:\d+\r?\n/g, '')
+		.replace(
+			new RegExp(`a=fmtp:${opus} ([^\\r\\n]*)(\\r?\\n)`),
+			(line, params: string, end: string) => {
+				const kept = params
+					.split(';')
+					.filter((one) => !/^(stereo|sprop-stereo|maxaveragebitrate)=/.test(one.trim()));
+				const fmtp = [...kept, 'stereo=1', 'sprop-stereo=1', 'maxaveragebitrate=256000'].join(';');
+				return `a=fmtp:${opus} ${fmtp}${end}a=ptime:10${end}`;
+			}
+		);
 }

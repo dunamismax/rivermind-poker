@@ -452,9 +452,13 @@ describe('a group that holds someone who is not seated', () => {
 		table.clock.advance(DEPARTURE_GRACE_MS - 1);
 		expect(await alice.says('still within it')).not.toBeNull();
 
-		// The removal never comes: a service that keeps him in the group gets nothing more.
+		// The removal never comes: a service that keeps him in the group gets nothing more,
+		// and the page is told, so the table can say why its microphone is off.
+		const told: boolean[] = [];
+		alice.keys.onseats = (seats) => told.push(seats.ok);
 		table.clock.advance(1);
 		expect(alice.store.held).toBe(true);
+		expect(told).toEqual([false]);
 		expect(await alice.says('he should not hear this')).toBeNull();
 
 		// Then it does, and the group matches the seats again.

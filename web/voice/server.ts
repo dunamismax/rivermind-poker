@@ -24,10 +24,14 @@
 //                             listening addresses are announced as they are
 //   VOICE_WORKER_BIN          mediasoup's worker (the one beside this bundle, or
 //                             the installed package's)
+//   VOICE_MAX_ROOMS,          the most rooms, and the most people across them, in
+//   VOICE_MAX_PEOPLE          voice at once: what the host's uplink allows
+//                             (docs/voice.md, P4C.7); without them, no limit
 //   SHUTDOWN_TIMEOUT          seconds a SIGTERM waits for sockets to close (5)
 //
-// /healthz answers {"status":"ok","revision":"<commit>","media":"ok","address":"ok"},
-// and 503 when the media worker is gone or the announced name never resolved.
+// /healthz answers {"status":"ok","revision":"<commit>","media":"ok","address":"ok",
+// "rooms":0,"people":0}, and 503 while the media worker is gone or when the
+// announced name never resolved.
 // POST /seats takes the table server's list of who may be in a table's room,
 // signed with the voice key (src/lib/server/voice/seats.ts, P4C.5): 204, or 401.
 import { existsSync, readFileSync } from 'node:fs';
@@ -121,13 +125,30 @@ const media = await Media.start({
 	log
 });
 started = media;
-const service = new VoiceService({ key, media, log });
-media.ondied = () => {
-	// Nothing can carry audio without the worker. systemd starts the service
-	// again, and pages join a new group (P4C.7 makes this quicker).
-	log('stopping: the media worker died');
+// A limit from the environment: a whole number above zero, or none.
+function limit(name: string): number | undefined {
+	const value = env[name];
+	if (value === undefined || value === '') return undefined;
+	if (!/^[1-9]\d*$/.test(value)) throw new Error(`${name} is not a whole number above zero`);
+	return Number(value);
+}
+
+const service = new VoiceService({
+	key,
+	media,
+	log,
+	maxRooms: limit('VOICE_MAX_ROOMS'),
+	maxPeople: limit('VOICE_MAX_PEOPLE')
+});
+// A media worker that dies is started again in this process (media.ts), and
+// pages come back into new rooms by themselves. One that keeps dying, or
+// cannot be started, stops the service: systemd starts it again.
+media.onfailed = () => {
+	log('stopping: no media worker');
+	stopping = true;
 	service.close();
-	process.exit(1);
+	for (const ws of sockets.clients) ws.close(CLOSE.restarting, 'the voice service is restarting');
+	setTimeout(() => process.exit(1), 200);
 };
 watch?.start();
 
@@ -191,7 +212,7 @@ const http = createServer((request, response) => {
 			'cache-control': 'no-store'
 		})
 		.end(
-			`${JSON.stringify({ status: stopping ? 'stopping' : healthy ? 'ok' : 'error', revision, ...checks })}\n`
+			`${JSON.stringify({ status: stopping ? 'stopping' : healthy ? 'ok' : 'error', revision, ...checks, ...service.counts })}\n`
 		);
 });
 

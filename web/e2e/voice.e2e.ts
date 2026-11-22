@@ -343,6 +343,52 @@ test.describe('table voice', () => {
 		}
 	});
 
+	test('a voice service with no room left is said plainly, and the table plays on (P4C.7)', async ({
+		browser,
+		baseURL
+	}, testInfo) => {
+		const engine = engineOf(browser);
+		test.skip(!canTransform(engine), 'this build of the engine never reaches the voice service');
+		const alice = await person(engine, testInfo, baseURL!, { mic: false });
+		const bob = await person(engine, testInfo, baseURL!, { mic: false });
+		try {
+			// Bob's page reaches a voice service that is full: it answers his hello
+			// as the service does (service.ts), and closes the socket with its code.
+			await bob.page.routeWebSocket(/\/voice$/, (socket) => {
+				socket.onMessage((message) => {
+					const { id, type } = JSON.parse(String(message)) as { id: number; type: string };
+					if (type !== 'hello') return;
+					socket.send(JSON.stringify({ error: 'full', id, ok: false }));
+					void socket.close({ code: 4503, reason: 'hello refused' });
+				});
+			});
+			await sitDown(alice.page, 3, { bots: /No bots/, privateTable: true });
+			await alice.page.getByRole('button', { name: 'Invite' }).click();
+			const link = await alice.page.getByRole('textbox', { name: 'Invite link' }).inputValue();
+			await alice.page.getByRole('button', { name: 'Invite' }).click();
+			await bob.page.goto(link);
+			await bob.page
+				.getByRole('region', { name: 'You are invited' })
+				.getByRole('button', { name: 'Take a seat' })
+				.click();
+			await expect(seated(bob.page)).toBeVisible();
+			await expect(card(bob.page)).toBeVisible();
+			await card(bob.page).getByRole('button', { name: 'Listen only' }).click();
+			// The card comes back by itself to say why voice did not start.
+			await expect(card(bob.page).getByRole('alert')).toContainText(
+				'Table voice is full right now'
+			);
+			expect((await diagnostics(bob.page)).phase).toBe('failed');
+			// He can ask again from the same card, and is still seated at the table.
+			await expect(card(bob.page).getByRole('button', { name: 'Join voice' })).toBeVisible();
+			await expect(seated(bob.page)).toBeVisible();
+			expect(bob.violations).toEqual([]);
+		} finally {
+			await alice.close();
+			await bob.close();
+		}
+	});
+
 	test('a practice table, and a table with only bots, offer no voice', async ({
 		page,
 		browser

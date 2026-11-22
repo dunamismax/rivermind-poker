@@ -23,6 +23,13 @@
 // person's mutes (P4C.5). A new group starts again at epoch 0, which a key
 // store never goes back to, so each session has a worker and keys of its own.
 //
+// A session also looks after its own path to the media server (P4C.7). When a
+// transport loses it (the person's network changed), ICE starts again under
+// new credentials from the service, and the group and every stream stand. A
+// transport that is not connected again soon after ends the session, and the
+// room comes back as it does after a restart. A room that cannot come back
+// keeps trying for a while, less and less often, and then ends.
+//
 // What the person does with their own audio (P4C.6) is kept by the room too,
 // across sessions: the microphone, which can change or go (listening only);
 // whether it sends, which a mute or push-to-talk stops at the page and at the
@@ -37,6 +44,7 @@ import { FrameCrypto } from './sframe-client.ts';
 import type { Tally } from './sframe-transform.ts';
 import { Refused, VoiceSocket } from './signalling-client.ts';
 import {
+	CLOSE,
 	VOICE_PROTOCOL,
 	fromBase64,
 	toBase64,
@@ -44,11 +52,19 @@ import {
 	type PeerInfo,
 	type PeerStatus,
 	type Requests,
-	type TransportInfo
+	type TransportInfo,
+	type VoiceError
 } from './signalling.ts';
 
 // How long a member waits for each member ahead of it to commit a removal.
 export const COMMIT_TURN_MS = 1000;
+// How long a transport that lost its path has to connect again, ICE restarted,
+// before the session is given up for a new one.
+export const ICE_GIVE_UP_MS = 3000;
+// How long a transport may take to connect in the first place before it is
+// treated as one that lost its path. A browser left to itself takes two or
+// three times as long to say that ICE failed.
+export const CONNECT_MS = 10_000;
 
 // docs/voice.md: mono, in-band FEC, DTX, 64 kbps on average, 20 ms frames.
 export const CODEC_OPTIONS: msc.ProducerCodecOptions = {
@@ -83,6 +99,10 @@ export type VoiceRoomOptions = {
 	deafened?: boolean;
 	bitrate?: Bitrate;
 	commitTurnMs?: number;
+	iceGiveUpMs?: number;
+	connectMs?: number;
+	// How long a room that lost the service keeps trying to come back.
+	giveUpMs?: number;
 	onepoch?: (epoch: Epoch) => void;
 	// A stream was added, or ended.
 	onheard?: (heard: Heard) => void;
@@ -146,8 +166,18 @@ class VoiceSession {
 	// Group changes, notices and media changes, one at a time, in order.
 	#queue: Promise<void> = Promise.resolve();
 	#commitTimer: ReturnType<typeof setTimeout> | null = null;
+	// Each transport that lost its path, with the timer that gives the session up.
+	#recovering = new Map<msc.Transport, ReturnType<typeof setTimeout>>();
+	// Each transport that is connecting for the first time, with its deadline.
+	#connecting = new Map<msc.Transport, ReturnType<typeof setTimeout>>();
 	#closed = false;
 	#sending: boolean;
+	// How many times ICE was started again, for the checks.
+	iceRestarts = 0;
+	// Whether any transport of this session ever reached the media server, and
+	// whether the session ended itself because one did not come back.
+	reached = false;
+	gaveUp = false;
 	#status: PeerStatus;
 	#deafened: boolean;
 	// Until when this person may not speak (P4C.8), in milliseconds; null when they may.
@@ -171,6 +201,14 @@ class VoiceSession {
 		this.#silenced = welcome.silenced ?? null;
 		this.#keys = new EpochKeys(this.#frames);
 		this.#keys.seats(options.seated);
+		// Someone who left their seat is in the group still, and this page has
+		// stopped sending: the table hears of it.
+		this.#keys.onseats = (seats) => {
+			if (!this.epoch || this.#closed) return;
+			this.epoch = { ...this.epoch, seats };
+			this.#options.onepoch?.(this.epoch);
+			this.#changed();
+		};
 		this.#frames.onrefused = (asked, error) => this.refused.push(`${asked}: ${error}`);
 		for (const peer of welcome.peers) this.#peers.set(peer.peer, peer);
 	}
@@ -378,6 +416,7 @@ class VoiceSession {
 		if (this.#closed) return;
 		this.#closed = true;
 		if (this.#commitTimer) clearTimeout(this.#commitTimer);
+		this.#forgetTimers();
 		// Each step on its own: one that fails in some browser must not keep the
 		// rest, or the room, from hearing that this session is over.
 		const steps: (() => void)[] = [
@@ -430,7 +469,88 @@ class VoiceSession {
 				.request('produce', { transport: made.id, rtpParameters })
 				.then(({ producer }) => done({ id: producer }), failed);
 		});
+		made.on('connectionstatechange', (state) => {
+			if (state !== 'connecting') {
+				clearTimeout(this.#connecting.get(made));
+				this.#connecting.delete(made);
+			}
+			if (state === 'connected') {
+				this.reached = true;
+				this.#recovered(made);
+			} else if (state === 'disconnected' || state === 'failed') {
+				this.#recover(made);
+			} else if (state === 'connecting' && !this.#connecting.has(made) && !this.reached) {
+				// It should not take long: a network that lets no audio through is
+				// found out here, sooner than the browser says so.
+				const wait = this.#options.connectMs ?? CONNECT_MS;
+				this.#connecting.set(
+					made,
+					setTimeout(() => {
+						this.#connecting.delete(made);
+						if (made.connectionState !== 'connected') this.#recover(made);
+					}, wait)
+				);
+			}
+		});
 		return made;
+	}
+
+	// The browser says the network came back or changed: every path this page
+	// had may be gone, so both transports start ICE again without waiting to
+	// find out.
+	networkChanged(): void {
+		for (const transport of [this.#send, this.#recv]) {
+			// One that carries nothing yet has no path to lose.
+			if (transport && !transport.closed && transport.connectionState !== 'new') {
+				this.#recover(transport);
+			}
+		}
+	}
+
+	// A transport lost its path to the media server. ICE starts again under new
+	// credentials; if it is not connected again in time, the session ends and
+	// the room makes another.
+	#recover(transport: msc.Transport): void {
+		if (this.#closed || transport.closed || this.#recovering.has(transport)) return;
+		const wait = this.#options.iceGiveUpMs ?? ICE_GIVE_UP_MS;
+		this.#recovering.set(
+			transport,
+			setTimeout(() => {
+				this.#recovering.delete(transport);
+				if (this.#closed || transport.closed || transport.connectionState === 'connected') return;
+				this.#log('voice: the path to the media server did not come back');
+				this.gaveUp = true;
+				this.#socket.close();
+			}, wait)
+		);
+		if (!this.#welcome.restarts) return;
+		void this.#later(async () => {
+			if (transport.closed || !this.#recovering.has(transport)) return;
+			const { iceParameters } = await this.#socket.request('transport.restart', {
+				transport: transport.id
+			});
+			if (transport.closed) return;
+			await transport.restartIce({ iceParameters });
+			this.iceRestarts += 1;
+			this.#log('voice: started ICE again');
+			// A transport that never lost its path says nothing more: it is as it was.
+			if (transport.connectionState === 'connected') this.#recovered(transport);
+		}).catch(() => {});
+	}
+
+	#forgetTimers(): void {
+		for (const timer of [...this.#recovering.values(), ...this.#connecting.values()]) {
+			clearTimeout(timer);
+		}
+		this.#recovering.clear();
+		this.#connecting.clear();
+	}
+
+	#recovered(transport: msc.Transport): void {
+		const timer = this.#recovering.get(transport);
+		if (timer === undefined) return;
+		clearTimeout(timer);
+		this.#recovering.delete(transport);
 	}
 
 	// Make the group, or join it, starting again from whatever GroupInfo a refusal names.
@@ -584,6 +704,7 @@ class VoiceSession {
 				return;
 			case 'media.reset':
 				// Every transport is gone at the service: make them again and send again.
+				this.#forgetTimers();
 				for (const heard of this.#heard.values()) this.#drop(heard);
 				this.#send?.close();
 				this.#recv?.close();
@@ -653,7 +774,23 @@ class VoiceSession {
 // service's 1012 (service restart) as 1005 (no status); a room's own close
 // never gets here, since it marks itself closed first.
 const COME_BACK = new Set([1001, 1005, 1006, 1011, 1012, 1013]);
-const RETRY_MS = [250, 500, 1000];
+// How long a room waits before each try at coming back, the last of them for
+// every try after, and how long it keeps trying before it ends (P4C.7): a
+// service that is down for good is not asked every second by every page.
+export const RETRY_MS = [250, 500, 1000, 2000, 4000, 8000];
+export const GIVE_UP_MS = 120_000;
+// What the service says when it will not have this page back, and the code
+// the room then ends with.
+const REFUSALS: Partial<Record<VoiceError, number>> = {
+	full: CLOSE.full,
+	'not-seated': CLOSE.unseated,
+	'bad-token': CLOSE.unauthorised,
+	'unsupported-version': CLOSE.protocol
+};
+// How many sessions in a row may end without their audio ever reaching the
+// media server before the room ends: the network lets signalling through and
+// not the media port, and trying again changes nothing.
+export const UNREACHED = 2;
 
 export class VoiceRoom {
 	#options: VoiceRoomOptions;
@@ -664,7 +801,18 @@ export class VoiceRoom {
 	#deafened: boolean;
 	#closed = false;
 	#tries = 0;
+	#lostAt = 0;
+	#unreached = 0;
 	#retry: ReturnType<typeof setTimeout> | null = null;
+	// The browser is back on a network, perhaps another one: a session starts
+	// ICE again, and a room waiting to come back tries now.
+	#online = () => {
+		if (this.#session) this.#session.networkChanged();
+		else if (this.#retry) {
+			clearTimeout(this.#retry);
+			this.#try();
+		}
+	};
 
 	private constructor(options: VoiceRoomOptions) {
 		this.#options = options;
@@ -672,12 +820,19 @@ export class VoiceRoom {
 		this.#sending = options.sending ?? true;
 		this.#status = options.status ?? { muted: false, deafened: false };
 		this.#deafened = options.deafened ?? false;
+		// A browser back on a network, perhaps another one.
+		globalThis.addEventListener?.('online', this.#online);
 	}
 
 	// Join the table's voice room. A first connection that fails throws.
 	static async join(options: VoiceRoomOptions): Promise<VoiceRoom> {
 		const room = new VoiceRoom(options);
-		await room.#connect();
+		try {
+			await room.#connect();
+		} catch (error) {
+			room.close();
+			throw error;
+		}
 		return room;
 	}
 
@@ -707,30 +862,50 @@ export class VoiceRoom {
 		this.#session = null;
 		if (this.#closed) return;
 		if (typeof this.#options.token === 'string' || !COME_BACK.has(code)) {
-			this.#closed = true;
-			this.#options.onclose?.(code, reason);
+			this.#end(code, reason);
+			return;
+		}
+		// A session that gave itself up without its audio ever getting through.
+		this.#unreached = session.gaveUp && !session.reached ? this.#unreached + 1 : 0;
+		if (this.#unreached >= UNREACHED) {
+			this.#end(CLOSE.unreachable, 'the media server could not be reached');
 			return;
 		}
 		this.#options.onreconnecting?.(code);
+		this.#lostAt = Date.now();
 		this.#again();
 	}
 
 	#again(): void {
 		const wait = RETRY_MS[Math.min(this.#tries, RETRY_MS.length - 1)];
 		this.#tries += 1;
-		this.#retry = setTimeout(() => {
-			this.#retry = null;
-			if (this.#closed) return;
-			this.#connect().then(
-				() => {
-					if (this.#session) this.#options.onreconnected?.();
-				},
-				(error: unknown) => {
-					this.#options.log?.(`voice: coming back: ${error}`);
-					if (!this.#closed) this.#again();
-				}
-			);
-		}, wait);
+		this.#retry = setTimeout(() => this.#try(), wait);
+	}
+
+	#try(): void {
+		this.#retry = null;
+		if (this.#closed) return;
+		this.#connect().then(
+			() => {
+				if (this.#session) this.#options.onreconnected?.();
+			},
+			(error: unknown) => {
+				this.#options.log?.(`voice: coming back: ${error}`);
+				if (this.#closed) return;
+				// Refused for good, or gone for too long: the room ends, and says why.
+				const refusal = error instanceof Refused ? REFUSALS[error.code] : undefined;
+				if (refusal !== undefined) this.#end(refusal, 'refused');
+				else if (Date.now() - this.#lostAt >= (this.#options.giveUpMs ?? GIVE_UP_MS)) {
+					this.#end(1006, 'the voice service did not come back');
+				} else this.#again();
+			}
+		);
+	}
+
+	#end(code: number, reason: string): void {
+		this.#closed = true;
+		globalThis.removeEventListener?.('online', this.#online);
+		this.#options.onclose?.(code, reason);
 	}
 
 	get connected(): boolean {
@@ -822,8 +997,14 @@ export class VoiceRoom {
 		this.#session?.seats(seated);
 	}
 
+	// How many times this connection started ICE again (P4C.7), for the checks.
+	get iceRestarts(): number {
+		return this.#session?.iceRestarts ?? 0;
+	}
+
 	close(): void {
 		this.#closed = true;
+		globalThis.removeEventListener?.('online', this.#online);
 		if (this.#retry) clearTimeout(this.#retry);
 		this.#session?.close();
 		this.#session = null;

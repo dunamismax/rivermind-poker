@@ -32,6 +32,15 @@ export type JoinOptions = {
 	// Ask the test for each token (`window.voiceToken`), so the room can come
 	// back by itself after the service restarts.
 	refresh?: boolean;
+	// What the person has done with their own audio before joining (P4C.6):
+	// muted themself, or deafened.
+	selfMuted?: boolean;
+	deafened?: boolean;
+	// How long the room keeps trying to come back before it ends, and how long
+	// a transport has to connect, and to connect again (room.ts).
+	giveUpMs?: number;
+	connectMs?: number;
+	iceGiveUpMs?: number;
 };
 
 export type Heard = {
@@ -63,6 +72,15 @@ export type RoomReport = {
 	silencedUntil: number | null;
 	// Whether the page has a producer: it sends audio.
 	producing: boolean;
+	// How many times this connection started ICE again, and how many times the
+	// room lost the service and came back (P4C.7).
+	iceRestarts: number;
+	reconnects: number;
+	// The code the room ended with, or null while it stands.
+	closed: number | null;
+	// Everyone else, as this page's own copy of the group and the service's
+	// notices have them (P4C.6).
+	people: { seat: number | null; sending: boolean; muted: boolean; deafened: boolean }[];
 };
 
 // What a run of Opus frames decodes to (`decode`): how many the decoder
@@ -238,6 +256,8 @@ async function decodeOpus(frames: Uint8Array[]): Promise<{ failed: number; pcm: 
 }
 
 let room: VoiceRoom | null = null;
+let reconnects = 0;
+let closed: number | null = null;
 let context: AudioContext | null = null;
 const analysers = new Map<string, AnalyserNode>();
 // Elements keep each remote track decoding; Chromium also feeds a remote
@@ -304,6 +324,12 @@ window.room = {
 			token: options.refresh ? () => window.voiceToken!() : options.token,
 			seated: options.seated,
 			muted: options.muted,
+			sending: !options.selfMuted && !options.deafened,
+			status: { muted: options.selfMuted ?? false, deafened: options.deafened ?? false },
+			deafened: options.deafened ?? false,
+			giveUpMs: options.giveUpMs,
+			connectMs: options.connectMs,
+			iceGiveUpMs: options.iceGiveUpMs,
 			track: await track(options),
 			onheard: heard,
 			onended: (stream) => {
@@ -311,9 +337,15 @@ window.room = {
 				elements.get(stream.peer)?.pause();
 				elements.delete(stream.peer);
 			},
-			onclose: (code) => document.body.setAttribute('data-closed', String(code)),
+			onclose: (code) => {
+				closed = code;
+				document.body.setAttribute('data-closed', String(code));
+			},
 			onreconnecting: (code) => log(`lost the voice service (${code}); coming back`),
-			onreconnected: () => log('back in voice'),
+			onreconnected: () => {
+				reconnects += 1;
+				log('back in voice');
+			},
 			log
 		});
 		log(`joined as leaf ${room.leaf} with ${room.handler}`);
@@ -369,7 +401,13 @@ window.room = {
 			refused: now.refused,
 			heard: heard.sort((a, b) => a.leaf - b.leaf),
 			silencedUntil: now.silencedUntil,
-			producing: now.producer !== null && !now.producer.closed
+			producing: now.producer !== null && !now.producer.closed,
+			iceRestarts: now.iceRestarts,
+			reconnects,
+			closed,
+			people: now.people
+				.map(({ seat, sending, muted, deafened }) => ({ seat, sending, muted, deafened }))
+				.sort((a, b) => (a.seat ?? 0) - (b.seat ?? 0))
 		};
 	},
 	seats(seated) {

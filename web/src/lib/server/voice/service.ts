@@ -69,6 +69,10 @@ export type VoiceServiceOptions = {
 	playerHellos?: { burst: number; perSecond: number };
 	playerMessages?: { burst: number; perSecond: number };
 	helloMs?: number;
+	// The most rooms, and the most people across them, the service carries at
+	// once (P4C.7): what the host's uplink allows. Without them, no limit.
+	maxRooms?: number;
+	maxPeople?: number;
 };
 
 class Failure extends Error {
@@ -213,6 +217,8 @@ export class VoiceService {
 	#hellos: Buckets;
 	#messages: Buckets;
 	#helloMs: number;
+	#maxRooms: number;
+	#maxPeople: number;
 	// Each suspended person's timer, which lets them speak again when it ends.
 	#lifts = new Map<Peer, ReturnType<typeof setTimeout>>();
 
@@ -224,7 +230,9 @@ export class VoiceService {
 		rate,
 		playerHellos,
 		playerMessages,
-		helloMs
+		helloMs,
+		maxRooms,
+		maxPeople
 	}: VoiceServiceOptions) {
 		this.#key = key;
 		this.#media = media;
@@ -236,7 +244,10 @@ export class VoiceService {
 		this.#hellos = new Buckets(hellos.perSecond, hellos.burst, this.#now);
 		this.#messages = new Buckets(messages.perSecond, messages.burst, this.#now);
 		this.#helloMs = helloMs ?? HELLO_MS;
+		this.#maxRooms = maxRooms ?? Infinity;
+		this.#maxPeople = maxPeople ?? Infinity;
 		media.onreset = () => this.#reset();
+		media.ondied = () => this.#mediaDied();
 	}
 
 	// How many rooms are open and how many people are in them.
@@ -317,7 +328,9 @@ export class VoiceService {
 								? CLOSE.unseated
 								: code === 'too-many'
 									? CLOSE.rate
-									: CLOSE.protocol,
+									: code === 'full'
+										? CLOSE.full
+										: CLOSE.protocol,
 						'hello refused'
 					);
 				}
@@ -388,6 +401,11 @@ export class VoiceService {
 		if (open) return open;
 		let opening = this.#opening.get(table);
 		if (!opening) {
+			// As many rooms as the host's uplink allows, and no more (P4C.7).
+			if (this.#rooms.size + this.#opening.size >= this.#maxRooms) {
+				this.#log('refused a hello: every room is taken');
+				fail('full');
+			}
 			opening = (async () => {
 				const router = await this.#media.createRouter();
 				const delivery = await Delivery.create(randomBytes(16));
@@ -430,56 +448,87 @@ export class VoiceService {
 			const room = await this.#roomFor(token.table);
 			const entered = await room.serial(async () => {
 				if (this.#rooms.get(token.table) !== room) return null;
-				// The table has the last word on who is seated. Before it has said
-				// (the voice service has just started), the token alone admits.
-				const allowed = this.#allowed.get(token.table);
-				if (allowed && !allowed.seats.has(seatKey(identity))) {
-					this.#log('refused a socket: not seated');
-					fail('not-seated');
+				try {
+					return await this.#enter(room, identity, transport);
+				} catch (error) {
+					// A room opened for someone who was then refused is not left open.
+					if (room.peers.size === 0 && this.#rooms.get(room.table) === room) this.#shut(room);
+					throw error;
 				}
-				// One socket a seat: a page that comes back, or a new holder of the seat,
-				// takes the place of whoever had it.
-				for (const other of [...room.peers.values()]) {
-					if (other.identity.seat === identity.seat) {
-						other.transport.close(CLOSE.replaced, 'the seat joined again');
-						await this.#depart(room, other);
-					}
-				}
-				if (this.#rooms.get(token.table) !== room) return null;
-				if (room.peers.size >= MAX_PEERS) fail('too-many');
-				const peer: Peer = {
-					id: randomBytes(9).toString('base64url'),
-					identity,
-					transport,
-					leaf: null,
-					send: null,
-					recv: null,
-					producer: null,
-					consumers: new Map(),
-					status: { muted: false, deafened: false }
-				};
-				const peers = [...room.peers.values()].map((other) => room.info(other));
-				room.peers.set(peer.id, peer);
-				room.most = Math.max(room.most, room.peers.size);
-				this.#log(`room ${room.number}: someone joined (${room.peers.size} in voice)`);
-				const welcome: Requests['hello']['response'] = {
-					v: VOICE_PROTOCOL,
-					peer: peer.id,
-					seat: identity.seat,
-					player: identity.player,
-					service: toBase64(room.delivery.servicePublicKey),
-					group: toBase64(room.delivery.groupId),
-					groupInfo: room.groupInfo(),
-					routerRtpCapabilities: withoutAudioLevel(room.router.rtpCapabilities),
-					peers,
-					statuses: true,
-					silenced: this.#silencedUntil(room, peer)
-				};
-				if (welcome.silenced) this.#liftLater(room, peer, welcome.silenced);
-				return { room, peer, welcome };
 			});
 			if (entered) return entered;
 		}
+	}
+
+	// Close a room nobody is in.
+	#shut(room: Room): void {
+		room.delivery.close();
+		room.router.close();
+		if (this.#rooms.get(room.table) === room) this.#rooms.delete(room.table);
+		const lasted = Math.round(this.#now() - room.opened);
+		this.#log(`room ${room.number} closed after ${lasted} s, at most ${room.most} in voice`);
+	}
+
+	// Let someone into a room, in that room's order.
+	async #enter(
+		room: Room,
+		identity: Identity,
+		transport: Transport
+	): Promise<{ room: Room; peer: Peer; welcome: Requests['hello']['response'] } | null> {
+		// The table has the last word on who is seated. Before it has said
+		// (the voice service has just started), the token alone admits.
+		const allowed = this.#allowed.get(room.table);
+		if (allowed && !allowed.seats.has(seatKey(identity))) {
+			this.#log('refused a socket: not seated');
+			fail('not-seated');
+		}
+		// One socket a seat: a page that comes back, or a new holder of the seat,
+		// takes the place of whoever had it.
+		for (const other of [...room.peers.values()]) {
+			if (other.identity.seat === identity.seat) {
+				other.transport.close(CLOSE.replaced, 'the seat joined again');
+				await this.#depart(room, other);
+			}
+		}
+		if (this.#rooms.get(room.table) !== room) return null;
+		if (room.peers.size >= MAX_PEERS) fail('too-many');
+		// As many people as the host's uplink allows, and no more (P4C.7). A
+		// page that came back to its own seat was counted out just above.
+		if (this.counts.people >= this.#maxPeople) {
+			this.#log('refused a hello: voice is full');
+			fail('full');
+		}
+		const peer: Peer = {
+			id: randomBytes(9).toString('base64url'),
+			identity,
+			transport,
+			leaf: null,
+			send: null,
+			recv: null,
+			producer: null,
+			consumers: new Map(),
+			status: { muted: false, deafened: false }
+		};
+		const peers = [...room.peers.values()].map((other) => room.info(other));
+		room.peers.set(peer.id, peer);
+		room.most = Math.max(room.most, room.peers.size);
+		this.#log(`room ${room.number}: someone joined (${room.peers.size} in voice)`);
+		const welcome: Requests['hello']['response'] = {
+			v: VOICE_PROTOCOL,
+			peer: peer.id,
+			seat: identity.seat,
+			player: identity.player,
+			service: toBase64(room.delivery.servicePublicKey),
+			group: toBase64(room.delivery.groupId),
+			groupInfo: room.groupInfo(),
+			routerRtpCapabilities: withoutAudioLevel(room.router.rtpCapabilities),
+			peers,
+			statuses: true,
+			silenced: this.#silencedUntil(room, peer),
+			restarts: true
+		};
+		if (welcome.silenced) this.#liftLater(room, peer, welcome.silenced);
+		return { room, peer, welcome };
 	}
 
 	// Someone's socket closed, or another took their seat: their audio stops,
@@ -507,11 +556,7 @@ export class VoiceService {
 		room.tellAll({ notice: 'left', peer: peer.id });
 		this.#log(`room ${room.number}: someone left (${room.peers.size} in voice)`);
 		if (room.peers.size === 0) {
-			room.delivery.close();
-			room.router.close();
-			if (this.#rooms.get(room.table) === room) this.#rooms.delete(room.table);
-			const lasted = Math.round(this.#now() - room.opened);
-			this.#log(`room ${room.number} closed after ${lasted} s, at most ${room.most} in voice`);
+			this.#shut(room);
 			return;
 		}
 		if (peer.leaf === null) return;
@@ -572,6 +617,13 @@ export class VoiceService {
 					dtlsParameters: message.dtlsParameters as unknown as ms.DtlsParameters
 				});
 				reply({});
+				return;
+			}
+			case 'transport.restart': {
+				// The page lost its path to the media server: new ICE credentials,
+				// and everything on the transport stands.
+				const transport = this.#transport(peer, message.transport);
+				reply({ iceParameters: await transport.restartIce() });
 				return;
 			}
 			case 'produce': {
@@ -809,7 +861,32 @@ export class VoiceService {
 		return true;
 	}
 
-	// The media server started again: every transport, producer and consumer is gone.
+	// The media worker died, and every Router with it (P4C.7). Nothing of a room
+	// can be carried on: every page is sent away as for a restart, and comes
+	// back by itself into a new room and a new group on the next worker. The
+	// tables' seat lists stand.
+	#mediaDied(): void {
+		const { rooms, people } = this.counts;
+		this.#end('the media server is starting again');
+		this.#log(`the media worker died with ${rooms} rooms open and ${people} in voice`);
+	}
+
+	// Every room ends now, and every socket is told the service is restarting.
+	#end(why: string): void {
+		for (const timer of this.#lifts.values()) clearTimeout(timer);
+		this.#lifts.clear();
+		for (const room of this.#rooms.values()) {
+			const peers = [...room.peers.values()];
+			// Emptied first: each socket's departure then finds nothing left to do.
+			room.peers.clear();
+			for (const peer of peers) peer.transport.close(CLOSE.restarting, why);
+			room.delivery.close();
+			room.router.close();
+		}
+		this.#rooms.clear();
+	}
+
+	// The media server's listener started again: every transport, producer and consumer is gone.
 	#reset(): void {
 		for (const room of this.#rooms.values()) {
 			for (const peer of room.peers.values()) {
@@ -826,14 +903,6 @@ export class VoiceService {
 	// Stop: every socket is told the service is restarting.
 	close(): void {
 		this.#closing = true;
-		for (const timer of this.#lifts.values()) clearTimeout(timer);
-		this.#lifts.clear();
-		for (const room of this.#rooms.values()) {
-			for (const peer of room.peers.values()) {
-				peer.transport.close(CLOSE.restarting, 'the voice service is restarting');
-			}
-			room.router.close();
-		}
-		this.#rooms.clear();
+		this.#end('the voice service is restarting');
 	}
 }

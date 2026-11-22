@@ -82,6 +82,10 @@ export class EpochKeys {
 	#retiring = new Map<bigint, unknown>();
 	// Epochs are taken one at a time, in the order the group reached them.
 	#queue: Promise<unknown> = Promise.resolve();
+	// Told when the check of members against seats changes by itself: the grace
+	// of someone who left their seat ran out and they are in the group still.
+	// The page shows what it is told here; the hold is already in place.
+	onseats: ((seats: Seats) => void) | null = null;
 
 	constructor(frames: FrameKeys, timers: Timers = realTimers, graceMs: number = GRACE_MS) {
 		this.#frames = frames;
@@ -162,7 +166,9 @@ export class EpochKeys {
 			if (this.#leaving.some((one) => same(one.identity, identity))) continue;
 			const timer = this.#timers.set(() => {
 				this.#leaving = this.#leaving.filter((one) => one.timer !== timer);
-				this.#recheck();
+				const before = this.#latest?.seats.ok;
+				const seats = this.#recheck();
+				if (seats.ok !== before) this.onseats?.(seats);
 			}, DEPARTURE_GRACE_MS);
 			this.#leaving.push({ identity, until: now + DEPARTURE_GRACE_MS, timer });
 		}

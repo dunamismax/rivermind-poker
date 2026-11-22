@@ -1,7 +1,7 @@
 // The parts of voice playback and capture that need no browser (P4C.6).
 import { describe, expect, it } from 'vitest';
 import { constraintsFor, explainMic, problemOf } from './microphone.ts';
-import { SpeakingGate, panFor, rms, stereo } from './playback.ts';
+import { SpeakingGate, forLoopback, panFor, rms } from './playback.ts';
 import { DEFAULTS } from './settings.ts';
 import { socketUrl } from '../nl/voice.svelte.ts';
 
@@ -30,20 +30,23 @@ describe('spatial audio', () => {
 		expect(panFor(-20)).toBe(-0.7);
 	});
 
-	it('asks the loopback for stereo Opus', () => {
+	it('asks the loopback for stereo Opus in 10 ms frames', () => {
 		const sdp = [
 			'v=0',
 			'm=audio 9 UDP/TLS/RTP/SAVPF 111 63',
 			'a=rtpmap:111 opus/48000/2',
 			'a=fmtp:111 minptime=10;useinbandfec=1;stereo=0',
 			'a=rtpmap:63 red/48000/2',
+			'a=ptime:20',
 			''
 		].join('\r\n');
-		const out = stereo(sdp);
+		const out = forLoopback(sdp);
 		expect(out).toContain(
-			'a=fmtp:111 minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=256000\r\n'
+			'a=fmtp:111 minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=256000\r\na=ptime:10\r\n'
 		);
-		expect(stereo('v=0\r\n')).toBe('v=0\r\n');
+		expect(out).not.toContain('a=ptime:20');
+		expect(out.match(/a=ptime:/g)).toHaveLength(1);
+		expect(forLoopback('v=0\r\n')).toBe('v=0\r\n');
 	});
 });
 

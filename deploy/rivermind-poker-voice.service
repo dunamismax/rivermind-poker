@@ -42,13 +42,19 @@ Environment=VOICE_ORIGINS=https://rivermindpoker.com
 # up again every minute). The router and the Windows host forward 3478 here (Q-9).
 Environment=VOICE_MEDIA_PORT=3478 VOICE_LISTEN_IPS=0.0.0.0
 Environment=VOICE_ANNOUNCED_HOST=rivermindpoker.com
+# How much voice the host carries at once (P4C.7, docs/voice.md): at either
+# limit a table is told voice is full. Eight full tables with everyone talking
+# send 59 Mbps of the line's 556 and hold 117 MB in the worker, under
+# MemoryHigh below; raise them together once `pnpm voice:load` has run here.
+Environment=VOICE_MAX_ROOMS=8 VOICE_MAX_PEOPLE=72
 # The voice key, derived from the site's secret by update.sh
 # (`voice.js derive-key`): tokens from the web service verify under it, and
 # nothing here can sign a session cookie. Root-only where it is; systemd hands
 # this service a read-only copy.
 LoadCredential=voice-key:/var/lib/rivermind-poker/voice-key
 Environment=VOICE_KEY_FILE=%d/voice-key
-# A dead media worker stops the service (voice.js), and it starts again here.
+# A media worker that dies is replaced inside the service (P4C.7). If none can
+# be started, the service stops, and it starts again here.
 Restart=always
 RestartSec=3
 TimeoutStopSec=10
@@ -79,8 +85,9 @@ SocketBindAllow=tcp:4323
 SocketBindAllow=udp:3478
 SocketBindAllow=tcp:3478
 SocketBindDeny=any
-# The platform's defaults. P4C.1 measured 75 to 100 MB for the Node side and
-# 14 MB for a nine-person room in the worker; P4C.7 measures full rooms here.
+# The platform's defaults. P4C.1 measured 75 to 100 MB for the Node side, and
+# P4C.7 about 14 MB a room in the worker with all nine talking (117 MB for the
+# eight rooms VOICE_MAX_ROOMS allows).
 MemoryHigh=256M
 MemoryMax=512M
 TasksMax=64

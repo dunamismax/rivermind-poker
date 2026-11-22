@@ -15,6 +15,11 @@ export const RESTART_PORT = 4393;
 // it says what the listener kept.
 export const TAP_PORT = 4394;
 export const TAP_READ_PORT = 4395;
+// One whose audio passes through a relay that stands in for a network
+// (recovery.check.ts, relay.ts): its signalling, and the media port that the
+// relay listens on at this machine's LAN address and the service on loopback.
+export const RELAYED_PORT = 4396;
+export const RELAYED_MEDIA_PORT = 4397;
 // The site secret it runs with, from which the checks sign their voice tokens.
 export const VOICE_SECRET = 'the voice checks’ own secret';
 
@@ -24,7 +29,7 @@ const csp = [
 	"img-src 'self' data:",
 	"style-src 'self'",
 	"script-src 'self' 'wasm-unsafe-eval'",
-	`connect-src 'self' ws://127.0.0.1:${VOICE_PORT} ws://127.0.0.1:${RESTART_PORT} ws://127.0.0.1:${TAP_PORT}`,
+	`connect-src 'self' ws://127.0.0.1:${VOICE_PORT} ws://127.0.0.1:${RESTART_PORT} ws://127.0.0.1:${TAP_PORT} ws://127.0.0.1:${RELAYED_PORT}`,
 	"object-src 'none'",
 	"frame-ancestors 'none'",
 	"base-uri 'self'",
@@ -60,10 +65,13 @@ export default defineConfig({
 			input: {
 				index: path.resolve(import.meta.dirname, 'index.html'),
 				room: path.resolve(import.meta.dirname, 'room.html'),
-				denoise: path.resolve(import.meta.dirname, 'denoise.html')
+				denoise: path.resolve(import.meta.dirname, 'denoise.html'),
+				delay: path.resolve(import.meta.dirname, 'delay.html')
 			}
 		},
 		minify: false,
+		// A worklet module is a file of its own: the CSP blocks a `data:` one.
+		assetsInlineLimit: 0,
 		target: 'es2022'
 	},
 	worker: { format: 'es' },
