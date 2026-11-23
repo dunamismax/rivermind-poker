@@ -13,6 +13,7 @@ The registry of RiverMind’s trained bots: which evaluated blueprint is the **c
 | Format | Champion | Abstraction | Training iterations | Promoted | Evaluations |
 | --- | --- | --- | --- | --- | --- |
 | Heads-up | `hu-m1-s0-1024m` | `hu-m1` | 1,024,000,000 | 2026-11-21 | [checkpoint](evaluations/hu-m1-s0-1024m.md), [served bundle](evaluations/hu-m1-s0-1024m-served.md) |
+| 6-max | `6max-s1-s0-100m` | `6max-s1` | 100,032,000 | 2026-11-22 | [checkpoint](evaluations/6max-s1-s0-100m.md), [served bundle](evaluations/6max-s1-s0-100m-served.md) |
 
 ### Heads-up: `hu-m1-s0-1024m`
 
@@ -28,12 +29,26 @@ Promoted on 2026-11-21, replacing `hu-m1-s0-128m`. Against the simple bots it wi
 - **Kept in:** `artifacts/models/hu-m1-s0-1024m/` (`checkpoint/` and `bundle/`).
 - **RiverMind Medium:** each hand played as this served bundle with probability 0.5 and as RiverMind Easy otherwise; +26.51 (+20.27 to +32.75) against RiverMind Easy; +261.93 (+246.94 to +276.92) against the calling station; -38.36 (-48.14 to -28.58) against RiverMind Hard, the champion itself at 100 big blinds, over 20,000 duplicate deals each, seed 0 ([report](evaluations/hu-m1-s0-1024m-medium.md); recorded 2026-11-22).
 
+### 6-max: `6max-s1-s0-100m`
+
+Promoted on 2026-11-22, as the first 6-max champion.
+
+- **Gate, the checkpoint:** +20.56 (+14.87 to +26.25) against RiverMind Easy; +509.48 (+451.59 to +567.38) against the calling station, in big blinds per 100 hands with 95% intervals, over 20,000 duplicate deals each at 100 big blinds, seed 0 ([report](evaluations/6max-s1-s0-100m.md)).
+- **Gate, the served bundle:** +21.14 (+15.46 to +26.83) against RiverMind Easy; +510.84 (+452.95 to +568.73) against the calling station, in big blinds per 100 hands with 95% intervals, over 20,000 duplicate deals each at 100 big blinds, seed 0 ([report](evaluations/6max-s1-s0-100m-served.md)).
+- **Checkpoint:** 100,032,000 iterations of `6max-s1`, written at commit `ca7965d`. `manifest.json` `c6db9f3078cfd70de7ae1e130e175bb31e7253d40f8b975841b885c86e814b58`, `regrets.npy` `47df5f508234c065dc3d9c680a0a1f4cef79b1df6d247b812a4d634f92ff9536`, `strategy.npy` `0c596915da0be0be729b4251149d9c1dfdb0438fdae676d327bfb26234f054bf`.
+- **Trees:** 50 big blinds `cc952203fb974367c81d7a97ce840458e279c1edb10ac75318b8a015c7383f59`, 100 big blinds `2da67fafbe203a63044e0aa754c02ffdd3c6cf54a106e33449de8e344392b4e3`.
+- **Card tables:** seed 0, table set `085cfca5ce89a7363be57d1bcf04cd89d599cc55faba669a0bd2b2606279e3e9` (one SHA-256 over its files’ hashes). Bucket files: `preflop.npy` `a0a6e5edcc3d3a55fb6acff95b5dbe38615f9687cf56b4d5ca3a6b7f8d8304c9`, `flop.npy` `b245fe1e208d80fc27b8aa3b0dad7259d060969a3838f95d02ca0205916929ee`, `turn.npy` `2765327cc21b4e56fb2a4b160b98de37fb2ef1165bb60a4978a1a296f2bfacee`, `river.npy` `2c89cf9411af82885c48ebc27ccde1526fddfd6d39aa08272c3664534f16ae3a`. `models.json` has all 16 files.
+- **Training settings:** `abstraction` 6max-s1, `depths` [50, 100], `seed` 0, `chunk_size` 1,000, `chunks_per_batch` 64, `discount_every` 4,000,000, `discount_until` 160,000,000, `prune_after` 80,000,000, `prune_probability` 0.95, `prune_threshold` -60,000,000, `regret_floor` -66,000,000.
+- **Serving bundle:** `strategy.u8` `0f1790c3485b9f7de879fe13c67c02c2401eb0e7e37d133f8d99fccffc78c0b4`, probabilities in multiples of 1/255. `models.json` has all 12 files.
+- **Kept in:** `artifacts/models/6max-s1-s0-100m/` (`checkpoint/` and `bundle/`).
+
 ## Decisions
 
 Every run put to the gate, newest first. Results are big blinds per 100 hands with 95% intervals.
 
 | Date | Format | Candidate | Outcome | Checkpoint | Served bundle |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-22 | 6-max | `6max-s1-s0-100m`, 100,032,000 iterations | Promoted | +20.56 (+14.87 to +26.25) against RiverMind Easy; +509.48 (+451.59 to +567.38) against the calling station ([report](evaluations/6max-s1-s0-100m.md)) | +21.14 (+15.46 to +26.83) against RiverMind Easy; +510.84 (+452.95 to +568.73) against the calling station ([report](evaluations/6max-s1-s0-100m-served.md)) |
 | 2026-11-21 | Heads-up | `hu-m1-s0-1280m-80k`, 1,280,000,000 iterations | Inconclusive | +49.19 (+45.03 to +53.35) against RiverMind Easy; +221.36 (+213.27 to +229.45) against the calling station; +0.72 (-4.01 to +5.44) against `hu-m1-s0-1024m`, the champion at the time ([report](evaluations/hu-m1-s0-1280m-80k.md)) | +49.16 (+45.00 to +53.31) against RiverMind Easy; +220.20 (+212.13 to +228.27) against the calling station; +1.65 (-3.07 to +6.37) against `hu-m1-s0-1024m`, the champion at the time ([report](evaluations/hu-m1-s0-1280m-80k-served.md)) |
 | 2026-11-21 | Heads-up | `hu-m1-s0-1280m`, 1,280,000,000 iterations | Inconclusive | +57.21 (+48.61 to +65.81) against RiverMind Easy; +224.44 (+208.43 to +240.44) against the calling station; +7.21 (-2.46 to +16.89) against `hu-m1-s0-1024m`, the champion at the time ([report](evaluations/hu-m1-s0-1280m.md)) | +57.14 (+48.56 to +65.73) against RiverMind Easy; +223.64 (+207.67 to +239.61) against the calling station; +6.59 (-3.08 to +16.27) against `hu-m1-s0-1024m`, the champion at the time ([report](evaluations/hu-m1-s0-1280m-served.md)) |
 | 2026-11-21 | Heads-up | `hu-m1-s0-1024m`, 1,024,000,000 iterations | Promoted, replacing `hu-m1-s0-128m` | +59.05 (+50.41 to +67.70) against RiverMind Easy; +226.66 (+210.33 to +242.99) against the calling station; +21.38 (+10.71 to +32.05) against `hu-m1-s0-128m`, the champion at the time ([report](evaluations/hu-m1-s0-1024m.md)) | +58.79 (+50.09 to +67.48) against RiverMind Easy; +224.92 (+208.64 to +241.20) against the calling station; +21.14 (+10.45 to +31.84) against `hu-m1-s0-128m`, the champion at the time ([report](evaluations/hu-m1-s0-1024m-served.md)) |

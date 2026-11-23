@@ -1,0 +1,342 @@
+{
+  "format": 1,
+  "kind": "rivermind-evaluation",
+  "game": {
+    "rules": "no-limit Texas hold'em, 52-card deck, 6 seats, no ante (docs/rules.md)",
+    "seats": 6,
+    "blinds": [
+      50,
+      100
+    ],
+    "format": "duplicate: each deal played 6 times, the candidate once in every seat against 5 copies of the opponent, fresh stacks each hand",
+    "interval": "95%, normal approximation over deals, all 6 rotations of a deal together"
+  },
+  "seed": 0,
+  "deals_per_matchup": 20000,
+  "candidate": {
+    "spec": "blueprint",
+    "checkpoint": "artifacts/blueprints/6max-s1-s0/checkpoints/000100032000",
+    "iteration": 100032000,
+    "files": {
+      "regrets.npy": "47df5f508234c065dc3d9c680a0a1f4cef79b1df6d247b812a4d634f92ff9536",
+      "strategy.npy": "0c596915da0be0be729b4251149d9c1dfdb0438fdae676d327bfb26234f054bf"
+    },
+    "trees": [
+      "cc952203fb974367c81d7a97ce840458e279c1edb10ac75318b8a015c7383f59",
+      "2da67fafbe203a63044e0aa754c02ffdd3c6cf54a106e33449de8e344392b4e3"
+    ],
+    "cards": {
+      "flop.npy": "b245fe1e208d80fc27b8aa3b0dad7259d060969a3838f95d02ca0205916929ee",
+      "flop_board_class.npy": "8c462e944e1a0cc938a5c5006a73b98704082c13b9dd8cee4d3751318f128d90",
+      "flop_board_perm.npy": "79ddeedbfe5f51451f9c4677bea6ef787388508be66956348e9f2d470c6a41e9",
+      "flop_centroids.npy": "2fad31d6ab632d56704f9a38912a7f18f19c9e31830bca56aae53a3c2098bf13",
+      "flop_class_keys.npy": "692202294023b9add67fa711c63e31adf69e482d02b2666057c7cf24da2f27e8",
+      "preflop.npy": "a0a6e5edcc3d3a55fb6acff95b5dbe38615f9687cf56b4d5ca3a6b7f8d8304c9",
+      "river.npy": "2c89cf9411af82885c48ebc27ccde1526fddfd6d39aa08272c3664534f16ae3a",
+      "river_board_class.npy": "2774e5c73e93a1d1bac4a0ee6780598a260d47b7fe0b3de57403f872ef04ca67",
+      "river_board_perm.npy": "b0a7e4fb7ba73ae9fb8ead43e2f5deca46cdc094204d90a9a37e49cd8c2d6310",
+      "river_centroids.npy": "85b4ddd8ef97d0ebc6e762e0417ae5f34a55737446d284f03ed51561b1d96417",
+      "river_class_keys.npy": "3ac0b1e28c229bd72af627f57b05ccab9714907051fbcbae147637e086dec4d2",
+      "turn.npy": "2765327cc21b4e56fb2a4b160b98de37fb2ef1165bb60a4978a1a296f2bfacee",
+      "turn_board_class.npy": "697ed9714efb06a07aa80d50f478c42bbb9669e0af4d3057fd814f1e979d2539",
+      "turn_board_perm.npy": "8e50452ad6c830ee79d4edf3fc951384c18b271b77c80a288d30684dff44dcfb",
+      "turn_centroids.npy": "dd6d004bb3b0633229e0e0ba5801e2dc9679d64ae9e43daec62ab4752912427a",
+      "turn_class_keys.npy": "8d0eb5addf91ea96de22b477da5c6e6b696a002d524328b1d359337c242448d5"
+    },
+    "trained_by": "ca7965d57de019290944adf672ef8665b8f84bda"
+  },
+  "opponents": {
+    "calling_station": {
+      "spec": "calling_station",
+      "source": "rivermind/bots/policies.py",
+      "source_sha256": "b72a61ddfab206d95bef70e0c890a6241dee23ff8e4095ead7e34e3e0952b4ed"
+    },
+    "heuristic": {
+      "spec": "heuristic",
+      "source": "rivermind/bots/policies.py",
+      "source_sha256": "b72a61ddfab206d95bef70e0c890a6241dee23ff8e4095ead7e34e3e0952b4ed"
+    },
+    "min_bettor": {
+      "spec": "min_bettor",
+      "source": "rivermind/bots/policies.py",
+      "source_sha256": "b72a61ddfab206d95bef70e0c890a6241dee23ff8e4095ead7e34e3e0952b4ed"
+    },
+    "random": {
+      "spec": "random",
+      "source": "rivermind/bots/policies.py",
+      "source_sha256": "b72a61ddfab206d95bef70e0c890a6241dee23ff8e4095ead7e34e3e0952b4ed"
+    }
+  },
+  "engine": {
+    "package": "0.1.0.dev0",
+    "source_sha256": "0de2ecb86194f3d623e1a1253693ed5dc77ce01f252bd69de332f259816c8e1c"
+  },
+  "software": {
+    "python": "3.12.15",
+    "numpy": "2.5.5",
+    "commit": "6d9358060589e85d8f1b7d31e3da2e178f4daa9a",
+    "dirty": false
+  },
+  "results": [
+    {
+      "opponent": "heuristic",
+      "stack_bb": 100,
+      "deals": 20000,
+      "hands": 120000,
+      "bb_per_100": 20.56,
+      "ci95_bb_per_100": [
+        14.87,
+        26.25
+      ],
+      "button_bb_per_100": 64.55,
+      "big_blind_bb_per_100": 8.13,
+      "showdown_share": 0.0536,
+      "position_bb_per_100": {
+        "button": 64.55,
+        "small_blind": -13.72,
+        "big_blind": 8.13,
+        "utg": 14.05,
+        "hijack": 22.47,
+        "cutoff": 27.88
+      },
+      "candidate_decisions": {
+        "below_smallest": 7413,
+        "borrowed": 87,
+        "capped": 10,
+        "decisions": 151881,
+        "lost": 6,
+        "off_tree": 8818,
+        "reentries": 423,
+        "resized": 82,
+        "trained": 151690,
+        "untrained_node": 98
+      },
+      "trained_share": 0.9987
+    },
+    {
+      "opponent": "calling_station",
+      "stack_bb": 100,
+      "deals": 20000,
+      "hands": 120000,
+      "bb_per_100": 509.48,
+      "ci95_bb_per_100": [
+        451.59,
+        567.38
+      ],
+      "button_bb_per_100": 669.95,
+      "big_blind_bb_per_100": 223.73,
+      "showdown_share": 1.0,
+      "position_bb_per_100": {
+        "button": 669.95,
+        "small_blind": 737.75,
+        "big_blind": 223.73,
+        "utg": 621.65,
+        "hijack": 389.95,
+        "cutoff": 413.89
+      },
+      "candidate_decisions": {
+        "borrowed": 25208,
+        "decisions": 195344,
+        "trained": 148216,
+        "untrained_node": 21920
+      },
+      "trained_share": 0.7587
+    },
+    {
+      "opponent": "random",
+      "stack_bb": 100,
+      "deals": 20000,
+      "hands": 120000,
+      "bb_per_100": 671.8,
+      "ci95_bb_per_100": [
+        632.89,
+        710.72
+      ],
+      "button_bb_per_100": 721.0,
+      "big_blind_bb_per_100": 887.22,
+      "showdown_share": 0.6656,
+      "position_bb_per_100": {
+        "button": 721.0,
+        "small_blind": 799.43,
+        "big_blind": 887.22,
+        "utg": 585.36,
+        "hijack": 509.26,
+        "cutoff": 528.56
+      },
+      "candidate_decisions": {
+        "below_smallest": 5552,
+        "borrowed": 3775,
+        "capped": 37357,
+        "decisions": 153380,
+        "lost": 11039,
+        "off_tree": 78177,
+        "reentries": 11315,
+        "resized": 376,
+        "trained": 135483,
+        "untrained_node": 3083
+      },
+      "trained_share": 0.8833
+    },
+    {
+      "opponent": "min_bettor",
+      "stack_bb": 100,
+      "deals": 20000,
+      "hands": 120000,
+      "bb_per_100": 351.9,
+      "ci95_bb_per_100": [
+        298.38,
+        405.41
+      ],
+      "button_bb_per_100": 346.0,
+      "big_blind_bb_per_100": 103.82,
+      "showdown_share": 1.0,
+      "position_bb_per_100": {
+        "button": 346.0,
+        "small_blind": 450.19,
+        "big_blind": 103.82,
+        "utg": 380.2,
+        "hijack": 339.6,
+        "cutoff": 491.56
+      },
+      "candidate_decisions": {
+        "below_smallest": 140920,
+        "borrowed": 16960,
+        "decisions": 171952,
+        "reentries": 8961,
+        "trained": 140188,
+        "untrained_node": 14804
+      },
+      "trained_share": 0.8153
+    },
+    {
+      "opponent": "heuristic",
+      "stack_bb": 40,
+      "deals": 20000,
+      "hands": 120000,
+      "bb_per_100": 12.35,
+      "ci95_bb_per_100": [
+        9.28,
+        15.42
+      ],
+      "button_bb_per_100": 32.66,
+      "big_blind_bb_per_100": -3.31,
+      "showdown_share": 0.0535,
+      "position_bb_per_100": {
+        "button": 32.66,
+        "small_blind": -8.2,
+        "big_blind": -3.31,
+        "utg": 15.71,
+        "hijack": 20.91,
+        "cutoff": 16.31
+      },
+      "candidate_decisions": {
+        "below_smallest": 6481,
+        "borrowed": 180,
+        "capped": 14,
+        "decisions": 148213,
+        "lost": 15,
+        "off_tree": 7964,
+        "reentries": 514,
+        "resized": 124,
+        "trained": 147963,
+        "untrained_node": 55
+      },
+      "trained_share": 0.9983
+    },
+    {
+      "opponent": "heuristic",
+      "stack_bb": 150,
+      "deals": 20000,
+      "hands": 120000,
+      "bb_per_100": 25.72,
+      "ci95_bb_per_100": [
+        17.79,
+        33.64
+      ],
+      "button_bb_per_100": 70.54,
+      "big_blind_bb_per_100": 13.25,
+      "showdown_share": 0.053,
+      "position_bb_per_100": {
+        "button": 70.54,
+        "small_blind": -12.19,
+        "big_blind": 13.25,
+        "utg": 20.99,
+        "hijack": 29.95,
+        "cutoff": 31.76
+      },
+      "candidate_decisions": {
+        "below_smallest": 7485,
+        "borrowed": 128,
+        "capped": 11,
+        "decisions": 152028,
+        "lost": 7,
+        "off_tree": 8888,
+        "reentries": 482,
+        "resized": 9,
+        "trained": 151846,
+        "untrained_node": 47
+      },
+      "trained_share": 0.9988
+    },
+    {
+      "opponent": "calling_station",
+      "stack_bb": 40,
+      "deals": 20000,
+      "hands": 120000,
+      "bb_per_100": 210.59,
+      "ci95_bb_per_100": [
+        187.07,
+        234.1
+      ],
+      "button_bb_per_100": 212.58,
+      "big_blind_bb_per_100": 107.44,
+      "showdown_share": 1.0,
+      "position_bb_per_100": {
+        "button": 212.58,
+        "small_blind": 161.98,
+        "big_blind": 107.44,
+        "utg": 294.77,
+        "hijack": 254.14,
+        "cutoff": 232.6
+      },
+      "candidate_decisions": {
+        "borrowed": 27692,
+        "decisions": 196815,
+        "resized": 1459,
+        "trained": 149328,
+        "untrained_node": 19795
+      },
+      "trained_share": 0.7587
+    },
+    {
+      "opponent": "calling_station",
+      "stack_bb": 150,
+      "deals": 20000,
+      "hands": 120000,
+      "bb_per_100": 762.26,
+      "ci95_bb_per_100": [
+        675.14,
+        849.37
+      ],
+      "button_bb_per_100": 1000.95,
+      "big_blind_bb_per_100": 343.35,
+      "showdown_share": 1.0,
+      "position_bb_per_100": {
+        "button": 1000.95,
+        "small_blind": 1126.5,
+        "big_blind": 343.35,
+        "utg": 914.9,
+        "hijack": 573.45,
+        "cutoff": 614.39
+      },
+      "candidate_decisions": {
+        "borrowed": 25208,
+        "decisions": 195344,
+        "trained": 148216,
+        "untrained_node": 21920
+      },
+      "trained_share": 0.7587
+    }
+  ],
+  "command": "uv run --locked rivermind-poker blueprint evaluate artifacts/blueprints/6max-s1-s0/checkpoints/000100032000 --name 6max-s1-s0-100m --out docs/evaluations --deals 20000 --seed 0"
+}

@@ -413,7 +413,10 @@ describe('the registry this build was made with', () => {
 			'calling_station'
 		]);
 		expect(described.results.every((r) => r.ci95[0] > 0)).toBe(true);
-		expect(championFor(REGISTRY, 6)).toBeNull();
+		// The six-seat champion is registered and not served yet (P5.7): the runtime plays the heads-up one only.
+		const six = championFor(REGISTRY, 6);
+		expect(six?.format).toBe('6-max');
+		expect(six?.abstraction).toBe('6max-s1');
 	});
 
 	// The bundle is 450 MB and lives outside Git: checked where it is kept.

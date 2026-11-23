@@ -179,23 +179,35 @@ test('the bots page shows the published evaluation', async ({ page, cspViolation
 	await page.getByRole('link', { name: 'The bots' }).click();
 	await expect(page).toHaveURL(/\/bots$/);
 	await expect(page.getByRole('heading', { name: 'The bots' })).toBeVisible();
-	// The registry this build was made with: the served strategy's gate, with intervals.
-	const served = page.getByRole('table').first();
+	// The registry this build was made with: the heads-up champion's served strategy and its gate, with intervals.
+	const hard = page.getByRole('region', { name: 'RiverMind Hard, heads-up' });
+	const served = hard.getByRole('table').first();
 	const easy = served.getByRole('row', { name: /RiverMind Easy\* 100 bb/ });
 	await expect(easy).toContainText('40,000');
 	await expect(easy).toContainText(/\+\d+\.\d to \+\d+\.\d/);
 	await expect(served.getByRole('row', { name: /Calling bot\* 100 bb/ })).toBeVisible();
 	await expect(
-		page.getByText(/They measure play against these bots, not against people/)
+		hard.getByText(/They measure play against these bots, not against people/)
 	).toBeVisible();
-	await expect(page.getByRole('link', { name: 'The full report' }).first()).toHaveAttribute(
+	await expect(hard.getByRole('link', { name: 'The full report' }).first()).toHaveAttribute(
 		'href',
 		/docs\/evaluations\/.+-served\.md$/
 	);
-	await expect(page.getByRole('link', { name: 'The model registry' })).toHaveAttribute(
+	await expect(hard.getByRole('link', { name: 'The model registry' })).toHaveAttribute(
 		'href',
 		/docs\/models\.md$/
 	);
+	// Its Medium, with its own evaluation, against Hard itself among the rest (P5.7).
+	const medium = page.getByRole('region', { name: 'RiverMind Medium, heads-up' });
+	await expect(medium.getByRole('row', { name: /RiverMind Hard/ })).toContainText(/−\d+\.\d/);
+	await expect(medium.getByRole('link', { name: 'The full report' })).toHaveAttribute(
+		'href',
+		/docs\/evaluations\/.+-medium\.md$/
+	);
+	// A champion the server does not serve yet is shown as such, never as a bot at the tables.
+	const six = page.getByRole('region', { name: 'RiverMind Hard, 6-max' });
+	await expect(six.getByText(/Not offered at the tables yet/)).toBeVisible();
+	await expect(six.getByText('The strategy this site serves')).toHaveCount(0);
 	await noOverflow(page);
 	await page.getByRole('link', { name: 'Play' }).click();
 	await expect(page.getByRole('button', { name: 'Practice vs bots' })).toBeVisible();

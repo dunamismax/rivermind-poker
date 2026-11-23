@@ -34,6 +34,12 @@
 		...c,
 		medium: ((c as { levels?: { medium?: Level } }).levels?.medium ?? null) as Level | null
 	}));
+	/**
+	 * The table sizes whose champion the table server plays (`loadTrained` in
+	 * runtime.ts). A champion of another format is shown with its evaluation and
+	 * marked as not offered yet, never as a bot at the tables (D-7).
+	 */
+	const SERVED_SEATS = [2];
 	const opponentName = (row: { opponent: string; name: string | null }) =>
 		row.opponent === 'champion'
 			? `The champion before it${row.name ? ` (${row.name})` : ''}`
@@ -93,17 +99,26 @@
 					of {champion.seats} seats only. The model it plays is
 					<code class="text-green-light">{champion.name}</code>, promoted on {champion.promoted}.
 				</p>
+				{#if !SERVED_SEATS.includes(champion.seats)}
+					<p class="not-served mt-5 text-paper">
+						Not offered at the tables yet: this model has passed the promotion gate, and serving it
+						at {champion.seats}-seat tables is still being built.
+					</p>
+				{/if}
 				<p class="mt-5">
-					It was measured in duplicate matches. Each deal is played twice with the seats swapped, so
-					both sides hold the same cards once and luck largely cancels. Results are big blinds won
-					per 100 hands at blinds of 50 and 100, with a 95% interval: if the interval’s lower end is
-					above zero, the win is unlikely to be chance.
+					It was measured in duplicate matches. {champion.seats === 2
+						? 'Each deal is played twice with the seats swapped, so both sides hold the same cards once'
+						: `Each deal is played ${champion.seats} times, the bot once in every seat against ${champion.seats - 1} copies of its opponent, so it holds every seat’s cards once`}
+					and luck largely cancels. Results are big blinds won per 100 hands at blinds of 50 and 100,
+					with a 95% interval: if the interval’s lower end is above zero, the win is unlikely to be chance.
 				</p>
 				{#each champion.evaluations as evaluation (evaluation.report)}
 					<h4 class="mt-8 mb-3 text-paper">
-						{evaluation.candidate === 'bundle'
-							? 'The strategy this site serves'
-							: 'The trained checkpoint, before rounding'}
+						{evaluation.candidate !== 'bundle'
+							? 'The trained checkpoint, before rounding'
+							: SERVED_SEATS.includes(champion.seats)
+								? 'The strategy this site serves'
+								: 'The strategy as it will be served'}
 					</h4>
 					<div class="overflow-x-auto">
 						<table class="px-inset w-full border-collapse text-s">
@@ -138,8 +153,10 @@
 					<p class="mt-3 text-s text-haze">
 						<span class="text-gold-light">*</span> The promotion gate: a model is served only if
 						each of these intervals is above zero. {evaluation.deals.toLocaleString('en-US')} deals a
-						matchup, each played from both seats ({(2 * evaluation.deals).toLocaleString('en-US')} hands),
-						seed {evaluation.seed}.
+						matchup, each played from {champion.seats === 2
+							? 'both seats'
+							: `all ${champion.seats} seats`}
+						({(champion.seats * evaluation.deals).toLocaleString('en-US')} hands), seed {evaluation.seed}.
 						<a
 							class="text-gold-light"
 							href="{REPOSITORY}/{evaluation.report}.md"
