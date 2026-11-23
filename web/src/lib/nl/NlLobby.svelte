@@ -2,10 +2,10 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import PlayingCard from '../components/PlayingCard.svelte';
-	import type { ConfigResponse, TableSummary } from '../protocol-v2.ts';
+	import type { BotOption, ConfigResponse, TableSummary } from '../protocol-v2.ts';
 	import { fetchConfig, fetchInvite } from './api.ts';
 	import type { NlConnection } from './connection.svelte.ts';
-	import { avatarClass, championLine } from './faces.ts';
+	import { avatarClass, championLine, seatsNote } from './faces.ts';
 	import LobbyTables from './LobbyTables.svelte';
 
 	let {
@@ -74,11 +74,16 @@
 
 	const BOT_NOTES: Record<string, string> = {
 		heuristic: 'Plays its cards with a plan.',
-		medium: 'Half Hard, half Easy. Two seats only.',
-		hard: 'Trained by self-play. Two seats only.',
+		medium: 'Half Hard, half Easy.',
+		hard: 'Trained by self-play.',
 		calling_station: 'Calls almost anything.',
 		random: 'Does whatever it likes.'
 	};
+	/** A bot's note, with the table sizes it plays when it does not play them all. */
+	function botNote(bot: BotOption): string {
+		const note = BOT_NOTES[bot.kind] ?? '';
+		return bot.seats ? `${note} ${seatsNote(bot.seats)}`.trim() : note;
+	}
 	/** The trained bots to practise against: those that play two seats, from the easiest up. */
 	const trained = $derived(
 		(config?.bots ?? []).filter((b) => b.champion && (!b.seats || b.seats.includes(2)))
@@ -302,8 +307,8 @@
 									></span>
 									<span class="text grid gap-1">
 										<span class="name">{bot.label}</span>
-										{#if BOT_NOTES[bot.kind]}<span class={opponentNote}>
-												{BOT_NOTES[bot.kind]}
+										{#if botNote(bot)}<span class={opponentNote}>
+												{botNote(bot)}
 											</span>{/if}
 									</span>
 								</span>

@@ -35,8 +35,18 @@ export const SIMPLE_BOTS: readonly string[] = ['random', 'calling_station', 'heu
 /** A trained bot this server has loaded: the table sizes it plays and the model behind it (P5.7a). */
 export interface TrainedBot {
 	seats: readonly number[];
+	/** The heads-up model, which pages before P5.7's six seats read. */
 	champion: p.BotChampion;
+	/** Each format's model with the table sizes it plays, when there is more than one. */
+	champions?: readonly p.BotChampion[];
 }
+/** Table sizes as a reader says them: "2", "2 or 6", "2 to 6". */
+export function sizes(seats: readonly number[]): string {
+	if (seats.length <= 2) return seats.join(' or ');
+	const run = seats.every((n, i) => i === 0 || n === seats[i - 1] + 1);
+	return run ? `${seats[0]} to ${seats[seats.length - 1]}` : seats.join(', ');
+}
+
 export const STAKES: readonly (readonly [small: number, big: number])[] = [
 	[25, 50],
 	[50, 100],
@@ -126,6 +136,8 @@ export class Site {
 			if (Object.hasOwn(this.trained, kind)) {
 				option.seats = [...this.trained[kind].seats];
 				option.champion = this.trained[kind].champion;
+				const champions = this.trained[kind].champions;
+				if (champions) option.champions = champions.map((c) => ({ ...c }));
 			}
 			return option;
 		});

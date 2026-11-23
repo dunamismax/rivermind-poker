@@ -42,6 +42,8 @@ export interface BotChampion {
 	stack_bb: number;
 	/** The promotion gate's matchups, for the strategy the site serves. */
 	results: BotResult[];
+	/** The table sizes this model plays, in a bot's `champions`; missing in `champion`. */
+	seats?: number[] | null;
 }
 
 export interface BotOption {
@@ -49,8 +51,10 @@ export interface BotOption {
 	label: string;
 	/** The table sizes this bot plays; every size when missing. */
 	seats?: number[] | null;
-	/** For a trained bot: the model it plays. */
+	/** For a trained bot: the model it plays, the heads-up one when it has more than one. */
 	champion?: BotChampion | null;
+	/** For a trained bot with a model for more than one format (P5.7): each, with the table sizes it plays. */
+	champions?: BotChampion[] | null;
 }
 
 /** One matchup of a trained bot's published evaluation. */

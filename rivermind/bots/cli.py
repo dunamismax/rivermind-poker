@@ -356,6 +356,12 @@ def strategy_command(checkpoint: str, hole: str, board: str, history: str, depth
     default=None,
     help="Evaluate a difficulty level of the model instead: medium is RiverMind Medium, half its hands as the model and half as RiverMind Easy (P5.7).",
 )
+@click.option(
+    "--seats",
+    type=int,
+    default=None,
+    help="Play a multiway model at a smaller table than its own, of 3 seats or more (P5.7). Such a report is never put to the gate.",
+)
 def evaluate_command(
     checkpoint: str,
     name: str,
@@ -366,6 +372,7 @@ def evaluate_command(
     tables_path: str | None,
     against: tuple[str, ...],
     level: str | None,
+    seats: int | None,
 ) -> None:
     """Evaluate a blueprint CHECKPOINT (or a run's latest) in duplicate heads-up matches (P5.4).
 
@@ -413,6 +420,7 @@ def evaluate_command(
             workers=workers or os.cpu_count() or 1,
             tables=tables_path,
             progress=progress,
+            seats=seats,
         )
     except (ValueError, OSError) as e:
         raise click.ClickException(str(e)) from e
@@ -424,6 +432,8 @@ def evaluate_command(
         argv += ["--against", f"{opponent}@{stack_bb}"]
     if level is not None:
         argv += ["--level", level]
+    if seats is not None:
+        argv += ["--seats", str(seats)]
     command = shlex.join(argv)
     report["command"] = command
     out_dir = Path(out)

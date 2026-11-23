@@ -450,3 +450,25 @@ def test_a_full_table_match_is_reproducible_and_rotates_every_seat() -> None:
     assert summary["bb_per_100"] == pytest.approx(sum(by_seat.values()) / 6, abs=0.02)
     assert summary["button_bb_per_100"] == by_seat["button"] and summary["big_blind_bb_per_100"] == by_seat["big_blind"]
     assert run_matchup(Matchup("heuristic", "random", deals=120, seed=3, seats=6)).summary() != summary
+
+
+def test_a_six_seat_bundle_is_evaluated_at_a_smaller_table(six: Tree, tmp_path: Path) -> None:
+    from rivermind.bots import registry
+    from rivermind.bots.match import evaluate
+
+    synthetic_bundle(tmp_path / "bundle", seed=5, abstraction=SIX.name, depths=(50,))
+    spec = f"bundle:{tmp_path / 'bundle'}"
+    report = evaluate(spec, [("heuristic", 50)], deals=6, seed=1, seats=4)
+    assert report["game"]["seats"] == 4 and "4 seats" in report["game"]["rules"]
+    (result,) = report["results"]
+    assert result["hands"] == 24 and set(result["position_bb_per_100"]) == set(position_names(4))
+    # Medium plays a smaller table the same way.
+    assert evaluate(f"medium:{spec}", [("heuristic", 50)], deals=3, seed=1, seats=3)["game"]["seats"] == 3
+    # Such a report has no format, so it can never be put to the gate or recorded.
+    with pytest.raises(registry.RegistryError, match="no format is defined for 4 seats"):
+        registry._format_of(report)
+    for seats in (2, 7):
+        with pytest.raises(ValueError, match=f"plays tables of 6, or of 3 to 6, not {seats}"):
+            evaluate(spec, [("heuristic", 50)], deals=1, seed=1, seats=seats)
+    with pytest.raises(ValueError, match="plays tables of 2, not 4"):
+        evaluate("heuristic", [("random", 50)], deals=1, seed=1, seats=4)

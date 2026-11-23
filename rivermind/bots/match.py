@@ -387,14 +387,24 @@ def evaluate(
     workers: int = 1,
     tables: str | None = None,
     progress: Any = None,
+    seats: int | None = None,
 ) -> dict[str, Any]:
-    """Run every matchup of a plan and return the report (without timings, so a rerun matches it exactly)."""
+    """Run every matchup of a plan and return the report (without timings, so a rerun matches it exactly).
+
+    ``seats`` plays a multiway candidate at a smaller table than its own, of
+    three seats or more: the six-seat game with its first seats folded (P5.7).
+    Such a report has no format, so it is never put to the gate.
+    """
     from .blueprint.train import engine_identity, software
 
-    seats = policy_seats(candidate)
+    own = policy_seats(candidate)
+    if seats is None:
+        seats = own
+    elif seats != own and not (own > 2 and 3 <= seats <= own):
+        raise ValueError(f"{candidate} plays tables of {own}" + (f", or of 3 to {own}" if own > 2 else "") + f", not {seats}")
     for opponent, _ in plan:
-        if opponent.startswith(("blueprint:", "bundle:")) and policy_seats(opponent) != seats:
-            raise ValueError(f"{opponent} does not play at a table of {seats}")
+        if opponent.startswith(("blueprint:", "bundle:")) and policy_seats(opponent) != own:
+            raise ValueError(f"{opponent} does not play at a table of {own}")
     results = []
     for opponent, stack_bb in plan:
         matchup = Matchup(candidate, opponent, stack_bb=stack_bb, deals=deals, seed=seed, tables=tables, seats=seats)

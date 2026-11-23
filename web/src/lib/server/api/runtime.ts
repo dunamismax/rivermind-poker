@@ -29,9 +29,12 @@
  *                              the registry plays as RiverMind Hard, once its bundle
  *                              has been checked against the registry (P5.7a), and as
  *                              half of RiverMind Medium where the registry records
- *                              Medium's evaluation for it (P5.7).
+ *                              Medium's evaluation for it (P5.7). The six-seat
+ *                              champion, when the registry has one, plays their hands
+ *                              of three to six players at tables of three to six
+ *                              seats; their hands of two stay the heads-up one's.
  *                              Without it, or if the check fails, the site runs
- *                              without that bot.
+ *                              without that bot or format.
  *   RIVERMIND_CHAMPIONS        a registry extract to check bundles against instead of
  *                              the one this build was made with; for tests that serve
  *                              a synthetic bundle.
@@ -51,10 +54,13 @@ import {
 	loadChampion,
 	MEDIUM,
 	MediumPolicy,
+	MULTIWAY_LEAST,
 	readRegistry,
 	REGISTRY,
 	type Champion,
-	type ChampionEvaluation
+	type ChampionEvaluation,
+	type ChampionRegistry,
+	type LoadedChampion
 } from '../bots/champions.ts';
 import { defaultBots } from '../bots/policies.ts';
 import type * as p from '../../protocol-v2.ts';
@@ -69,7 +75,7 @@ import {
 import { TableStore } from '../table/store.ts';
 import { createApi, type ApiHandler } from './api.ts';
 import type { Secret } from './auth.ts';
-import { Site, type TrainedBot } from './site.ts';
+import { Site, sizes, type TrainedBot } from './site.ts';
 import { createSocketServer, type SocketServer } from './socket.ts';
 import { Tables } from './tables.ts';
 import { Voice, httpVoiceLink } from './voice.ts';
@@ -113,7 +119,8 @@ export interface Runtime {
 	/**
 	 * A release candidate's checks (RIVERMIND_CANDIDATE=1): `database`, `tables`
 	 * (every saved open table can be restored, {@link Tables.restorable}) and,
-	 * with RIVERMIND_MODELS, `champions` (the heads-up champion was loaded).
+	 * with RIVERMIND_MODELS, `champions` (every champion the registry has for a
+	 * format the server plays was loaded).
 	 */
 	candidateChecks: Record<string, () => Promise<boolean>>;
 }
@@ -129,13 +136,17 @@ function numberFrom(env: Env, name: string, least: number): number | undefined {
 	return value;
 }
 
-/** A champion as `GET /api/config` describes it: the gate's matchups for the strategy the site serves. */
-export function describeChampion(champion: Champion): p.BotChampion {
+/**
+ * A champion as `GET /api/config` describes it: the gate's matchups for the
+ * strategy the site serves, and with `seats` the table sizes it plays.
+ */
+export function describeChampion(champion: Champion, seats?: readonly number[]): p.BotChampion {
 	const served =
 		champion.evaluations.find((e) => e.candidate === 'bundle') ?? champion.evaluations[0];
 	return described(
 		champion,
-		(served?.results ?? []).filter((r) => r.gate)
+		(served?.results ?? []).filter((r) => r.gate),
+		seats
 	);
 }
 
@@ -143,17 +154,23 @@ export function describeChampion(champion: Champion): p.BotChampion {
 const LEVEL_OPPONENTS = ['heuristic', 'calling_station', HARD];
 
 /** RiverMind Medium as `GET /api/config` describes it: its own evaluation at 100 big blinds (P5.7). */
-export function describeMedium(champion: Champion): p.BotChampion {
+export function describeMedium(champion: Champion, seats?: readonly number[]): p.BotChampion {
 	const evaluation: ChampionEvaluation | undefined = champion.levels?.medium?.evaluation;
 	const rows = (evaluation?.results ?? []).filter((r) => r.stack_bb === 100);
 	return described(
 		champion,
-		LEVEL_OPPONENTS.flatMap((kind) => rows.filter((r) => r.opponent === kind))
+		LEVEL_OPPONENTS.flatMap((kind) => rows.filter((r) => r.opponent === kind)),
+		seats
 	);
 }
 
-function described(champion: Champion, rows: ChampionEvaluation['results']): p.BotChampion {
+function described(
+	champion: Champion,
+	rows: ChampionEvaluation['results'],
+	seats?: readonly number[]
+): p.BotChampion {
 	return {
+		...(seats ? { seats: [...seats] } : {}),
 		name: champion.name,
 		promoted: champion.promoted,
 		iterations: champion.iterations,
@@ -175,55 +192,123 @@ export interface Trained {
 	/** The trained bots' policies, by kind, to add to the simple bots. */
 	bots: Record<string, BotPolicy>;
 	trained: Record<string, TrainedBot>;
+	/** Champions the registry has for a format this server plays whose bundle could not be loaded. */
+	failed?: string[];
 }
 
+/** The multiway table sizes the server serves a champion for; heads-up is always served. */
+export const MULTIWAY_SERVED = [6];
+
 /**
- * The trained bots this server can run (P5.7a): the registry's heads-up
+ * The trained bots this server can run (P5.7a, P5.7): the registry's heads-up
  * champion as RiverMind Hard, when `RIVERMIND_MODELS` holds its bundle and
- * every file is the registered one. A bundle that is missing or fails the
- * check is reported and left out, so the site still starts.
+ * every file is the registered one, and with it the six-seat champion for
+ * hands of three to six players. RiverMind Medium is the same for each
+ * champion whose Medium is recorded. A bundle that is missing or fails the
+ * check is reported and left out, so the site still starts: without the
+ * heads-up champion there is no trained bot, and without the six-seat one
+ * they play two seats only.
  */
 export function loadTrained(env: Env = process.env, log: Log = consoleLog): Trained {
 	const found: Trained = { bots: {}, trained: {} };
 	const models = env.RIVERMIND_MODELS;
 	if (!models) return found;
+	let registry: ChampionRegistry;
+	let heads: LoadedChampion;
 	try {
-		const registry = env.RIVERMIND_CHAMPIONS ? readRegistry(env.RIVERMIND_CHAMPIONS) : REGISTRY;
+		registry = env.RIVERMIND_CHAMPIONS ? readRegistry(env.RIVERMIND_CHAMPIONS) : REGISTRY;
 		const champion = championFor(registry, 2);
 		if (champion === null) {
 			log.warn('RIVERMIND_MODELS is set, but the registry has no heads-up champion');
 			return found;
 		}
 		const started = performance.now();
-		const bundle = loadChampion(models, champion);
-		// Medium first, so the bots are offered from the easiest up.
-		if (MediumPolicy.recorded(champion)) {
-			found.bots[MEDIUM] = new MediumPolicy(champion, bundle);
-			found.trained[MEDIUM] = { seats: [champion.seats], champion: describeMedium(champion) };
-		}
-		found.bots[HARD] = new ChampionPolicy(champion, bundle);
-		found.trained[HARD] = { seats: [champion.seats], champion: describeChampion(champion) };
-		const seconds = ((performance.now() - started) / 1000).toFixed(1);
-		log.info(
-			`${BOT_LABELS[HARD]} plays ${champion.name}: bundle ${bundle.path} checked against the registry in ${seconds} s ` +
-				`(strategy.u8 ${champion.bundle.files['strategy.u8']}, table set ${champion.bundle.table_set})`
-		);
-		if (MEDIUM in found.bots) {
-			log.info(
-				`${BOT_LABELS[MEDIUM]} plays half its hands as ${champion.name} and half as ${BOT_LABELS.heuristic}`
-			);
-		} else {
-			log.info(
-				`${BOT_LABELS[MEDIUM]} is not offered: the registry records no evaluation of it for ${champion.name}`
-			);
-		}
+		heads = { champion, bundle: loadChampion(models, champion) };
+		logLoaded(heads, log, started);
 	} catch (error) {
 		log.error(
 			`Could not load the champion from ${models}; ${BOT_LABELS[HARD]} is not offered`,
 			error
 		);
+		return found;
 	}
+	const failed: string[] = [];
+	let multi: LoadedChampion | null = null;
+	for (const seats of MULTIWAY_SERVED) {
+		const champion = championFor(registry, seats);
+		if (champion === null) continue;
+		try {
+			const started = performance.now();
+			multi = { champion, bundle: loadChampion(models, champion) };
+			logLoaded(multi, log, started);
+		} catch (error) {
+			failed.push(champion.name);
+			log.error(
+				`Could not load the ${champion.format} champion ${champion.name} from ${models}; ` +
+					`the trained bots play two seats only`,
+				error
+			);
+		}
+	}
+	if (failed.length) found.failed = failed;
+	const one = heads.champion;
+	// Medium first, so the bots are offered from the easiest up.
+	if (MediumPolicy.recorded(one)) {
+		const mediumMulti = multi !== null && MediumPolicy.recorded(multi.champion) ? multi : null;
+		const policy = new MediumPolicy(one, heads.bundle, mediumMulti);
+		found.bots[MEDIUM] = policy;
+		found.trained[MEDIUM] = trainedBot(policy.seats, heads, mediumMulti, describeMedium);
+		log.info(
+			`${BOT_LABELS[MEDIUM]} plays half its hands as ${one.name}` +
+				(mediumMulti ? ` (or ${mediumMulti.champion.name} with three or more dealt in)` : '') +
+				` and half as ${BOT_LABELS.heuristic}`
+		);
+		if (multi !== null && mediumMulti === null) {
+			log.info(
+				`${BOT_LABELS[MEDIUM]} plays two seats only: the registry records no evaluation of it for ${multi.champion.name}`
+			);
+		}
+	} else {
+		log.info(
+			`${BOT_LABELS[MEDIUM]} is not offered: the registry records no evaluation of it for ${one.name}`
+		);
+	}
+	const hard = new ChampionPolicy(one, heads.bundle, multi);
+	found.bots[HARD] = hard;
+	found.trained[HARD] = trainedBot(hard.seats, heads, multi, describeChampion);
+	log.info(
+		`${BOT_LABELS[HARD]} plays tables of ${sizes(hard.seats)} seats: ${one.name} with two dealt in` +
+			(multi ? `, ${multi.champion.name} with three or more` : '')
+	);
 	return found;
+}
+
+function logLoaded({ champion, bundle }: LoadedChampion, log: Log, started: number): void {
+	const seconds = ((performance.now() - started) / 1000).toFixed(1);
+	log.info(
+		`${BOT_LABELS[HARD]} plays ${champion.name}: bundle ${bundle.path} checked against the registry in ${seconds} s ` +
+			`(strategy.u8 ${champion.bundle.files['strategy.u8']}, table set ${champion.bundle.table_set})`
+	);
+}
+
+/** A trained bot as `GET /api/config` lists it: the heads-up champion's description first, as pages before P5.7's six seats read it. */
+function trainedBot(
+	seats: readonly number[],
+	heads: LoadedChampion,
+	multi: LoadedChampion | null,
+	describe: (champion: Champion, seats?: readonly number[]) => p.BotChampion
+): TrainedBot {
+	const bot: TrainedBot = { seats: [...seats], champion: describe(heads.champion) };
+	if (multi !== null) {
+		bot.champions = [
+			describe(heads.champion, [2]),
+			describe(
+				multi.champion,
+				seats.filter((n) => n >= MULTIWAY_LEAST)
+			)
+		];
+	}
+	return bot;
 }
 
 export function createRuntime(env: Env = process.env): Runtime {
@@ -237,7 +322,7 @@ export function createRuntime(env: Env = process.env): Runtime {
 	if (!pool)
 		console.warn('No DATABASE_URL: players, wallets and tables will not survive a restart');
 	const db = pool ? createDatabase(pool) : null;
-	const { bots: trainedBots, trained } = loadTrained(env);
+	const { bots: trainedBots, trained, failed } = loadTrained(env);
 	const site = new Site({
 		secret,
 		db,
@@ -273,7 +358,9 @@ export function createRuntime(env: Env = process.env): Runtime {
 		...checks,
 		tables: () => tables.restorable()
 	};
-	if (env.RIVERMIND_MODELS) candidateChecks.champions = async () => HARD in trainedBots;
+	if (env.RIVERMIND_MODELS) {
+		candidateChecks.champions = async () => HARD in trainedBots && !failed?.length;
+	}
 	const allowedOrigins = (env.RIVERMIND_ALLOWED_ORIGINS ?? '')
 		.split(',')
 		.map((origin) => origin.trim())

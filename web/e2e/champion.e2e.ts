@@ -143,24 +143,26 @@ test('a guest practises against RiverMind Medium, offered before Hard with its o
 	expect(cspViolations).toEqual([]);
 });
 
-test('RiverMind Hard takes a two-seat table and no other', async ({ page, cspViolations }) => {
+test('RiverMind Hard takes tables of two to six seats and no other', async ({
+	page,
+	cspViolations
+}) => {
 	await page.goto('/');
 	await expect(page.getByText('Looking for tables…')).toHaveCount(0);
 	const form = newTableForm(page);
 	const hard = form.getByRole('radio', { name: /RiverMind Hard/ });
-	// Six seats by default: the trained bot plays heads-up only, so it is not offered.
+	// Six seats by default, which the six-seat champion plays (P5.7); RiverMind Easy stays the default.
 	await expect(form.getByRole('radio', { name: /RiverMind Easy/ })).toBeChecked();
-	await expect(hard).toHaveCount(0);
-	const two = form.getByRole('radio', { name: '2', exact: true });
-	await two.evaluate((input: HTMLInputElement) => input.click());
 	await expect(hard).toHaveCount(1);
+	await expect(form.getByText('Trained by self-play. 2 to 6 seats.')).toBeVisible();
 	await hard.evaluate((input: HTMLInputElement) => input.click());
 	await expect(hard).toBeChecked();
-	// Back at a bigger table the choice returns to RiverMind Easy.
-	const six = form.getByRole('radio', { name: '6', exact: true });
-	await six.evaluate((input: HTMLInputElement) => input.click());
+	// At seven seats there is no trained bot, and the choice returns to RiverMind Easy.
+	const seven = form.getByRole('radio', { name: '7', exact: true });
+	await seven.evaluate((input: HTMLInputElement) => input.click());
 	await expect(hard).toHaveCount(0);
 	await expect(form.getByRole('radio', { name: /RiverMind Easy/ })).toBeChecked();
+	const two = form.getByRole('radio', { name: '2', exact: true });
 	await two.evaluate((input: HTMLInputElement) => input.click());
 	await hard.evaluate((input: HTMLInputElement) => input.click());
 	const before = await balance(page);
@@ -171,6 +173,25 @@ test('RiverMind Hard takes a two-seat table and no other', async ({ page, cspVio
 	expect(await balance(page)).toBeLessThan(before);
 	await expect(page.getByRole('button', { name: 'Opponent', exact: true })).toHaveCount(0);
 	await playToHand(page, 2);
+	expect(cspViolations).toEqual([]);
+});
+
+test('RiverMind Hard fills a six-seat table and plays its hands', async ({
+	page,
+	cspViolations
+}) => {
+	await page.goto('/');
+	await expect(page.getByText('Looking for tables…')).toHaveCount(0);
+	const form = newTableForm(page);
+	await form
+		.getByRole('radio', { name: /RiverMind Hard/ })
+		.evaluate((input: HTMLInputElement) => input.click());
+	await form.getByRole('button', { name: 'Sit down' }).click();
+	await expect(seated(page)).toBeVisible();
+	const pods = page.locator('.avatar-hard');
+	await expect(pods).toHaveCount(5);
+	await playToHand(page, 3);
+	await expect(pods).toHaveCount(5);
 	expect(cspViolations).toEqual([]);
 });
 
@@ -204,10 +225,12 @@ test('the bots page shows the published evaluation', async ({ page, cspViolation
 		'href',
 		/docs\/evaluations\/.+-medium\.md$/
 	);
-	// A champion the server does not serve yet is shown as such, never as a bot at the tables.
+	// The six-seat champion is served too (P5.7), with the hands of two left to the heads-up one.
 	const six = page.getByRole('region', { name: 'RiverMind Hard, 6-max' });
-	await expect(six.getByText(/Not offered at the tables yet/)).toBeVisible();
-	await expect(six.getByText('The strategy this site serves')).toHaveCount(0);
+	await expect(six.getByText(/Not offered at the tables yet/)).toHaveCount(0);
+	await expect(six.getByText('The strategy this site serves')).toBeVisible();
+	await expect(six.getByText(/goes to the heads-up model instead/)).toBeVisible();
+	await expect(hard.getByText(/the hands at bigger tables where only two are left/)).toBeVisible();
 	await noOverflow(page);
 	await page.getByRole('link', { name: 'Play' }).click();
 	await expect(page.getByRole('button', { name: 'Practice vs bots' })).toBeVisible();

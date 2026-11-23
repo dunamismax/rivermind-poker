@@ -15,6 +15,7 @@ import {
 	loadChampion,
 	MEDIUM,
 	MediumPolicy,
+	TablePolicy,
 	type Champion
 } from '../bots/champions.ts';
 import { medium, MEDIUM_SHARE, MixedPolicy } from '../bots/levels.ts';
@@ -127,7 +128,8 @@ describe('serving Medium', () => {
 		const policy = new MediumPolicy(champion, bundle);
 		const [one, two] = [policy.forTable(), policy.forTable()];
 		expect(one).not.toBe(two);
-		expect(one.strong).toBeInstanceOf(BlueprintPolicy);
+		expect(one.strong).toBeInstanceOf(TablePolicy);
+		expect((one.strong as TablePolicy).heads).toBeInstanceOf(BlueprintPolicy);
 		expect(one.strong).not.toBe(two.strong);
 		const rng = new PythonRandom(3);
 		for (let n = 0; n < 20; n++) {

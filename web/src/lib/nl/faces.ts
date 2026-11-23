@@ -36,6 +36,13 @@ export function championLine(champion: BotChampion): string {
 	);
 }
 
+/** The table sizes a trained bot plays, as its note says them: "Two seats only." or "2 to 6 seats." */
+export function seatsNote(seats: readonly number[]): string {
+	if (seats.length === 1) return seats[0] === 2 ? 'Two seats only.' : `${seats[0]} seats only.`;
+	const run = seats.every((n, i) => i === 0 || n === seats[i - 1] + 1);
+	return `${run ? `${seats[0]} to ${seats[seats.length - 1]}` : seats.join(', ')} seats.`;
+}
+
 export function botLabel(kind: string | null): string {
 	if (!kind) return 'Bot';
 	return BOT_LABELS[kind] ?? kind.replace(/_/g, ' ');

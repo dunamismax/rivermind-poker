@@ -45,11 +45,12 @@ Environment=RIVERMIND_VOICE_URL=http://127.0.0.1:4323
 # (deploy/rivermindpoker.com.caddy). Never RIVERMIND_VOICE_PROXY here: a deploy
 # of this server would then cut every conversation.
 Environment=RIVERMIND_VOICE_OFFER=1
-# The promoted models (P5.7a, docs/models.md). The heads-up champion plays as
-# RiverMind Hard once every file of its bundle here matches the registry this
-# release was built with; deploy/update.sh checks that before the site changes.
-# The files are root-owned and world-readable, and ProtectSystem=strict keeps
-# them read-only to this service. The bundle is held in memory, about 450 MB.
+# The promoted models (P5.7a, P5.7, docs/models.md). The heads-up and six-seat
+# champions play as RiverMind Hard and Medium once every file of their bundles
+# here matches the registry this release was built with; deploy/update.sh checks
+# that before the site changes. The files are root-owned and world-readable, and
+# ProtectSystem=strict keeps them read-only to this service. Both bundles are
+# held in memory, about 1.35 GB together.
 Environment=RIVERMIND_MODELS=/srv/rivermind-poker/models/champions
 # DATABASE_URL for the rivermind_poker_web role, from deploy/setup-database.sh.
 EnvironmentFile=/etc/web-apps/rivermind_poker/web.env
@@ -83,10 +84,12 @@ LockPersonality=true
 SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 CapabilityBoundingSet=
-# Measured, not the platform default of 256M/512M: the champion's bundle alone
-# is about 0.5 GB in memory.
-MemoryHigh=2G
-MemoryMax=3G
+# Measured, not the platform default of 256M/512M: the heads-up champion's
+# bundle is about 0.45 GB in memory and the six-seat one's 0.87 GB, and both
+# loaded peaked at 1.5 GB in a unit with this sandbox (P5.7). Raised from
+# 2G/3G by the owner's decision of 2026-11-22; the host has 15 GB.
+MemoryHigh=3G
+MemoryMax=4G
 TasksMax=128
 
 [Install]

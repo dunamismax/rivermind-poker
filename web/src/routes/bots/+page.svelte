@@ -35,11 +35,26 @@
 		medium: ((c as { levels?: { medium?: Level } }).levels?.medium ?? null) as Level | null
 	}));
 	/**
-	 * The table sizes whose champion the table server plays (`loadTrained` in
-	 * runtime.ts). A champion of another format is shown with its evaluation and
-	 * marked as not offered yet, never as a bot at the tables (D-7).
+	 * The table sizes whose champion the table server plays (`loadTrained` and
+	 * `MULTIWAY_SERVED` in runtime.ts). A champion of another format is shown
+	 * with its evaluation and marked as not offered yet, never as a bot at the
+	 * tables (D-7).
 	 */
-	const SERVED_SEATS = [2];
+	const SERVED_SEATS = [2, 6];
+	/** Whether a six-seat model is offered, so the heads-up one also plays the two-player hands of bigger tables. */
+	const multiway = champions.some((c) => c.seats > 2 && SERVED_SEATS.includes(c.seats));
+	/** The same for Medium, which plays six seats only where the six-seat model's Medium is recorded. */
+	const mediumMultiway = champions.some(
+		(c) => c.seats > 2 && SERVED_SEATS.includes(c.seats) && c.medium
+	);
+	const wordFor = (n: number) => ['two', 'three', 'four', 'five', 'six'][n - 2] ?? String(n);
+	/** Which hands a served model plays (P5.7), as a sentence's end. */
+	const playsWhat = (seats: number, bigger = multiway) =>
+		seats === 2
+			? bigger
+				? 'and it plays every hand with two players dealt in: heads-up tables, and the hands at bigger tables where only two are left'
+				: 'and it plays tables of 2 seats only'
+			: `and it plays hands of three to ${wordFor(seats)} players, at tables of three to ${wordFor(seats)} seats`;
 	const opponentName = (row: { opponent: string; name: string | null }) =>
 		row.opponent === 'champion'
 			? `The champion before it${row.name ? ` (${row.name})` : ''}`
@@ -95,10 +110,22 @@
 				<h3 id="hard-{champion.format}" class={heading}>RiverMind Hard, {champion.format}</h3>
 				<p>
 					RiverMind Hard is a trained bot. It learned {champion.format} no-limit hold’em by playing against
-					itself for {champion.iterations.toLocaleString('en-US')} training iterations, and it plays tables
-					of {champion.seats} seats only. The model it plays is
+					itself for {champion.iterations.toLocaleString('en-US')} training iterations, {SERVED_SEATS.includes(
+						champion.seats
+					)
+						? playsWhat(champion.seats)
+						: `and it plays tables of ${champion.seats} seats only`}. The model it plays is
 					<code class="text-green-light">{champion.name}</code>, promoted on {champion.promoted}.
 				</p>
+				{#if champion.seats > 2 && SERVED_SEATS.includes(champion.seats)}
+					<p class="mt-5">
+						A hand with only two players dealt in goes to the heads-up model instead: heads-up is a
+						different game, since the button posts the small blind and acts last after the flop. At
+						a table of fewer than {wordFor(champion.seats)} it plays as though the first seats to act
+						had folded, which is the same game, because folding in turn puts no chips in the pot. It was
+						measured at full tables of {wordFor(champion.seats)}.
+					</p>
+				{/if}
 				{#if !SERVED_SEATS.includes(champion.seats)}
 					<p class="not-served mt-5 text-paper">
 						Not offered at the tables yet: this model has passed the promotion gate, and serving it
@@ -211,8 +238,11 @@
 							? 'each half the time'
 							: `Hard ${Math.round(level.share * 100)}% of the time`}, and plays the whole hand that
 						way. It uses the same model as Hard,
-						<code class="text-green-light">{champion.name}</code>, and plays tables of {champion.seats}
-						seats only.
+						<code class="text-green-light">{champion.name}</code>, {SERVED_SEATS.includes(
+							champion.seats
+						)
+							? playsWhat(champion.seats, mediumMultiway)
+							: `and it plays tables of ${champion.seats} seats only`}.
 					</p>
 					<p class="mt-5">
 						It has its own measurement, in the same duplicate matches, against the same bots and
@@ -247,9 +277,12 @@
 						</table>
 					</div>
 					<p class="mt-3 text-s text-haze">
-						{level.evaluation.deals.toLocaleString('en-US')} deals a matchup, each played from both seats
-						({(2 * level.evaluation.deals).toLocaleString('en-US')} hands), seed {level.evaluation
-							.seed}.
+						{level.evaluation.deals.toLocaleString('en-US')} deals a matchup, each played from {champion.seats ===
+						2
+							? 'both seats'
+							: `all ${champion.seats} seats against ${champion.seats - 1} copies of its opponent`}
+						({(champion.seats * level.evaluation.deals).toLocaleString('en-US')} hands), seed {level
+							.evaluation.seed}.
 						<a
 							class="text-gold-light"
 							href="{REPOSITORY}/{level.evaluation.report}.md"

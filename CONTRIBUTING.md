@@ -214,6 +214,18 @@ PORT=3000 RIVERMIND_API=1 RIVERMIND_MODELS=../artifacts/models ORIGIN=http://127
 - **A missing bot.** A saved table whose bot the server does not run, which is RiverMind Hard after its bundle went missing, plays on against RiverMind Easy under that label. Seats, stacks and the hand in progress are kept.
 - **Tests.** [`champion.spec.ts`](web/src/lib/server/api/champion.spec.ts) writes a small champion and its registry extract, and also loads the registered bundle from `artifacts/models` when it is there. The browser tests' server gets one from `e2e/global-setup.ts` through `RIVERMIND_MODELS` and `RIVERMIND_CHAMPIONS`, a registry extract to use instead of the built-in one; that variable is for tests only.
 
+### Six seats (P5.7)
+
+When the registry also has a six-seat champion, the server loads it beside the heads-up one, and RiverMind Hard plays tables of 2 to 6 seats. Each table's `TablePolicy` (`champions.ts`) hands a hand to a model by the players dealt in: two to the heads-up champion, whatever the table's size, and three to six to the six-seat one. RiverMind Medium does the same where the six-seat champion's Medium is recorded too, and plays two seats only otherwise. A six-seat bundle that fails its check is logged and leaves both bots at two seats, and a release candidate's `champions` check then fails, so a deploy stops before the switch.
+
+```sh
+PORT=3000 RIVERMIND_API=1 RIVERMIND_MODELS=../artifacts/models ORIGIN=http://127.0.0.1:3000 pnpm start
+# RiverMind Hard plays 6max-s1-s0-100m: bundle … checked against the registry in 1.5 s (…)
+# RiverMind Hard plays tables of 2 to 6 seats: hu-m1-s0-1024m with two dealt in, 6max-s1-s0-100m with three or more
+```
+
+`GET /api/config` keeps `champion` as the heads-up model, which pages from before six seats read, and adds `champions`: each model with the table sizes it plays. The lobby's note gives the sizes (“Trained by self-play. 2 to 6 seats.”). [`six-seat.spec.ts`](web/src/lib/server/api/six-seat.spec.ts) writes a heads-up and a six-seat champion (the 50 big blind graph alone), and the browser tests' server gets the same pair. `pnpm bots:bench -- --bundle A --bundle B` times each bundle's decisions, the six-seat one at tables of three to six, with both held in memory as the server holds them.
+
 ### RiverMind Medium: a difficulty level (P5.7)
 
 **RiverMind Medium** is the champion mixed with RiverMind Easy a hand at a time: at its first decision in a hand it draws one number from the bot generator and plays the whole hand as the champion when it is below one half, and as RiverMind Easy otherwise ([`levels.ts`](web/src/lib/server/bots/levels.ts), a port of [`rivermind/bots/levels.py`](rivermind/bots/levels.py); `pnpm bots:parity` checks the two draw for draw). The server offers it, at two seats and in practice, only for a champion whose Medium has an evaluation in `champions.json`, made with the site's share; a new champion has no Medium until its own is evaluated and recorded.

@@ -55,7 +55,7 @@ import { HttpError, RequestError } from './errors.ts';
 import type { PlayerRecord } from './players.ts';
 import { PROTOCOL_VERSION } from './protocol.ts';
 import { REACTIONS, type Reaction, type RelationKind } from './safety.ts';
-import { PRACTICE_BLINDS, STAKES, type Site } from './site.ts';
+import { PRACTICE_BLINDS, sizes, STAKES, type Site } from './site.ts';
 import { commas } from './time.ts';
 import { tableEvents, tableSummary, tableView, yourHold } from './views.ts';
 import { creditsFor, InsufficientChips, type Credit } from './wallet.ts';
@@ -483,10 +483,9 @@ export class Tables {
 			throw new HttpError(400, `bots must be one of ${pythonList([...kinds].sort())} or null`);
 		}
 		if (request.bots !== null && !this.site.botPlays(request.bots, request.seats)) {
-			const sizes = this.site.trained[request.bots]?.seats.join(' or ');
 			throw new HttpError(
 				400,
-				`${BOT_LABELS[request.bots] ?? request.bots} plays only at tables of ${sizes} seats`
+				`${BOT_LABELS[request.bots] ?? request.bots} plays only at tables of ${sizes(this.site.trained[request.bots]?.seats ?? [])} seats`
 			);
 		}
 		const stakes = STAKES.find(([, big]) => big === request.big_blind);

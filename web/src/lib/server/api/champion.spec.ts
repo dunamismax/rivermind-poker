@@ -23,6 +23,7 @@ import {
 	loadChampion,
 	readRegistry,
 	REGISTRY,
+	TablePolicy,
 	type Champion
 } from '../bots/champions.ts';
 import { PythonRandom } from '../bots/mt.ts';
@@ -100,9 +101,11 @@ describe('loading a champion', () => {
 		expect(['fold', 'call', 'raise']).toContain(action.kind);
 		// Each table gets a policy with its own memory of hands, over the same arrays.
 		const [one, two] = [policy.forTable(), policy.forTable()];
-		expect(one).toBeInstanceOf(BlueprintPolicy);
+		expect(one).toBeInstanceOf(TablePolicy);
+		expect(one.heads).toBeInstanceOf(BlueprintPolicy);
+		expect(one.multi).toBeNull();
 		expect(one).not.toBe(two);
-		expect(one.bundle).toBe(bundle);
+		expect(one.heads.bundle).toBe(bundle);
 		one.act(seatView(state, state.toAct!), new PythonRandom(6));
 		expect(one.stats.decisions).toBe(1);
 		expect(two.stats.decisions ?? 0).toBe(0);
@@ -413,7 +416,7 @@ describe('the registry this build was made with', () => {
 			'calling_station'
 		]);
 		expect(described.results.every((r) => r.ci95[0] > 0)).toBe(true);
-		// The six-seat champion is registered and not served yet (P5.7): the runtime plays the heads-up one only.
+		// The six-seat champion is registered too, and served beside it (P5.7).
 		const six = championFor(REGISTRY, 6);
 		expect(six?.format).toBe('6-max');
 		expect(six?.abstraction).toBe('6max-s1');

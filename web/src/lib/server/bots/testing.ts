@@ -133,20 +133,24 @@ export function strategySize(
 }
 
 /**
- * A models directory holding one heads-up champion called `name`, as
- * `rivermind-poker blueprint promote` keeps one (`<models>/<name>/bundle`),
- * and the registry extract a server checks it against. With `medium`, the
- * extract also records an evaluation of its RiverMind Medium (P5.7).
+ * A models directory holding one champion called `name`, as `rivermind-poker
+ * blueprint promote` keeps one (`<models>/<name>/bundle`), and the registry
+ * extract a server checks it against. The champion is heads-up for the hu-m1
+ * trees and six-seat for `6max-s1` graphs (P5.7). With `medium`, the extract
+ * also records an evaluation of its RiverMind Medium (P5.7); `others` are
+ * champions already written to `models`, listed in the extract before it.
  */
 export function writeChampion(
 	models: string,
-	trees: readonly Tree[],
+	trees: readonly (Tree | GraphDocument)[],
 	{
 		name = 'test-champion',
 		strategy,
-		medium = false
-	}: { name?: string; strategy?: Uint8Array; medium?: boolean } = {}
+		medium = false,
+		others = []
+	}: { name?: string; strategy?: Uint8Array; medium?: boolean; others?: readonly Champion[] } = {}
 ): { champion: Champion; registry: ChampionRegistry; bundle: TestBundle } {
+	const multiway = 'token_sets' in trees[0];
 	const bundle = writeBundle(join(models, name, 'bundle'), trees, {
 		strategy: strategy ?? randomStrategy(strategySize(trees))
 	});
@@ -160,10 +164,10 @@ export function writeChampion(
 		gate: true
 	});
 	const champion: Champion = {
-		format: 'heads-up',
-		seats: 2,
+		format: multiway ? '6-max' : 'heads-up',
+		seats: multiway ? 6 : 2,
 		name,
-		abstraction: 'hu-m1',
+		abstraction: multiway ? trees[0].abstraction : 'hu-m1',
 		iterations: 1_000,
 		promoted: '2026-11-21',
 		replaced: 'older-champion',
@@ -212,7 +216,11 @@ export function writeChampion(
 			}
 		};
 	}
-	const registry: ChampionRegistry = { format: 1, kind: REGISTRY_KIND, champions: [champion] };
+	const registry: ChampionRegistry = {
+		format: 1,
+		kind: REGISTRY_KIND,
+		champions: [...others, champion]
+	};
 	writeFileSync(join(models, 'champions.json'), JSON.stringify(registry, null, 2));
 	return { champion, registry, bundle };
 }

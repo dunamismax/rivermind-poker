@@ -15,7 +15,9 @@
 //      the blueprint and itself;
 //   5. the blueprint of a multiway (format 2) bundle does the same at a table
 //      of its size with three or more dealt in, in one or more seats, against
-//      those bots and itself (P5.7).
+//      those bots and itself (P5.7);
+//   6. RiverMind Medium made from the multiway bundle does as in 4, at its
+//      table, against those bots, the blueprint and itself.
 //
 // Without --bundle it checks a synthetic bundle (the real trees with random
 // strategies and card tables), which CI can build in a second. Without
@@ -142,6 +144,51 @@ async function checkBlueprint(
 	return hands;
 }
 
+let mediumReport: Record<string, unknown> = {};
+
+/** Replay the reference's hands of RiverMind Medium made from `champion`, against `opponent` among others. */
+async function checkMedium(
+	label: string,
+	args: string[],
+	champion: TrainedPolicy,
+	opponent: TrainedPolicy
+): Promise<number> {
+	const mixed = medium(champion);
+	const withMedium = { ...bots, blueprint: opponent, medium: mixed };
+	let decisions = 0;
+	const hands = await lines(args, ([metaText, record], n) => {
+		const meta = JSON.parse(metaText);
+		const result = replayMediumLine(
+			meta,
+			JSON.parse(record),
+			withMedium,
+			mixed,
+			champion,
+			opponent
+		);
+		if (JSON.stringify(result.strong) !== JSON.stringify(meta.strong)) {
+			fail(
+				`${label} line ${n}: the bots chosen differ:\n  python: ${JSON.stringify(meta.strong)}\n  ts:     ${JSON.stringify(result.strong)}`
+			);
+		}
+		const gap = largestDifference(result.probabilities, meta.probabilities);
+		if (gap === null || gap > TOLERANCE) {
+			fail(`${label} line ${n}: probabilities differ (${gap})`);
+		}
+		if (JSON.stringify(result.stats) !== JSON.stringify(meta.stats)) {
+			fail(
+				`${label} line ${n}: statistics differ:\n  python: ${JSON.stringify(meta.stats)}\n  ts:     ${JSON.stringify(result.stats)}`
+			);
+		}
+		if (result.record !== record) {
+			fail(`${label} line ${n} differs:\n  python: ${record}\n  ts:     ${result.record}`);
+		}
+		decisions += result.strong.length;
+	});
+	mediumReport = { decisions, stats: mixed.stats };
+	return hands;
+}
+
 // 1. Simple bots on the fuzz deals.
 const bots = simpleBots();
 report.policy_hands = await lines(
@@ -186,43 +233,13 @@ try {
 
 	// 4. RiverMind Medium, made from the same bundle (checked here, while it is loaded).
 	const champion = new BlueprintPolicy(bundle);
-	const mixed = medium(champion);
-	const opponent = new BlueprintPolicy(bundle);
-	const withMedium = { ...bots, blueprint: opponent, medium: mixed };
-	let mediumDecisions = 0;
-	report.medium_hands = await lines(
+	report.medium_hands = await checkMedium(
+		'medium',
 		['medium', bundlePath, '--decisions', values.decisions, '--seed', seed],
-		([metaText, record], n) => {
-			const meta = JSON.parse(metaText);
-			const result = replayMediumLine(
-				meta,
-				JSON.parse(record),
-				withMedium,
-				mixed,
-				champion,
-				opponent
-			);
-			if (JSON.stringify(result.strong) !== JSON.stringify(meta.strong)) {
-				fail(
-					`medium line ${n}: the bots chosen differ:\n  python: ${JSON.stringify(meta.strong)}\n  ts:     ${JSON.stringify(result.strong)}`
-				);
-			}
-			const gap = largestDifference(result.probabilities, meta.probabilities);
-			if (gap === null || gap > TOLERANCE) {
-				fail(`medium line ${n}: probabilities differ (${gap})`);
-			}
-			if (JSON.stringify(result.stats) !== JSON.stringify(meta.stats)) {
-				fail(
-					`medium line ${n}: statistics differ:\n  python: ${JSON.stringify(meta.stats)}\n  ts:     ${JSON.stringify(result.stats)}`
-				);
-			}
-			if (result.record !== record) {
-				fail(`medium line ${n} differs:\n  python: ${record}\n  ts:     ${result.record}`);
-			}
-			mediumDecisions += result.strong.length;
-		}
+		champion,
+		new BlueprintPolicy(bundle)
 	);
-	report.medium = { decisions: mediumDecisions, stats: mixed.stats };
+	report.medium = mediumReport;
 
 	// 3. Card buckets.
 	const boards = Number(values.boards);
@@ -286,6 +303,15 @@ try {
 		blueprint
 	);
 	report.multiway = blueprintReport;
+
+	// 6. RiverMind Medium made from the multiway bundle, at its table.
+	report.multiway_medium_hands = await checkMedium(
+		'multiway medium',
+		['medium', multiwayPath, '--decisions', values['multiway-decisions'], '--seed', seed],
+		new MultiwayBlueprintPolicy(bundle),
+		new MultiwayBlueprintPolicy(bundle)
+	);
+	report.multiway_medium = mediumReport;
 } finally {
 	if (multiwayScratch) rmSync(multiwayScratch, { recursive: true, force: true });
 }

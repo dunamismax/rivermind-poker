@@ -21,7 +21,10 @@ ports in ``web/src/lib/server/bots`` must reproduce:
     against each of the simple bots, the blueprint and itself, in the same
     form as ``blueprint``, with which bot Medium chose for each of its
     decisions (``strong``) and the blueprint's probabilities where it chose
-    the blueprint.
+    the blueprint. Made from a multiway bundle, the hands are at a table of
+    its size with three or more dealt in, Medium in at least one seat and the
+    simple bots, the blueprint or Medium in the others, as ``multiway`` deals
+    them.
 ``multiway``
     Hands of a multiway bundle's blueprint at a table of its size with three
     or more dealt in, the blueprint in at least one seat and the simple bots
@@ -158,6 +161,8 @@ def write_medium(out: TextIO, bundle_path: Path, decisions: int, seed: int) -> i
     from .levels import medium
 
     bundle = ServingBundle(bundle_path)
+    if bundle.game.seats != 2:
+        return _write_medium_multiway(out, bundle, decisions, seed)
     mixed = medium(bundle.policy())
     blueprint = bundle.policy()
     bots: dict[str, Policy] = {**simple_bots(), "blueprint": blueprint, "medium": mixed}
@@ -192,6 +197,59 @@ def write_medium(out: TextIO, bundle_path: Path, decisions: int, seed: int) -> i
     return hands
 
 
+def _multiway_deal(deals: random.Random, table: int, kinds: Sequence[str], main: str) -> tuple[HandConfig, list[int | None], list[str], int, list[int], int]:
+    """A multiway deal: three or more dealt in at random stacks and blinds, ``main`` in at least one seat."""
+    dealt = deals.randint(3, table)
+    chosen = sorted(deals.sample(range(table), dealt))
+    config = HandConfig(50, 100) if deals.random() < 0.8 else HandConfig(*sorted((deals.randint(1, 200), deals.randint(1, 200))))
+    big = config.big_blind
+    level = deals.random()
+    stacks: list[int | None] = [None] * table
+    for seat in chosen:
+        # Mostly the depth classes' own stacks, where every action is on the graph; otherwise anything.
+        stacks[seat] = 50 * big if level < 0.25 else 100 * big if level < 0.5 else deals.randint(5 * big, 250 * big)
+    seats = [main] * table
+    if deals.random() < 0.75:
+        for seat in chosen:
+            seats[seat] = deals.choice((*kinds, main, main))
+        seats[deals.choice(chosen)] = main
+    button = deals.choice(chosen)
+    deck = list(range(52))
+    deals.shuffle(deck)
+    return config, stacks, seats, button, deck, deals.getrandbits(64)
+
+
+def _write_medium_multiway(out: TextIO, bundle: Any, decisions: int, seed: int) -> int:
+    """Hands of RiverMind Medium made from a multiway bundle at its table, until it has made ``decisions`` decisions."""
+    from .levels import medium
+
+    table = bundle.game.seats
+    mixed = medium(bundle.policy())
+    blueprint = bundle.policy()
+    bots: dict[str, Policy] = {**simple_bots(), "blueprint": blueprint, "medium": mixed}
+    deals = random.Random(seed)
+    made = 0
+    hands = 0
+    while made < decisions:
+        config, stacks, seats, button, deck, bot_seed = _multiway_deal(deals, table, (*SIMPLE, "blueprint"), "medium")
+        strong: list[bool | None] = []
+        probabilities: list[list[float] | None] = []
+
+        def record(policy: Policy, strong: list[bool | None] = strong, probabilities: list[list[float] | None] = probabilities) -> None:
+            if policy is mixed:
+                strong.append(mixed.last_strong)
+                probabilities.append(mixed.strong.last_probabilities if mixed.last_strong else None)  # type: ignore[attr-defined]
+
+        mixed.new_hand()
+        blueprint.new_hand()
+        final = play(start_hand(config, stacks, button, deck=deck), seats, bots, random.Random(bot_seed), record)
+        made += len(strong)
+        hands += 1
+        meta = {"bots": seats, "seed": str(bot_seed), "strong": strong, "probabilities": probabilities, "stats": dict(sorted(mixed.stats.items()))}
+        out.write(f"{json.dumps(meta, separators=(',', ':'), sort_keys=True)}\t{dumps(hand_record(final))}\n")
+    return hands
+
+
 def write_multiway(out: TextIO, bundle_path: Path, decisions: int, seed: int) -> int:
     """Hands of a multiway bundle's blueprint at its table, until it has made ``decisions`` decisions."""
     from .blueprint.bundle import ServingBundle
@@ -206,24 +264,7 @@ def write_multiway(out: TextIO, bundle_path: Path, decisions: int, seed: int) ->
     made = 0
     hands = 0
     while made < decisions:
-        dealt = deals.randint(3, table)
-        chosen = sorted(deals.sample(range(table), dealt))
-        config = HandConfig(50, 100) if deals.random() < 0.8 else HandConfig(*sorted((deals.randint(1, 200), deals.randint(1, 200))))
-        big = config.big_blind
-        level = deals.random()
-        stacks: list[int | None] = [None] * table
-        for seat in chosen:
-            # Mostly the depth classes' own stacks, where every action is on the graph; otherwise anything.
-            stacks[seat] = 50 * big if level < 0.25 else 100 * big if level < 0.5 else deals.randint(5 * big, 250 * big)
-        seats = ["blueprint"] * table
-        if deals.random() < 0.75:
-            for seat in chosen:
-                seats[seat] = deals.choice((*SIMPLE, "blueprint", "blueprint"))
-            seats[deals.choice(chosen)] = "blueprint"
-        button = deals.choice(chosen)
-        deck = list(range(52))
-        deals.shuffle(deck)
-        bot_seed = deals.getrandbits(64)
+        config, stacks, seats, button, deck, bot_seed = _multiway_deal(deals, table, SIMPLE, "blueprint")
         probabilities: list[list[float] | None] = []
 
         def record(policy: Policy, probabilities: list[list[float] | None] = probabilities) -> None:
@@ -289,7 +330,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     bp.add_argument("bundle")
     bp.add_argument("--decisions", type=int, default=2_000)
     bp.add_argument("--seed", type=int, default=0)
-    md = commands.add_parser("medium", help="write heads-up hands of RiverMind Medium made from a bundle")
+    md = commands.add_parser("medium", help="write hands of RiverMind Medium made from a bundle, heads-up or at a multiway bundle's table")
     md.add_argument("bundle")
     md.add_argument("--decisions", type=int, default=2_000)
     md.add_argument("--seed", type=int, default=0)
