@@ -41,6 +41,7 @@ Promoted on 2026-11-22, as the first 6-max champion.
 - **Training settings:** `abstraction` 6max-s1, `depths` [50, 100], `seed` 0, `chunk_size` 1,000, `chunks_per_batch` 64, `discount_every` 4,000,000, `discount_until` 160,000,000, `prune_after` 80,000,000, `prune_probability` 0.95, `prune_threshold` -60,000,000, `regret_floor` -66,000,000.
 - **Serving bundle:** `strategy.u8` `0f1790c3485b9f7de879fe13c67c02c2401eb0e7e37d133f8d99fccffc78c0b4`, probabilities in multiples of 1/255. `models.json` has all 12 files.
 - **Kept in:** `artifacts/models/6max-s1-s0-100m/` (`checkpoint/` and `bundle/`).
+- **RiverMind Medium:** each hand played as this served bundle with probability 0.5 and as RiverMind Easy otherwise; +11.27 (+6.97 to +15.58) against RiverMind Easy; +668.49 (+619.11 to +717.88) against the calling station; -10.68 (-18.22 to -3.14) against RiverMind Hard, the champion itself at 100 big blinds, over 20,000 duplicate deals each, seed 0 ([report](evaluations/6max-s1-s0-100m-medium.md); recorded 2026-11-22).
 
 ## Decisions
 

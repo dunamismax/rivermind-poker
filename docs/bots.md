@@ -298,6 +298,18 @@ Each format serves three levels: **Easy** is the heuristic, **Hard** the format'
 
 So Medium sits between the two levels against every opponent measured, and its own interval holds or touches the halfway point each time. Against the calling station it does better than Hard because RiverMind Easy does: Easy’s +324.63 there is the best result of the three.
 
+**The first six-seat Medium** ([report](evaluations/6max-s1-s0-100m-medium.md)), made from `6max-s1-s0-100m`’s served bundle and recorded on 2026-11-22: 20,000 duplicate deals a matchup at `8eb1988`, each played six times with Medium in every seat against five copies of its opponent, 366 s on four workers beside the training run. Recording it puts six seats into Medium at the site (P5.7): it then plays tables of 2 to 6 seats, as Hard does. Halfway is the mean of RiverMind Easy’s and the served champion’s results on the same deals; Easy’s were measured for this table alone (`run_matchup` with RiverMind Easy as the candidate at six seats, the same seed and deals; they are in no report):
+
+| Against five, at 100 bb | RiverMind Easy | Medium (95% interval) | Hard (served) | Halfway |
+| --- | --- | --- | --- | --- |
+| RiverMind Easy | 0 | +11.27 (+6.97 to +15.58) | +21.14 | +10.57 |
+| Calling station | +918.61 | +668.49 (+619.11 to +717.88) | +510.84 | +714.73 |
+| Random | +146.25 | +432.42 (+402.43 to +462.42) | +669.38 | +407.82 |
+| Min-bet probe | +171.97 | +240.57 (+198.98 to +282.16) | +354.63 | +263.30 |
+| RiverMind Hard | −11.65 | −10.68 (−18.22 to −3.14) | 0 | −5.83 |
+
+As heads-up, Medium sits between the two levels against every opponent measured, and its interval holds halfway each time (against the calling station at its edge). Against five copies of Hard, Easy and Medium lose about the same: one Easy at a table of five Hards loses little, since Easy folds most hands and the Hards fight one another for the rest.
+
 **Parity.** `pnpm bots:parity` plays Medium made from the bundle in both languages, heads-up against the simple bots, the blueprint and itself, and compares which bot it chose at every decision, the blueprint's probabilities, the statistics and the hand records. On 2026-11-22 with the champion `hu-m1-s0-1024m`’s bundle (`--decisions 20000`): 20,001 Medium decisions in 9,137 hands, identical.
 
 ## 6-max and 9-max
@@ -451,7 +463,18 @@ The Node server loads the registry's six-seat champion beside the heads-up one (
 
 Not designed yet, and `6max-s1`’s sizes will not stretch to it. The merged graph grows by a factor of four to five a seat at 100 big blinds: 3,762 states at three seats, 28,964 at four, 152,981 at five and 654,597 at six. At seven seats it is 2,417,164: 479 million info sets with 200 buckets and 11.7 GB of training tables for the 100 big blind class alone, more than both of six seats’ classes together (one process, 148 s). The factor falls as seats are added (7.7, 5.3, 4.3, 3.7), and if it keeps falling that way nine seats is on the order of 20 to 25 million states: four to five billion info sets, over 100 GB of tables and a run some twenty-five times the six-seat one. That does not fit this Mac’s 32 GB, whatever the patience (Q-5).
 
-So the nine-seat design has a real choice to make, and it is not made here. The options to weigh, each with a measurement to take first: (1) play the last six positions of a nine-seat hand on the six-seat blueprint, which is exact once the first three seats have folded, and train only a small pre-flop strategy for those three seats; (2) a coarser nine-seat graph of its own, with candidate A’s sizes and 50 buckets a street, which is about a tenth of the tables above and still far more than six seats; (3) merge further, treating seats that have only called as interchangeable. The first is the cheapest and reuses a champion that will already have passed its gate; its cost is every hand in which an early seat stays in. Nine seats stays open in P5.6 until six seats has a champion.
+So the nine-seat design has a real choice to make, and it is not made here. The options to weigh, each with a measurement to take first: (1) play the last six positions of a nine-seat hand on the six-seat blueprint, which is exact once the first three seats have folded, and train only a small pre-flop strategy for those three seats; (2) a coarser nine-seat graph of its own, with candidate A’s sizes and 50 buckets a street, which is about a tenth of the tables above and still far more than six seats; (3) merge further, treating seats that have only called as interchangeable. The first is the cheapest and reuses a champion that will already have passed its gate; its cost is every hand in which an early seat stays in.
+
+**Recommended: option 1** (2026-11-22, for the owner to approve before any nine-seat run). Its measurement is how often an early seat stays in, and what the hand looks like when one does. A throwaway probe (`nine_probe.py`, not kept) played 10,000 hands at 100 big blinds each way:
+
+| | First seat to act folds | First three to act all fold | Flops with more than six players |
+| --- | --- | --- | --- |
+| `6max-s1-s0-100m` against itself, six seats | 86.5% | 45.9% (UTG, hijack and cutoff) | none (53% of hands see a flop two-handed, 12% three-handed, 0.5% four-handed) |
+| RiverMind Easy against itself, nine seats | | 84.6% (UTG to UTG+2) | none |
+
+At nine seats each of the first three faces more players behind it than a six-seat UTG does, so each should fold at least as often as 86.5%: if they fold independently, all three fold in at least 0.865³ ≈ 65% of hands, and option 1 then plays the rest of the hand on the six-seat blueprint exactly. In the other hands, the measurement says the flop is still small (never more than six, nearly always two or three), so the six-seat graph's flop nodes for the seats still in, which the policy already re-enters by its live-seat mask, cover them. What option 1 then has to learn is small: the pre-flop decisions of the three early seats (169 hand classes over a few dozen betting states), trained by MCCFR on a nine-seat pre-flop walk whose later seats and post-flop play are the six-seat champion, fixed. That is minutes to hours of training, not the weeks and hundreds of gigabytes of options 2 and 3, and it serves no new large bundle (the six-seat one plus a small pre-flop table). Its costs: early seats that enter are played post-flop by a blueprint that never saw nine-seat ranges, and the walk's later seats do not adapt to the early seats' new strategy (so it is a best response to a fixed six-seat field, not an equilibrium). Both are measurable with the nine-seat harness against five-plus-three copies of RiverMind Easy and of itself. To redo the measurement on a later champion, play its bundle against itself at six seats and count first-to-act folds and flop sizes.
+
+Option 2 (a coarser nine-seat graph) and option 3 (merging callers) both need a new abstraction measured first and a run well beyond this Mac (Q-5); neither is recommended before option 1 has been tried and measured.
 
 ## References
 
