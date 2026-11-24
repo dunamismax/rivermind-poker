@@ -166,11 +166,21 @@ class EarlyTable:
         return w / total if total > 0 else None
 
 
+FOLD_FIRST = np.eye(len(ACTIONS))[ACTIONS.index("f")]
+
+
 def regret_matching(regrets: np.ndarray) -> np.ndarray:
-    """The current strategy of every row and class; uniform where no regret is positive."""
+    """The current strategy of every row and class; fold where no regret is positive.
+
+    The usual default, uniform, starts every early seat entering three hands
+    in four, and the play-outs then fill with early raises and all-ins the
+    six-seat field has rarely met. Folding first starts the walk at the
+    six-seat game exactly, and an early seat leaves it only for a hand whose
+    own values say so.
+    """
     positive = np.maximum(regrets, 0.0)
     totals = positive.sum(axis=2, keepdims=True)
-    return np.where(totals > 0, positive / np.where(totals > 0, totals, 1.0), 1.0 / len(ACTIONS))
+    return np.where(totals > 0, positive / np.where(totals > 0, totals, 1.0), FOLD_FIRST)
 
 
 def quantize(sums: np.ndarray) -> np.ndarray:
@@ -441,7 +451,7 @@ class _Walker:
         from .bundle import ServingBundle
 
         base = ServingBundle(bundle, verify=False).policy()
-        self.policy = NineSeatPolicy(base.blueprint, base.tables, _Sigma(np.full(SHAPE, 1.0 / len(ACTIONS))))
+        self.policy = NineSeatPolicy(base.blueprint, base.tables, _Sigma(regret_matching(np.zeros(SHAPE))))
         self.hands = _class_hands(base.tables)
         self.classes = [c for c in range(CLASSES) if self.hands[c]]
         self.config = HandConfig(50, 100)
@@ -540,9 +550,13 @@ def train(
     Each batch plays ``chunks`` chunks of ``per_chunk`` deals from the same
     current strategy and adds their regrets in chunk order, so the result is
     a function of the settings alone, whatever ``workers`` is. Regrets are
-    floored at zero after each batch (regret matching plus), and batch ``b``
-    adds its current strategy to the average with weight ``b`` where it
-    visited.
+    summed as sampled, never floored: a shove that wins the blinds nine times
+    in ten and loses a hundred big blinds the tenth has a negative mean, and
+    regret matching plus, which floors the sum at zero after each batch, kept
+    such a sum near zero and played the shove (``docs/bots.md``). Batch ``b``
+    adds its current strategy to the average with weight ``b`` squared where
+    it visited, so the early batches, before the sums have outgrown their
+    noise, count for little.
     """
     out, bundle = Path(out), Path(bundle)
     code = _git_commit()  # what the run starts from, before anything can change under it
@@ -565,8 +579,7 @@ def train(
                 regrets += r
                 seen += v
                 rollouts += n
-            regrets = np.maximum(regrets, 0.0)
-            sums += b * sigma * (seen > 0)[:, :, None]
+            sums += b * b * sigma * (seen > 0)[:, :, None]
             visits += seen
             if log is not None:
                 log({"batch": b, "deals": b * chunks * per_chunk, "rollouts": rollouts, "seconds": round(time.time() - started, 1)})
