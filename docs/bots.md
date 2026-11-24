@@ -487,7 +487,7 @@ The Node server loads the registry's six-seat champion beside the heads-up one (
 - **Three to six dealt in** go to the six-seat champion.
 - **Tables of three to five seats** are offered, not only six. The six-seat policy plays a hand of four as the six-seat game in which the first two seats to act have folded, and that is the same game exactly: folding in turn puts no chips in the pot, so the four players face the same pot, stacks and options. Such hands already come up at a six-seat table whenever seats are empty, so a smaller table asks nothing of the bot that a six-seat table does not. What differs is the card removal of the folded seats, which the six-seat game has and a four-seat table does not, and which a blueprint with bucketed cards hardly sees. The evaluation is at full six-seat tables, and `/bots` says so; `blueprint evaluate --seats N` measures the six-seat bot at a smaller table. The final champion's results at three, four and five seats are in the table below.
 - **Medium** plays six seats only where the six-seat champion's own Medium is recorded, and both formats' Medium then mix a hand at a time as heads-up's does. Without a recorded six-seat Medium it stays at two seats.
-- **Seven to nine seats** have no trained bot.
+- **Seven to nine dealt in** go to the nine-seat model, which plays on the six-seat champion it was trained on ([nine seats as built](#nine-seats-as-built-option-1-9max-o1)). Without a registered nine-seat model built on the served six-seat champion, the bots play at most six seats.
 
 `GET /api/config` lists each trained bot with every table size it plays and, in `champions`, each model with its sizes; `champion` stays the heads-up model, as pages from before read it.
 
@@ -550,6 +550,36 @@ The run is batches of 16 chunks of 125 deals from one current strategy, so its f
 
 - **The uniform start.** Regret matching plays uniformly where no regret is positive, so every early seat began by entering three hands in four, and a quarter of those all-in. The play-outs filled with multiway raised and all-in pots the six-seat field has rarely met: after an under-the-gun limp, 68% of hands saw an all-in and 13% of the field's decisions lost their place on the graph. The table now folds where no regret is positive, so training starts at the six-seat game exactly and leaves it only for a hand whose own values say so.
 - **Regret matching plus.** Flooring each info set's sampled regrets at zero after every batch is sound when a batch's regret is an expectation, but here it is one sample. A trash shove wins the blinds nine times in ten and loses about 100 big blinds the tenth, about −4 on average. The floor turns each loss into a reset to zero, so a few small wins make the shove positive again and it is played. Regrets are now summed as sampled, which is unbiased. A sum then takes a few thousand visits to outgrow its noise (a mean of −4 against a spread near 100), so the run is ten times longer and batch *b* counts *b*² in the average.
+
+### The first nine-seat champion (2026-11-24)
+
+**Training.** `artifacts/nine/9max-o1-s0`, trained from `233b9c6` with a clean tree on the six-seat champion `6max-s1-s0-3600m`'s served bundle: 15,000 batches of 16 chunks of 125 deals, 30,000,000 deals and 88,146,482 play-outs, in 6,756 s (1 h 53 min) on ten workers. The discarded first run (3 million deals with the settings above) took 766 s. **Compute for nine seats:** those two runs and the evaluations below. No new card tables and no new graph: the model adds a 36 KB early table to the six-seat bundle.
+
+**At the gate.** Evaluated as checkpoint and as served bundle over 20,000 duplicate deals a matchup at `ba1bba9`, each deal played nine times with the candidate once in every seat against eight copies of its opponent, and **promoted as `9max-o1-s0`** (`e5e7353`). As served, at 100 big blinds, it won +6.48 (+2.16 to +10.81) against eight RiverMind Easy and +1,254.71 (+1,207.46 to +1,301.95) against eight calling stations; +123.13 against random and +420.82 against the min-bet probe; and against Easy at 40 and 150 big blinds +7.43 and +12.25 ([checkpoint](evaluations/9max-o1-s0.md), [served](evaluations/9max-o1-s0-served.md)). The registry records that it builds on `6max-s1-s0-3600m`. `blueprint champions --verify artifacts/models` passes. The long nine-seat parity run (`pnpm bots:parity -- --multiway-bundle ../artifacts/models/6max-s1-s0-3600m/bundle --nine-model ../artifacts/models/9max-o1-s0/bundle --nine-decisions 20000`) was identical on 2026-11-24: 20,004 nine-seat decisions in 3,679 hands and 20,001 Medium decisions in 4,513 hands.
+
+**Its Medium** ([report](evaluations/9max-o1-s0-medium.md)) was made from the model's served bundle, evaluated over 20,000 deals a matchup at `e5e7353` with a clean tree, and recorded with `blueprint level` on 2026-11-24. RiverMind Easy's own nine-seat results were measured for this table alone, with `run_matchup` and RiverMind Easy as the candidate on the same seed and deals (they are in no report):
+
+| Against eight, at 100 bb | RiverMind Easy | Medium (95% interval) | Hard (served) | Halfway |
+| --- | --- | --- | --- | --- |
+| RiverMind Easy | 0 | +4.78 (+1.49 to +8.07) | +6.48 | +3.24 |
+| Calling station | +938.28 | +1,125.80 (+1,082.70 to +1,168.91) | +1,254.71 | +1,096.50 |
+| Random | +97.35 | +101.49 (+78.43 to +124.55) | +123.13 | +110.24 |
+| Min-bet probe | +215.85 | +331.55 (+301.41 to +361.70) | +420.82 | +318.34 |
+| RiverMind Hard | −4.82 | −3.12 (−9.61 to +3.38) | 0 | −2.41 |
+
+Medium's interval holds halfway against all five opponents. It also won against Easy at 40 and 150 big blinds (+5.18 and +7.51) and against the calling stations (+503.23 and +1,530.68).
+
+**What the numbers say about option 1.** The model's margin over RiverMind Easy is smaller than the six-seat champion's at six seats (+6.48 against +20.30 bb/100), and the two are different games, so this measures no loss of strength. Its known limits are the ones above: the early seats' table answers a fixed six-seat field rather than being an equilibrium, and the six-seat graph has room for four players besides the blinds. Against eight calling stations, who all limp, only 26% of its decisions found trained data, and most of the rest found no room on the graph and were RiverMind Easy's (`lost`). Against the opponents the site seats it with, RiverMind Easy and itself, 99.8 to 99.9% of its decisions had trained data.
+
+**Decision time and memory on ubuntu-vm** (2026-11-24, `pnpm bots:bench -- --bundle hu-m1-s0-1024m --bundle 6max-s1-s0-3600m --nine 9max-o1-s0` from `aa7f15c`'s sources, every model from `/srv/rivermind-poker/models/champions`, in a transient unit with the web unit's sandbox and its limits of 3 GB and 4 GB; 8 CPUs, load average 0.2). The table's thinking delay (`RIVERMIND_BOT_DELAY`, 0.6 s) is not part of these times:
+
+| Format | Decisions | p50 | p95 | p99 | Max |
+| --- | --- | --- | --- | --- | --- |
+| Heads-up (`hu-m1-s0-1024m`) | 20,003 | 0.005 ms | 0.009 ms | 0.022 ms | 2.3 ms |
+| Three to six dealt in (`6max-s1-s0-3600m`) | 20,000 | 0.005 ms | 0.012 ms | 0.033 ms | 0.77 ms |
+| Seven to nine dealt in (`9max-o1-s0`) | 20,001 | 0.007 ms | 0.019 ms | 0.046 ms | 1.1 ms |
+
+Every format is four orders of magnitude inside the 200 ms budget. With all three held, as the server holds them, the process had 1,351 MB of array buffers and 1,612 MB resident: the nine-seat model adds nothing measurable to the six-seat bundle it plays on. The unit's peak, page cache included, was 2.6 GB, under the 3 GB `MemoryHigh` and the 4 GB `MemoryMax`. The live web unit, serving heads-up and six seats since 2026-11-24 02:03 UTC, peaked at 1.6 GB.
 
 ## References
 

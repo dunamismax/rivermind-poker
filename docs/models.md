@@ -55,6 +55,7 @@ Promoted on 2026-11-24, as the first 9-max champion.
 - **Training settings:** `batches` 15,000, `chunks` 16, `per_chunk` 125, `seed` 0.
 - **Serving bundle:** `early.u8` `4b12d5a5a612a0e1188ac0566f1ed6caa9fe42cbf9abce8b7eb254b419d8c094`, probabilities in multiples of 1/255. `models.json` has all 1 files.
 - **Kept in:** `artifacts/models/9max-o1-s0/` (`checkpoint/` and `bundle/`).
+- **RiverMind Medium:** each hand played as this model with probability 0.5 and as RiverMind Easy otherwise; +4.78 (+1.49 to +8.07) against RiverMind Easy; +1125.80 (+1082.70 to +1168.91) against the calling station; -3.12 (-9.61 to +3.38) against RiverMind Hard, the champion itself at 100 big blinds, over 20,000 duplicate deals each, seed 0 ([report](evaluations/9max-o1-s0-medium.md); recorded 2026-11-24).
 
 ## Decisions
 
