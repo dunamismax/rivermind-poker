@@ -1199,6 +1199,125 @@
         }
       ],
       "note": null
+    },
+    {
+      "date": "2026-11-24",
+      "format": "9-max",
+      "name": "9max-o1-s0",
+      "outcome": "promoted",
+      "incumbent": null,
+      "checkpoint": {
+        "abstraction": "9max-o1",
+        "iteration": 30000000,
+        "manifest_sha256": "1c4170ae9d7620ad57b2eba4a12c5d29e6d81bb2966e74dd5efbd131ba4c0688",
+        "files": {
+          "regrets.npy": "a9af3142403bb905a735404c94bc24949f2bec05b112af62327e571922bb8211",
+          "strategy.npy": "e12605696bc00b2411229858e5600495c8df33e1a16b3b7c95c116d27222d106",
+          "visits.npy": "4e34d1a6d649a140a5939df3e6f8afb2fcb364c9d69f376e61b872c29f154ea2"
+        },
+        "settings": {
+          "batches": 15000,
+          "chunks": 16,
+          "per_chunk": 125,
+          "seed": 0
+        },
+        "trained_by": "233b9c67934df790f13e02f4ce56209496712203",
+        "builds_on": {
+          "files": {
+            "flop.u16": "ebdd11e183fe7c2a6e2e7b21874d9b47cf25caf12933f4143b33eab210c8c8da",
+            "flop_board_class.i32": "67a78cbcee85c489cd3b596f0f9e8d01ad723e5f7e66280efec6fadd697f0d56",
+            "flop_board_perm.u8": "a8ef0761d9e1e9f29613414a1a39f2b9f34085e0f8577f832da38186067456cc",
+            "preflop.u16": "d5af6ddb0de195ca7bd271a0a72e382de518ea533b6388bb427852f1a6a73684",
+            "river.u16": "4657aca8032b2829dcbab327cd408a4d5bca090f948813cff2606ffbddd9d4fb",
+            "river_board_class.i32": "c3dada6d5a3cdb98aa10eb7a27cc910067199f475c40fb253de2453338abf48e",
+            "river_board_perm.u8": "8e9eb9dc0c32f7de8f5623eaf4810b9a08c8b06d0d4ea936c5e5d570d5e6b6ae",
+            "strategy.u8": "32fdd163adb8ca9625d3d4524bfefefe1a8f0d540b32524867f78bb566d73154",
+            "trees.json": "cdbb54512525b3b73d30fe9473c3cbf9b253e35c4ea4bfa54033f949b9c47859",
+            "turn.u16": "594fae66c1fda940b528e70c75b30c63ef32f6a196bfa077640dbe7ef872f29e",
+            "turn_board_class.i32": "eada7f2a31bbca64601652f278170a0e8106df76ffc8bdd55fb5a806053f875a",
+            "turn_board_perm.u8": "a39dec6f2d532e67060b8192251eac6d26d58f6ddcdff149edb254da66dcd925"
+          },
+          "table_set": "085cfca5ce89a7363be57d1bcf04cd89d599cc55faba669a0bd2b2606279e3e9"
+        },
+        "cards": {
+          "table_set": "085cfca5ce89a7363be57d1bcf04cd89d599cc55faba669a0bd2b2606279e3e9"
+        }
+      },
+      "bundle": {
+        "levels": 255,
+        "table_set": "085cfca5ce89a7363be57d1bcf04cd89d599cc55faba669a0bd2b2606279e3e9",
+        "files": {
+          "early.u8": "4b12d5a5a612a0e1188ac0566f1ed6caa9fe42cbf9abce8b7eb254b419d8c094"
+        }
+      },
+      "evaluations": [
+        {
+          "candidate": "checkpoint",
+          "report": "evaluations/9max-o1-s0.json",
+          "sha256": "d041d8a9c8fc799650bf2cd0c7ff295d60fe530629ebb7672de8437faa3be3cd",
+          "outcome": "passed",
+          "deals": 20000,
+          "seed": 0,
+          "checks": [
+            {
+              "opponent": "heuristic",
+              "stack_bb": 100,
+              "bb_per_100": 6.71,
+              "ci95_bb_per_100": [
+                2.39,
+                11.02
+              ],
+              "passed": true,
+              "outcome": "passed"
+            },
+            {
+              "opponent": "calling_station",
+              "stack_bb": 100,
+              "bb_per_100": 1254.81,
+              "ci95_bb_per_100": [
+                1207.56,
+                1302.06
+              ],
+              "passed": true,
+              "outcome": "passed"
+            }
+          ]
+        },
+        {
+          "candidate": "bundle",
+          "report": "evaluations/9max-o1-s0-served.json",
+          "sha256": "30ee88f06421ecfcd552ab47df559a745b1dca609d6a73b113ea8f9ae82a3efb",
+          "outcome": "passed",
+          "deals": 20000,
+          "seed": 0,
+          "checks": [
+            {
+              "opponent": "heuristic",
+              "stack_bb": 100,
+              "bb_per_100": 6.48,
+              "ci95_bb_per_100": [
+                2.16,
+                10.81
+              ],
+              "passed": true,
+              "outcome": "passed"
+            },
+            {
+              "opponent": "calling_station",
+              "stack_bb": 100,
+              "bb_per_100": 1254.71,
+              "ci95_bb_per_100": [
+                1207.46,
+                1301.95
+              ],
+              "passed": true,
+              "outcome": "passed"
+            }
+          ]
+        }
+      ],
+      "note": null,
+      "builds_on": "6max-s1-s0-3600m"
     }
   ],
   "levels": [

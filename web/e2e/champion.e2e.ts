@@ -250,6 +250,13 @@ test('the bots page shows the published evaluation', async ({ page, cspViolation
 	await expect(six.getByText('The strategy this site serves')).toBeVisible();
 	await expect(six.getByText(/goes to the heads-up model instead/)).toBeVisible();
 	await expect(hard.getByText(/the hands at bigger tables where only two are left/)).toBeVisible();
+	// The nine-seat model (P5.6, option 1), described as the six-seat model with an early-seat table.
+	const nine = page.getByRole('region', { name: 'RiverMind Hard, 9-max' });
+	await expect(
+		nine.getByText(/At tables of seven to nine RiverMind Hard plays the six-seat model/)
+	).toBeVisible();
+	await expect(nine.getByText('The strategy this site serves')).toBeVisible();
+	await expect(nine.getByText(/Its early table’s SHA-256/)).toBeVisible();
 	await noOverflow(page);
 	await page.getByRole('link', { name: 'Play' }).click();
 	await expect(page.getByRole('button', { name: 'Practice vs bots' })).toBeVisible();

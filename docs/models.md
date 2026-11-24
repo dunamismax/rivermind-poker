@@ -14,6 +14,7 @@ The registry of RiverMind’s trained bots: which evaluated blueprint is the **c
 | --- | --- | --- | --- | --- | --- |
 | Heads-up | `hu-m1-s0-1024m` | `hu-m1` | 1,024,000,000 | 2026-11-21 | [checkpoint](evaluations/hu-m1-s0-1024m.md), [served bundle](evaluations/hu-m1-s0-1024m-served.md) |
 | 6-max | `6max-s1-s0-3600m` | `6max-s1` | 3,600,000,000 | 2026-11-23 | [checkpoint](evaluations/6max-s1-s0-3600m.md), [served bundle](evaluations/6max-s1-s0-3600m-served.md) |
+| 9-max | `9max-o1-s0` | `9max-o1` | 30,000,000 | 2026-11-24 | [checkpoint](evaluations/9max-o1-s0.md), [served bundle](evaluations/9max-o1-s0-served.md) |
 
 ### Heads-up: `hu-m1-s0-1024m`
 
@@ -43,12 +44,25 @@ Promoted on 2026-11-23, replacing `6max-s1-s0-1000m`.
 - **Kept in:** `artifacts/models/6max-s1-s0-3600m/` (`checkpoint/` and `bundle/`).
 - **RiverMind Medium:** each hand played as this served bundle with probability 0.5 and as RiverMind Easy otherwise; +9.64 (+5.61 to +13.66) against RiverMind Easy; +773.54 (+725.49 to +821.58) against the calling station; -5.30 (-9.87 to -0.74) against RiverMind Hard, the champion itself at 100 big blinds, over 20,000 duplicate deals each, seed 0 ([report](evaluations/6max-s1-s0-3600m-medium.md); recorded 2026-11-23).
 
+### 9-max: `9max-o1-s0`
+
+Promoted on 2026-11-24, as the first 9-max champion.
+
+- **Gate, the checkpoint:** +6.71 (+2.39 to +11.02) against RiverMind Easy; +1254.81 (+1207.56 to +1302.06) against the calling station, in big blinds per 100 hands with 95% intervals, over 20,000 duplicate deals each at 100 big blinds, seed 0 ([report](evaluations/9max-o1-s0.md)).
+- **Gate, the served bundle:** +6.48 (+2.16 to +10.81) against RiverMind Easy; +1254.71 (+1207.46 to +1301.95) against the calling station, in big blinds per 100 hands with 95% intervals, over 20,000 duplicate deals each at 100 big blinds, seed 0 ([report](evaluations/9max-o1-s0-served.md)).
+- **Checkpoint:** 30,000,000 iterations of `9max-o1`, written at commit `233b9c6`. `manifest.json` `1c4170ae9d7620ad57b2eba4a12c5d29e6d81bb2966e74dd5efbd131ba4c0688`, `regrets.npy` `a9af3142403bb905a735404c94bc24949f2bec05b112af62327e571922bb8211`, `strategy.npy` `e12605696bc00b2411229858e5600495c8df33e1a16b3b7c95c116d27222d106`, `visits.npy` `4e34d1a6d649a140a5939df3e6f8afb2fcb364c9d69f376e61b872c29f154ea2`.
+- **Builds on:** the six-seat champion `6max-s1-s0-3600m`, whose served bundle plays every decision but the early seats' first (table set `085cfca5ce89a7363be57d1bcf04cd89d599cc55faba669a0bd2b2606279e3e9`).
+- **Training settings:** `batches` 15,000, `chunks` 16, `per_chunk` 125, `seed` 0.
+- **Serving bundle:** `early.u8` `4b12d5a5a612a0e1188ac0566f1ed6caa9fe42cbf9abce8b7eb254b419d8c094`, probabilities in multiples of 1/255. `models.json` has all 1 files.
+- **Kept in:** `artifacts/models/9max-o1-s0/` (`checkpoint/` and `bundle/`).
+
 ## Decisions
 
 Every run put to the gate, newest first. Results are big blinds per 100 hands with 95% intervals.
 
 | Date | Format | Candidate | Outcome | Checkpoint | Served bundle |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-24 | 9-max | `9max-o1-s0`, 30,000,000 iterations | Promoted | +6.71 (+2.39 to +11.02) against RiverMind Easy; +1254.81 (+1207.56 to +1302.06) against the calling station ([report](evaluations/9max-o1-s0.md)) | +6.48 (+2.16 to +10.81) against RiverMind Easy; +1254.71 (+1207.46 to +1301.95) against the calling station ([report](evaluations/9max-o1-s0-served.md)) |
 | 2026-11-23 | 6-max | `6max-s1-s0-3600m`, 3,600,000,000 iterations | Promoted, replacing `6max-s1-s0-1000m` | +20.21 (+14.92 to +25.50) against RiverMind Easy; +594.45 (+538.32 to +650.57) against the calling station; +7.29 (+2.27 to +12.30) against `6max-s1-s0-1000m`, the champion at the time ([report](evaluations/6max-s1-s0-3600m.md)) | +20.30 (+15.02 to +25.59) against RiverMind Easy; +596.27 (+540.14 to +652.41) against the calling station; +7.35 (+2.34 to +12.37) against `6max-s1-s0-1000m`, the champion at the time ([report](evaluations/6max-s1-s0-3600m-served.md)) |
 | 2026-11-23 | 6-max | `6max-s1-s0-1000m`, 1,000,000,000 iterations | Promoted, replacing `6max-s1-s0-100m` | +17.86 (+12.43 to +23.30) against RiverMind Easy; +567.54 (+510.73 to +624.34) against the calling station; +16.79 (+9.21 to +24.38) against `6max-s1-s0-100m`, the champion at the time ([report](evaluations/6max-s1-s0-1000m.md)) | +18.08 (+12.66 to +23.51) against RiverMind Easy; +567.65 (+510.86 to +624.44) against the calling station; +16.37 (+8.78 to +23.96) against `6max-s1-s0-100m`, the champion at the time ([report](evaluations/6max-s1-s0-1000m-served.md)) |
 | 2026-11-22 | 6-max | `6max-s1-s0-100m`, 100,032,000 iterations | Promoted | +20.56 (+14.87 to +26.25) against RiverMind Easy; +509.48 (+451.59 to +567.38) against the calling station ([report](evaluations/6max-s1-s0-100m.md)) | +21.14 (+15.46 to +26.83) against RiverMind Easy; +510.84 (+452.95 to +568.73) against the calling station ([report](evaluations/6max-s1-s0-100m-served.md)) |

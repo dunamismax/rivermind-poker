@@ -242,7 +242,7 @@
 						? ', for Hard and for Medium'
 						: ''}. {champion.buildsOn ? 'Its early table’s' : 'Its strategy file’s'} SHA-256 is
 					<code class="text-s break-all text-green-light">
-						{(champion.bundle.files as Record<string, string>)[
+						{(champion.bundle.files as Record<string, string | undefined>)[
 							champion.buildsOn ? 'early.u8' : 'strategy.u8'
 						]}
 					</code>
