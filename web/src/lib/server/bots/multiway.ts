@@ -22,7 +22,7 @@ import { MEMORY, pseudoHarmonic, SPLIT_DEPTH_BB, type Stats } from './blueprint.
 import type { Bundle, CardTables, Graph } from './bundle.ts';
 import type { BotRandom, Policy } from './policies.ts';
 
-interface Hand {
+export interface Hand {
 	readonly d: number;
 	/** Abstract token for each real action, by its index in the hand. */
 	readonly tokens: Map<number, string>;
@@ -31,7 +31,7 @@ interface Hand {
 }
 
 /** The real chips at the table, replayed from the posts and actions: who has folded, and the stack that matters to one seat. */
-class RealTable {
+export class RealTable {
 	seats: readonly number[] = [];
 	me = 0;
 	start: number[] = [];
@@ -156,10 +156,10 @@ export class MultiwayBlueprintPolicy implements Policy {
 	lastProbabilities: number[] | null = null;
 	readonly bundle: Bundle;
 	readonly abstraction: Abstraction;
-	private readonly graphs: readonly Graph[];
-	private readonly tables: CardTables;
+	protected readonly graphs: readonly Graph[];
+	protected readonly tables: CardTables;
 	private readonly hands = new Map<string, Hand>();
-	private readonly startsByLive: Map<number, number[]>[][];
+	protected readonly startsByLive: Map<number, number[]>[][];
 	private readonly tokenIndex: Map<string, number>[][];
 
 	constructor(bundle: Bundle, { name = 'blueprint' }: { name?: string } = {}) {
@@ -178,7 +178,7 @@ export class MultiwayBlueprintPolicy implements Policy {
 		return this.graphs[0].seats;
 	}
 
-	private count(key: string): void {
+	protected count(key: string): void {
 		this.stats[key] = (this.stats[key] ?? 0) + 1;
 	}
 
@@ -187,13 +187,13 @@ export class MultiwayBlueprintPolicy implements Policy {
 		this.hands.clear();
 	}
 
-	private tokensAt(d: number, node: number): readonly string[] {
+	protected tokensAt(d: number, node: number): readonly string[] {
 		const g = this.graphs[d];
 		return g.tokenSets[g.tokens[node]];
 	}
 
 	/** The child a token leads to at a node, or undefined when the node has no such action. */
-	private child(d: number, node: number, token: string | null): number | undefined {
+	protected child(d: number, node: number, token: string | null): number | undefined {
 		if (token === null) return undefined;
 		const g = this.graphs[d];
 		const i = this.tokenIndex[d][g.tokens[node]].get(token);
@@ -231,7 +231,7 @@ export class MultiwayBlueprintPolicy implements Policy {
 		return out;
 	}
 
-	private hand(view: SeatView): Hand {
+	protected hand(view: SeatView): Hand {
 		const key = JSON.stringify([
 			view.seat,
 			view.holeCards,
@@ -259,7 +259,7 @@ export class MultiwayBlueprintPolicy implements Policy {
 	// Mapping
 
 	/** The pre-flop node the hand starts at: the root, after a fold for each graph seat nobody sits in. */
-	private open(d: number, view: SeatView): number | null {
+	protected open(d: number, view: SeatView): number | null {
 		let node = 0;
 		for (let i = this.seats - view.seatOrder.length; i > 0; i--) {
 			if (this.tokensAt(d, node)[0] !== 'f') return null;
@@ -270,7 +270,7 @@ export class MultiwayBlueprintPolicy implements Policy {
 	}
 
 	/** The node that opens `street` for the players still in, with the stack-to-pot ratio closest to the real one. */
-	private reenter(
+	protected reenter(
 		d: number,
 		street: Street,
 		real: RealTable,
@@ -308,7 +308,7 @@ export class MultiwayBlueprintPolicy implements Policy {
 	 * seat due to act before it did not act at the real table, where it is
 	 * all-in or the betting had already closed: the graph checks or calls for it.
 	 */
-	private passTo(d: number, node: number, actor: number, street: Street): number | null {
+	protected passTo(d: number, node: number, actor: number, street: Street): number | null {
 		const g = this.graphs[d];
 		for (let i = 2 * this.seats; i > 0; i--) {
 			if (g.street[node] !== street) return null;
@@ -389,7 +389,7 @@ export class MultiwayBlueprintPolicy implements Policy {
 	}
 
 	/** Map one street's actions from `node`: whether that worked, and the node reached (null after a terminal). */
-	private streetTable(
+	protected streetTable(
 		d: number,
 		node: number,
 		records: readonly [number, ActionRecord][],
@@ -417,7 +417,7 @@ export class MultiwayBlueprintPolicy implements Policy {
 	}
 
 	/** The graph node of the decision facing `view.seat`, replaying the hand street by street. */
-	private position(view: SeatView, hand: Hand, rng: BotRandom): number | null {
+	protected position(view: SeatView, hand: Hand, rng: BotRandom): number | null {
 		const d = hand.d;
 		const g = this.graphs[d];
 		const seats = this.treeSeats(view);
@@ -500,9 +500,7 @@ export class MultiwayBlueprintPolicy implements Policy {
 	act(view: SeatView, rng: BotRandom): Action {
 		const legal = view.legal;
 		if (legal === null) throw new Error(`S${view.seat} is not the seat to act`);
-		if (view.seatOrder.length < 3 || view.seatOrder.length > this.seats) {
-			throw new Error(`this blueprint plays three to ${this.seats} players`);
-		}
+		this.checkTable(view);
 		this.count('decisions');
 		this.lastProbabilities = null;
 		const hand = this.hand(view);
@@ -537,6 +535,12 @@ export class MultiwayBlueprintPolicy implements Policy {
 		hand.tokens.set(view.actions.length, token);
 		hand.seen = view.actions;
 		return this.realAction(view, d, node, token);
+	}
+
+	protected checkTable(view: SeatView): void {
+		if (view.seatOrder.length < 3 || view.seatOrder.length > this.seats) {
+			throw new Error(`this blueprint plays three to ${this.seats} players`);
+		}
 	}
 
 	/** The engine action for an abstract choice, sized from the real pot and stacks. */

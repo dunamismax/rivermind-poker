@@ -226,6 +226,20 @@ PORT=3000 RIVERMIND_API=1 RIVERMIND_MODELS=../artifacts/models ORIGIN=http://127
 
 `GET /api/config` keeps `champion` as the heads-up model, which pages from before six seats read, and adds `champions`: each model with the table sizes it plays. The lobby's note gives the sizes (“Trained by self-play. 2 to 6 seats.”). [`six-seat.spec.ts`](web/src/lib/server/api/six-seat.spec.ts) writes a heads-up and a six-seat champion (the 50 big blind graph alone), and the browser tests' server gets the same pair. `pnpm bots:bench -- --bundle A --bundle B` times each bundle's decisions, the six-seat one at tables of three to six, with both held in memory as the server holds them.
 
+### Nine seats (P5.6, option 1)
+
+A table of seven to nine plays on the six-seat champion. The first `k - 6` players to act before the flop are the early seats; their first decision comes from a small early table, and everything else is the six-seat policy, with the players placed on its seats in their order of play ([docs/bots.md](docs/bots.md#nine-seats)). The early table is trained on the six-seat champion's served bundle, exported, evaluated at nine seats and promoted like any model; the registry records which six-seat champion it builds on, and the server loads it only beside that one.
+
+```sh
+uv run --locked rivermind-poker blueprint nine-train artifacts/nine/<run> --bundle artifacts/models/<six-seat champion>/bundle --batches 1500
+uv run --locked rivermind-poker blueprint nine-export artifacts/nine/<run> --out artifacts/bundles/<run>
+uv run --locked rivermind-poker blueprint evaluate artifacts/nine/<run> --name <run>
+uv run --locked rivermind-poker blueprint evaluate artifacts/bundles/<run> --name <run>-served
+uv run --locked rivermind-poker blueprint promote docs/evaluations/<run>.json --served docs/evaluations/<run>-served.json
+```
+
+Training gives the same files whatever `--workers` is. In TypeScript, [`nine.ts`](web/src/lib/server/bots/nine.ts) ports the policy, `TablePolicy` gives it the hands of seven to nine dealt in, and `pnpm bots:parity` checks it against Python on a synthetic nine-seat model (`--nine-model` for a real one, which must build on `--multiway-bundle`). [`nine-seat.spec.ts`](web/src/lib/server/api/nine-seat.spec.ts) serves a synthetic one, and the browser tests' server has one too.
+
 ### RiverMind Medium: a difficulty level (P5.7)
 
 **RiverMind Medium** is the champion mixed with RiverMind Easy a hand at a time: at its first decision in a hand it draws one number from the bot generator and plays the whole hand as the champion when it is below one half, and as RiverMind Easy otherwise ([`levels.ts`](web/src/lib/server/bots/levels.ts), a port of [`rivermind/bots/levels.py`](rivermind/bots/levels.py); `pnpm bots:parity` checks the two draw for draw). The server offers it, at two seats and in practice, only for a champion whose Medium has an evaluation in `champions.json`, made with the site's share; a new champion has no Medium until its own is evaluated and recorded.

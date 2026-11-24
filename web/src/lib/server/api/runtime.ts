@@ -52,6 +52,7 @@ import {
 	ChampionPolicy,
 	HARD,
 	loadChampion,
+	loadNineChampion,
 	MEDIUM,
 	MediumPolicy,
 	MULTIWAY_LEAST,
@@ -60,8 +61,10 @@ import {
 	type Champion,
 	type ChampionEvaluation,
 	type ChampionRegistry,
-	type LoadedChampion
+	type LoadedChampion,
+	type LoadedNine
 } from '../bots/champions.ts';
+import { SEATS as NINE_SEATS } from '../bots/nine.ts';
 import { defaultBots } from '../bots/policies.ts';
 import type * as p from '../../protocol-v2.ts';
 import { createDatabase, createPool } from '../db/index.ts';
@@ -250,22 +253,58 @@ export function loadTrained(env: Env = process.env, log: Log = consoleLog): Trai
 			);
 		}
 	}
+	let nine: LoadedNine | null = null;
+	const nineChampion = championFor(registry, NINE_SEATS);
+	if (nineChampion !== null) {
+		try {
+			if (multi === null)
+				throw new Error(`it builds on ${nineChampion.builds_on}, which is not loaded`);
+			const started = performance.now();
+			nine = { champion: nineChampion, bundle: loadNineChampion(models, nineChampion, multi) };
+			const seconds = ((performance.now() - started) / 1000).toFixed(1);
+			log.info(
+				`${BOT_LABELS[HARD]} plays ${nineChampion.name}: early table ${nine.bundle.path} checked against the registry in ${seconds} s ` +
+					`(early.u8 ${nineChampion.bundle.files['early.u8']}, on ${multi.champion.name})`
+			);
+		} catch (error) {
+			failed.push(nineChampion.name);
+			log.error(
+				`Could not load the ${nineChampion.format} model ${nineChampion.name} from ${models}; ` +
+					`the trained bots play at most ${multi?.champion.seats ?? 2} seats`,
+				error
+			);
+		}
+	}
 	if (failed.length) found.failed = failed;
 	const one = heads.champion;
 	// Medium first, so the bots are offered from the easiest up.
 	if (MediumPolicy.recorded(one)) {
 		const mediumMulti = multi !== null && MediumPolicy.recorded(multi.champion) ? multi : null;
-		const policy = new MediumPolicy(one, heads.bundle, mediumMulti);
+		const mediumNine =
+			mediumMulti !== null && nine !== null && MediumPolicy.recorded(nine.champion) ? nine : null;
+		const policy = new MediumPolicy(one, heads.bundle, mediumMulti, mediumNine);
 		found.bots[MEDIUM] = policy;
-		found.trained[MEDIUM] = trainedBot(policy.seats, heads, mediumMulti, describeMedium);
+		found.trained[MEDIUM] = trainedBot(
+			policy.seats,
+			heads,
+			mediumMulti,
+			describeMedium,
+			mediumNine
+		);
 		log.info(
 			`${BOT_LABELS[MEDIUM]} plays half its hands as ${one.name}` +
-				(mediumMulti ? ` (or ${mediumMulti.champion.name} with three or more dealt in)` : '') +
+				(mediumMulti ? ` (or ${mediumMulti.champion.name} with three or more dealt in` : '') +
+				(mediumNine ? `, ${mediumNine.champion.name} with seven or more` : '') +
+				(mediumMulti ? ')' : '') +
 				` and half as ${BOT_LABELS.heuristic}`
 		);
 		if (multi !== null && mediumMulti === null) {
 			log.info(
 				`${BOT_LABELS[MEDIUM]} plays two seats only: the registry records no evaluation of it for ${multi.champion.name}`
+			);
+		} else if (nine !== null && mediumNine === null) {
+			log.info(
+				`${BOT_LABELS[MEDIUM]} plays at most six seats: the registry records no evaluation of it for ${nine.champion.name}`
 			);
 		}
 	} else {
@@ -273,12 +312,13 @@ export function loadTrained(env: Env = process.env, log: Log = consoleLog): Trai
 			`${BOT_LABELS[MEDIUM]} is not offered: the registry records no evaluation of it for ${one.name}`
 		);
 	}
-	const hard = new ChampionPolicy(one, heads.bundle, multi);
+	const hard = new ChampionPolicy(one, heads.bundle, multi, nine);
 	found.bots[HARD] = hard;
-	found.trained[HARD] = trainedBot(hard.seats, heads, multi, describeChampion);
+	found.trained[HARD] = trainedBot(hard.seats, heads, multi, describeChampion, hard.nine);
 	log.info(
 		`${BOT_LABELS[HARD]} plays tables of ${sizes(hard.seats)} seats: ${one.name} with two dealt in` +
-			(multi ? `, ${multi.champion.name} with three or more` : '')
+			(multi ? `, ${multi.champion.name} with three or more` : '') +
+			(hard.nine ? `, ${hard.nine.champion.name} with seven or more` : '')
 	);
 	return found;
 }
@@ -296,7 +336,8 @@ function trainedBot(
 	seats: readonly number[],
 	heads: LoadedChampion,
 	multi: LoadedChampion | null,
-	describe: (champion: Champion, seats?: readonly number[]) => p.BotChampion
+	describe: (champion: Champion, seats?: readonly number[]) => p.BotChampion,
+	nine: LoadedNine | null = null
 ): TrainedBot {
 	const bot: TrainedBot = { seats: [...seats], champion: describe(heads.champion) };
 	if (multi !== null) {
@@ -304,8 +345,16 @@ function trainedBot(
 			describe(heads.champion, [2]),
 			describe(
 				multi.champion,
-				seats.filter((n) => n >= MULTIWAY_LEAST)
-			)
+				seats.filter((n) => n >= MULTIWAY_LEAST && n <= multi.champion.seats)
+			),
+			...(nine === null
+				? []
+				: [
+						describe(
+							nine.champion,
+							seats.filter((n) => n > multi.champion.seats)
+						)
+					])
 		];
 	}
 	return bot;

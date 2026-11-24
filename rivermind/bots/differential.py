@@ -30,6 +30,10 @@ ports in ``web/src/lib/server/bots`` must reproduce:
     or more dealt in, the blueprint in at least one seat and the simple bots
     or itself in the others, at random stacks and blinds, in the same form
     as ``blueprint``.
+``nine``
+    Hands of a nine-seat model (P5.6, option 1) at a table of nine with three
+    or more dealt in, in the same form as ``multiway``; with ``--medium``,
+    hands of RiverMind Medium made from it, as ``medium`` writes them.
 ``buckets``
     Card-bucket digests: every hole-card pair on a seeded sample of boards
     for each street, from the original card tables when ``--tables`` is
@@ -219,13 +223,17 @@ def _multiway_deal(deals: random.Random, table: int, kinds: Sequence[str], main:
     return config, stacks, seats, button, deck, deals.getrandbits(64)
 
 
-def _write_medium_multiway(out: TextIO, bundle: Any, decisions: int, seed: int) -> int:
-    """Hands of RiverMind Medium made from a multiway bundle at its table, until it has made ``decisions`` decisions."""
+def _write_medium_multiway(out: TextIO, bundle: Any, decisions: int, seed: int, *, make: Any = None, table: int | None = None) -> int:
+    """Hands of RiverMind Medium made from a multiway bundle at its table, until it has made ``decisions`` decisions.
+
+    ``make`` makes the model instead, at a table of ``table``: a nine-seat model's.
+    """
     from .levels import medium
 
-    table = bundle.game.seats
-    mixed = medium(bundle.policy())
-    blueprint = bundle.policy()
+    make = make or bundle.policy
+    table = table or bundle.game.seats
+    mixed = medium(make())
+    blueprint = make()
     bots: dict[str, Policy] = {**simple_bots(), "blueprint": blueprint, "medium": mixed}
     deals = random.Random(seed)
     made = 0
@@ -265,6 +273,34 @@ def write_multiway(out: TextIO, bundle_path: Path, decisions: int, seed: int) ->
     hands = 0
     while made < decisions:
         config, stacks, seats, button, deck, bot_seed = _multiway_deal(deals, table, SIMPLE, "blueprint")
+        probabilities: list[list[float] | None] = []
+
+        def record(policy: Policy, probabilities: list[list[float] | None] = probabilities) -> None:
+            if policy is blueprint:
+                probabilities.append(blueprint.last_probabilities)
+
+        blueprint.new_hand()
+        final = play(start_hand(config, stacks, button, deck=deck), seats, bots, random.Random(bot_seed), record)
+        made += len(probabilities)
+        hands += 1
+        meta = {"bots": seats, "seed": str(bot_seed), "probabilities": probabilities, "stats": dict(sorted(blueprint.stats.items()))}
+        out.write(f"{json.dumps(meta, separators=(',', ':'), sort_keys=True)}\t{dumps(hand_record(final))}\n")
+    return hands
+
+
+def write_nine(out: TextIO, model: Path, decisions: int, seed: int, *, medium: bool = False) -> int:
+    """Hands of a nine-seat model at a table of nine, until it has made ``decisions`` decisions; Medium made from it with ``medium``."""
+    from .blueprint.nine import SEATS, load_policy
+
+    if medium:
+        return _write_medium_multiway(out, None, decisions, seed, make=lambda: load_policy(model), table=SEATS)
+    blueprint = load_policy(model)
+    bots: dict[str, Policy] = {**simple_bots(), "blueprint": blueprint}
+    deals = random.Random(seed)
+    made = 0
+    hands = 0
+    while made < decisions:
+        config, stacks, seats, button, deck, bot_seed = _multiway_deal(deals, SEATS, SIMPLE, "blueprint")
         probabilities: list[list[float] | None] = []
 
         def record(policy: Policy, probabilities: list[list[float] | None] = probabilities) -> None:
@@ -338,6 +374,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     mw.add_argument("bundle")
     mw.add_argument("--decisions", type=int, default=2_000)
     mw.add_argument("--seed", type=int, default=0)
+    nn = commands.add_parser("nine", help="write hands of a nine-seat model at a table of nine")
+    nn.add_argument("model")
+    nn.add_argument("--decisions", type=int, default=2_000)
+    nn.add_argument("--seed", type=int, default=0)
+    nn.add_argument("--medium", action="store_true", help="RiverMind Medium made from the model")
+    sn = commands.add_parser("synthetic-nine", help="write a synthetic nine-seat bundle on a six-seat bundle")
+    sn.add_argument("out")
+    sn.add_argument("bundle")
+    sn.add_argument("--seed", type=int, default=0)
     bk = commands.add_parser("buckets", help="print card-bucket digests as JSON")
     bk.add_argument("bundle")
     bk.add_argument("--tables", default=None, help="the original card tables, to check the bundle's against")
@@ -357,6 +402,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         write_medium(sys.stdout, Path(args.bundle), args.decisions, args.seed)
     elif args.command == "multiway":
         write_multiway(sys.stdout, Path(args.bundle), args.decisions, args.seed)
+    elif args.command == "nine":
+        write_nine(sys.stdout, Path(args.model), args.decisions, args.seed, medium=args.medium)
+    elif args.command == "synthetic-nine":
+        from .blueprint.nine import synthetic
+
+        synthetic(args.out, args.bundle, seed=args.seed)
     elif args.command == "buckets":
         if args.tables:
             from .cards import CardTables

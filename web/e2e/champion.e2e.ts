@@ -143,10 +143,7 @@ test('a guest practises against RiverMind Medium, offered before Hard with its o
 	expect(cspViolations).toEqual([]);
 });
 
-test('RiverMind Hard takes tables of two to six seats and no other', async ({
-	page,
-	cspViolations
-}) => {
+test('RiverMind Hard takes tables of two to nine seats', async ({ page, cspViolations }) => {
 	await page.goto('/');
 	await expect(page.getByText('Looking for tables…')).toHaveCount(0);
 	const form = newTableForm(page);
@@ -154,14 +151,14 @@ test('RiverMind Hard takes tables of two to six seats and no other', async ({
 	// Six seats by default, which the six-seat champion plays (P5.7); RiverMind Easy stays the default.
 	await expect(form.getByRole('radio', { name: /RiverMind Easy/ })).toBeChecked();
 	await expect(hard).toHaveCount(1);
-	await expect(form.getByText('Trained by self-play. 2 to 6 seats.')).toBeVisible();
+	await expect(form.getByText('Trained by self-play. 2 to 9 seats.')).toBeVisible();
 	await hard.evaluate((input: HTMLInputElement) => input.click());
 	await expect(hard).toBeChecked();
-	// At seven seats there is no trained bot, and the choice returns to RiverMind Easy.
+	// At seven seats the nine-seat model plays (P5.6), and the choice stays.
 	const seven = form.getByRole('radio', { name: '7', exact: true });
 	await seven.evaluate((input: HTMLInputElement) => input.click());
-	await expect(hard).toHaveCount(0);
-	await expect(form.getByRole('radio', { name: /RiverMind Easy/ })).toBeChecked();
+	await expect(hard).toHaveCount(1);
+	await expect(hard).toBeChecked();
 	const two = form.getByRole('radio', { name: '2', exact: true });
 	await two.evaluate((input: HTMLInputElement) => input.click());
 	await hard.evaluate((input: HTMLInputElement) => input.click());
@@ -192,6 +189,28 @@ test('RiverMind Hard fills a six-seat table and plays its hands', async ({
 	await expect(pods).toHaveCount(5);
 	await playToHand(page, 3);
 	await expect(pods).toHaveCount(5);
+	expect(cspViolations).toEqual([]);
+});
+
+test('RiverMind Hard fills a nine-seat table and plays its hands', async ({
+	page,
+	cspViolations
+}) => {
+	await page.goto('/');
+	await expect(page.getByText('Looking for tables…')).toHaveCount(0);
+	const form = newTableForm(page);
+	await form
+		.getByRole('radio', { name: '9', exact: true })
+		.evaluate((input: HTMLInputElement) => input.click());
+	await form
+		.getByRole('radio', { name: /RiverMind Hard/ })
+		.evaluate((input: HTMLInputElement) => input.click());
+	await form.getByRole('button', { name: 'Sit down' }).click();
+	await expect(seated(page)).toBeVisible();
+	const pods = page.locator('.avatar-hard');
+	await expect(pods).toHaveCount(8);
+	await playToHand(page, 3);
+	await expect(pods).toHaveCount(8);
 	expect(cspViolations).toEqual([]);
 });
 

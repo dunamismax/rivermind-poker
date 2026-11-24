@@ -545,6 +545,7 @@ def train(
     visited.
     """
     out, bundle = Path(out), Path(bundle)
+    code = _git_commit()  # what the run starts from, before anything can change under it
     six = json.loads((bundle / "manifest.json").read_text())
     regrets = np.zeros(SHAPE)
     sums = np.zeros(SHAPE)
@@ -590,7 +591,7 @@ def train(
         "actions": list(ACTIONS),
         "files": {f: _file_entry(out / f) for f in ("regrets.npy", "strategy.npy", "visits.npy")},
         "training": {"seconds": round(time.time() - started, 1), "rollouts": rollouts, "workers": workers},
-        "software": _git_commit(),
+        "software": code,
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return out
@@ -622,6 +623,35 @@ def export(checkpoint: str | Path, out: str | Path) -> Path:
         "software": {"git_commit": _git_commit()["commit"]},
     }
     (out / "manifest.json").write_text(json.dumps(bundle, indent=2, sort_keys=True) + "\n")
+    return out
+
+
+def synthetic(out: str | Path, bundle: str | Path, *, seed: int = 0, untrained: float = 0.1) -> Path:
+    """A nine-seat bundle with random early weights on a six-seat bundle, for checks that have no trained model, such as CI.
+
+    A share ``untrained`` of rows and classes stays zero, so the untrained fallback is exercised.
+    """
+    out, bundle = Path(out), Path(bundle)
+    rng = np.random.default_rng(seed)
+    weights = rng.integers(0, LEVELS + 1, SHAPE, dtype=np.int64).astype(np.uint8)
+    weights[rng.random(SHAPE[:2]) < untrained] = 0
+    out.mkdir(parents=True, exist_ok=True)
+    weights.tofile(out / "early.u8")
+    six = json.loads((bundle / "manifest.json").read_text())
+    manifest = {
+        "format": FORMAT,
+        "kind": BUNDLE_KIND,
+        "abstraction": NAME,
+        "seats": SEATS,
+        "builds_on": {"bundle": str(bundle), "files": {k: v["sha256"] for k, v in six["files"].items()}, "table_set": six["cards"]["table_set"]},
+        "rows": [list(r) for r in ROWS],
+        "actions": list(ACTIONS),
+        "strategy": {"levels": LEVELS, "shape": list(SHAPE)},
+        "checkpoint": {"iteration": None, "manifest_sha256": None, "strategy_sha256": None},
+        "files": {"early.u8": _file_entry(out / "early.u8")},
+        "software": {"git_commit": None},
+    }
+    (out / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return out
 
 

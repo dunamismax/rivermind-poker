@@ -32,7 +32,9 @@
 	// A champion's difficulty levels (P5.7) are in the extract once `blueprint level` records one.
 	const champions = registry.champions.map((c) => ({
 		...c,
-		medium: ((c as { levels?: { medium?: Level } }).levels?.medium ?? null) as Level | null
+		medium: ((c as { levels?: { medium?: Level } }).levels?.medium ?? null) as Level | null,
+		// A nine-seat model (P5.6, option 1) plays on the six-seat champion it names.
+		buildsOn: ((c as { builds_on?: string }).builds_on ?? null) as string | null
 	}));
 	/**
 	 * The table sizes whose champion the table server plays (`loadTrained` and
@@ -40,21 +42,25 @@
 	 * with its evaluation and marked as not offered yet, never as a bot at the
 	 * tables (D-7).
 	 */
-	const SERVED_SEATS = [2, 6];
+	const SERVED_SEATS = [2, 6, 9];
 	/** Whether a six-seat model is offered, so the heads-up one also plays the two-player hands of bigger tables. */
-	const multiway = champions.some((c) => c.seats > 2 && SERVED_SEATS.includes(c.seats));
+	const multiway = champions.some((c) => c.seats === 6);
 	/** The same for Medium, which plays six seats only where the six-seat model's Medium is recorded. */
-	const mediumMultiway = champions.some(
-		(c) => c.seats > 2 && SERVED_SEATS.includes(c.seats) && c.medium
-	);
-	const wordFor = (n: number) => ['two', 'three', 'four', 'five', 'six'][n - 2] ?? String(n);
+	const mediumMultiway = champions.some((c) => c.seats === 6 && c.medium);
+	/** Whether a nine-seat model is offered on the six-seat one, and its Medium. */
+	const nine = champions.some((c) => c.seats === 9);
+	const mediumNine = champions.some((c) => c.seats === 9 && c.medium);
+	const wordFor = (n: number) =>
+		['two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'][n - 2] ?? String(n);
 	/** Which hands a served model plays (P5.7), as a sentence's end. */
-	const playsWhat = (seats: number, bigger = multiway) =>
+	const playsWhat = (seats: number, bigger = multiway, biggest = nine) =>
 		seats === 2
 			? bigger
 				? 'and it plays every hand with two players dealt in: heads-up tables, and the hands at bigger tables where only two are left'
 				: 'and it plays tables of 2 seats only'
-			: `and it plays hands of three to ${wordFor(seats)} players, at tables of three to ${wordFor(seats)} seats`;
+			: seats === 6 && biggest
+				? 'and it plays hands of three to six players, at tables of three to six seats, and almost every decision at tables of seven to nine (below)'
+				: `and it plays hands of three to ${wordFor(seats)} players, at tables of three to ${wordFor(seats)} seats`;
 	const opponentName = (row: { opponent: string; name: string | null }) =>
 		row.opponent === 'champion'
 			? `The champion before it${row.name ? ` (${row.name})` : ''}`
@@ -108,16 +114,34 @@
 		{#each champions as champion (champion.name)}
 			<section aria-labelledby="hard-{champion.format}">
 				<h3 id="hard-{champion.format}" class={heading}>RiverMind Hard, {champion.format}</h3>
-				<p>
-					RiverMind Hard is a trained bot. It learned {champion.format} no-limit hold’em by playing against
-					itself for {champion.iterations.toLocaleString('en-US')} training iterations, {SERVED_SEATS.includes(
-						champion.seats
-					)
-						? playsWhat(champion.seats)
-						: `and it plays tables of ${champion.seats} seats only`}. The model it plays is
-					<code class="text-green-light">{champion.name}</code>, promoted on {champion.promoted}.
-				</p>
-				{#if champion.seats > 2 && SERVED_SEATS.includes(champion.seats)}
+				{#if champion.buildsOn}
+					<p>
+						At tables of seven to nine RiverMind Hard plays the six-seat model,
+						<code class="text-green-light">{champion.buildsOn}</code>, with one addition. Before the
+						flop, the first players to act at a big table sit in seats a six-seat table does not
+						have, and their first decision comes from a small table trained for them over {champion.iterations.toLocaleString(
+							'en-US'
+						)} deals, each choice valued by playing the rest of the hand out with the six-seat model.
+						That table is <code class="text-green-light">{champion.name}</code>, promoted on {champion.promoted}.
+					</p>
+					<p class="mt-5">
+						When those early seats all fold, which is most hands, the rest is exactly a six-seat
+						hand (folding in turn puts no chips in). When one stays in, the six-seat model plays on
+						with the players placed by their order of play, a part that was never trained at nine
+						seats. It was measured at full tables of nine.
+					</p>
+				{:else}
+					<p>
+						RiverMind Hard is a trained bot. It learned {champion.format} no-limit hold’em by playing
+						against itself for {champion.iterations.toLocaleString('en-US')} training iterations, {SERVED_SEATS.includes(
+							champion.seats
+						)
+							? playsWhat(champion.seats)
+							: `and it plays tables of ${champion.seats} seats only`}. The model it plays is
+						<code class="text-green-light">{champion.name}</code>, promoted on {champion.promoted}.
+					</p>
+				{/if}
+				{#if champion.seats === 6}
 					<p class="mt-5">
 						A hand with only two players dealt in goes to the heads-up model instead: heads-up is a
 						different game, since the button posts the small blind and acts last after the flop. At
@@ -216,11 +240,13 @@
 					The table server loads the model only if every file matches the registry, so the strategy
 					at your table is the one measured above{champion.medium
 						? ', for Hard and for Medium'
-						: ''}. Its strategy file’s SHA-256 is
+						: ''}. {champion.buildsOn ? 'Its early table’s' : 'Its strategy file’s'} SHA-256 is
 					<code class="text-s break-all text-green-light">
-						{champion.bundle.files['strategy.u8']}
+						{(champion.bundle.files as Record<string, string>)[
+							champion.buildsOn ? 'early.u8' : 'strategy.u8'
+						]}
 					</code>
-					and its card tables’ is
+					and {champion.buildsOn ? 'the six-seat model’s card tables’' : 'its card tables’'} is
 					<code class="text-s break-all text-green-light">{champion.bundle.table_set}</code>.
 					<a class="text-gold-light" href="{REPOSITORY}/models.md" rel="noreferrer external">
 						The model registry
@@ -238,11 +264,11 @@
 							? 'each half the time'
 							: `Hard ${Math.round(level.share * 100)}% of the time`}, and plays the whole hand that
 						way. It uses the same model as Hard,
-						<code class="text-green-light">{champion.name}</code>, {SERVED_SEATS.includes(
-							champion.seats
-						)
-							? playsWhat(champion.seats, mediumMultiway)
-							: `and it plays tables of ${champion.seats} seats only`}.
+						<code class="text-green-light">{champion.name}</code>, {champion.buildsOn
+							? 'and it plays tables of seven to nine seats'
+							: SERVED_SEATS.includes(champion.seats)
+								? playsWhat(champion.seats, mediumMultiway, mediumNine)
+								: `and it plays tables of ${champion.seats} seats only`}.
 					</p>
 					<p class="mt-5">
 						It has its own measurement, in the same duplicate matches, against the same bots and

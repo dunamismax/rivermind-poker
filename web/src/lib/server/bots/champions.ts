@@ -20,7 +20,10 @@
 // button posts the small blind and acts last after the flop), so the six-seat
 // policy refuses it; three to five dealt in are the six-seat game with its
 // first seats to act folded, which is exact, since folding in turn puts no
-// chips in (docs/bots.md).
+// chips in (docs/bots.md). A hand of seven to nine is the nine-seat model's
+// (P5.6, option 1): the six-seat champion's bundle with an early-seat table
+// for the first k - 6 players to act (nine.ts), which builds on that champion
+// and is served only beside it.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -31,6 +34,7 @@ import { BlueprintPolicy } from './blueprint.ts';
 import { BundleError, loadBundle, type Bundle } from './bundle.ts';
 import { medium, MEDIUM, MEDIUM_SHARE, type MixedPolicy } from './levels.ts';
 import { MultiwayBlueprintPolicy } from './multiway.ts';
+import { loadNineBundle, NineSeatPolicy, SEATS as NINE_SEATS, type NineBundle } from './nine.ts';
 import type { Stats } from './blueprint.ts';
 import type { BotRandom, Policy } from './policies.ts';
 
@@ -73,6 +77,8 @@ export interface Champion {
 	checkpoint: { manifest_sha256: string; files: Record<string, string> };
 	bundle: { levels: number; table_set: string; files: Record<string, string> };
 	evaluations: ChampionEvaluation[];
+	/** For a nine-seat model, the six-seat champion whose bundle it plays on. */
+	builds_on?: string;
 	/** The champion's difficulty levels with a recorded evaluation (`blueprint level`, P5.7). */
 	levels?: { medium?: ChampionLevel };
 }
@@ -142,36 +148,86 @@ export interface LoadedChampion {
 	bundle: Bundle;
 }
 
+/** A nine-seat champion and its checked early table. */
+export interface LoadedNine {
+	champion: Champion;
+	bundle: NineBundle;
+}
+
+/** Load a nine-seat champion from `models`, refusing anything but the registered early table on `six`, the champion it builds on. */
+export function loadNineChampion(
+	models: string,
+	champion: Champion,
+	six: LoadedChampion
+): NineBundle {
+	if (champion.builds_on !== six.champion.name) {
+		throw new BundleError(
+			`${champion.name} builds on ${champion.builds_on ?? 'no six-seat champion'}, not ${six.champion.name}`
+		);
+	}
+	const bundle = loadNineBundle(bundlePath(models, champion), six.bundle);
+	const found = bundle.manifest.files;
+	const wanted = champion.bundle.files;
+	const bad = [...new Set([...Object.keys(found), ...Object.keys(wanted)])]
+		.filter((name) => found[name]?.sha256 !== wanted[name])
+		.sort();
+	if (bad.length) {
+		throw new BundleError(
+			`${bundle.path} is not the bundle registered for ${champion.name}: ${bad.join(', ')} differ`
+		);
+	}
+	const source = bundle.manifest.checkpoint;
+	if (
+		source.manifest_sha256 !== champion.checkpoint.manifest_sha256 ||
+		source.strategy_sha256 !== champion.checkpoint.files['strategy.npy']
+	) {
+		throw new BundleError(`${bundle.path} was not exported from ${champion.name}'s checkpoint`);
+	}
+	return bundle;
+}
+
 /** The fewest players dealt in that a multiway champion plays; two is heads-up. */
 export const MULTIWAY_LEAST = 3;
 
 /**
- * The trained bot at one table: the heads-up champion for a hand of two, and
- * the six-seat champion, when there is one, for a hand of three to six.
+ * The trained bot at one table: the heads-up champion for a hand of two, the
+ * six-seat champion, when there is one, for a hand of three to six, and the
+ * nine-seat model on it, when there is one, for a hand of seven to nine.
  */
 export class TablePolicy implements Policy {
 	readonly name: string;
 	readonly heads: BlueprintPolicy;
 	readonly multi: MultiwayBlueprintPolicy | null;
+	readonly nine: NineSeatPolicy | null;
 
-	constructor(name: string, heads: Bundle, multi: Bundle | null = null) {
+	constructor(
+		name: string,
+		heads: Bundle,
+		multi: Bundle | null = null,
+		nine: NineBundle | null = null
+	) {
 		this.name = name;
 		this.heads = new BlueprintPolicy(heads, { name });
 		this.multi = multi === null ? null : new MultiwayBlueprintPolicy(multi, { name });
+		this.nine = multi === null || nine === null ? null : new NineSeatPolicy(multi, nine, { name });
 	}
 
 	/** The players dealt in that this bot has a model for. */
 	plays(dealt: number): boolean {
 		return (
-			dealt === 2 || (this.multi !== null && MULTIWAY_LEAST <= dealt && dealt <= this.multi.seats)
+			dealt === 2 ||
+			(this.multi !== null && MULTIWAY_LEAST <= dealt && dealt <= this.multi.seats) ||
+			(this.nine !== null && this.multi !== null && this.multi.seats < dealt && dealt <= NINE_SEATS)
 		);
 	}
 
-	/** Both models' decision statistics, added together. */
+	/** Every model's decision statistics, added together. */
 	get stats(): Stats {
 		const out: Stats = { ...this.heads.stats };
-		for (const [key, count] of Object.entries(this.multi?.stats ?? {})) {
-			out[key] = (out[key] ?? 0) + count;
+		for (const model of [this.multi, this.nine]) {
+			for (const [key, count] of Object.entries(model?.stats ?? {})) {
+				out[key] = (out[key] ?? 0) + count;
+			}
 		}
 		return out;
 	}
@@ -182,22 +238,25 @@ export class TablePolicy implements Policy {
 	newHand(): void {
 		this.heads.newHand();
 		this.multi?.newHand();
+		this.nine?.newHand();
 	}
 
 	act(view: SeatView, rng: BotRandom): Action {
 		const dealt = view.seatOrder.length;
 		if (!this.plays(dealt)) throw new Error(`${this.name} has no model for ${dealt} players`);
-		const model = dealt === 2 ? this.heads : this.multi!;
+		const model = dealt === 2 ? this.heads : dealt <= this.multi!.seats ? this.multi! : this.nine!;
 		const action = model.act(view, rng);
 		this.lastProbabilities = model.lastProbabilities;
 		return action;
 	}
 }
 
-/** The table sizes a bot made from these champions plays: two, and three to the multiway champion's size. */
-export function seatsFor(multi: LoadedChampion | null): number[] {
+/** The table sizes a bot made from these champions plays: two, three to the multiway champion's size, and up to nine with the nine-seat model. */
+export function seatsFor(multi: LoadedChampion | null, nine: LoadedNine | null = null): number[] {
 	const seats = [2];
-	if (multi !== null) for (let n = MULTIWAY_LEAST; n <= multi.champion.seats; n++) seats.push(n);
+	if (multi === null) return seats;
+	const most = nine !== null ? NINE_SEATS : multi.champion.seats;
+	for (let n = MULTIWAY_LEAST; n <= most; n++) seats.push(n);
 	return seats;
 }
 
@@ -210,18 +269,25 @@ export class ChampionPolicy implements Policy {
 	readonly champion: Champion;
 	readonly bundle: Bundle;
 	readonly multi: LoadedChampion | null;
+	readonly nine: LoadedNine | null;
 	private readonly shared: TablePolicy;
 
-	constructor(champion: Champion, bundle: Bundle, multi: LoadedChampion | null = null) {
+	constructor(
+		champion: Champion,
+		bundle: Bundle,
+		multi: LoadedChampion | null = null,
+		nine: LoadedNine | null = null
+	) {
 		this.champion = champion;
 		this.bundle = bundle;
 		this.multi = multi;
+		this.nine = multi === null ? null : nine;
 		this.shared = this.forTable();
 	}
 
 	/** The table sizes it plays. */
 	get seats(): number[] {
-		return seatsFor(this.multi);
+		return seatsFor(this.multi, this.nine);
 	}
 
 	act(view: SeatView, rng: BotRandom): Action {
@@ -230,7 +296,12 @@ export class ChampionPolicy implements Policy {
 
 	/** Policies with their own memory of hands, for one table. */
 	forTable(): TablePolicy {
-		return new TablePolicy(HARD, this.bundle, this.multi?.bundle ?? null);
+		return new TablePolicy(
+			HARD,
+			this.bundle,
+			this.multi?.bundle ?? null,
+			this.nine?.bundle ?? null
+		);
 	}
 }
 
@@ -246,12 +317,19 @@ export class MediumPolicy implements Policy {
 	readonly champion: Champion;
 	readonly bundle: Bundle;
 	readonly multi: LoadedChampion | null;
+	readonly nine: LoadedNine | null;
 	private readonly shared: MixedPolicy;
 
-	constructor(champion: Champion, bundle: Bundle, multi: LoadedChampion | null = null) {
+	constructor(
+		champion: Champion,
+		bundle: Bundle,
+		multi: LoadedChampion | null = null,
+		nine: LoadedNine | null = null
+	) {
 		this.champion = champion;
 		this.bundle = bundle;
 		this.multi = multi;
+		this.nine = multi === null ? null : nine;
 		this.shared = this.forTable();
 	}
 
@@ -262,7 +340,7 @@ export class MediumPolicy implements Policy {
 
 	/** The table sizes it plays. */
 	get seats(): number[] {
-		return seatsFor(this.multi);
+		return seatsFor(this.multi, this.nine);
 	}
 
 	act(view: SeatView, rng: BotRandom): Action {
@@ -271,6 +349,8 @@ export class MediumPolicy implements Policy {
 
 	/** A Medium with its own memory of hands, the champions' included, for one table. */
 	forTable(): MixedPolicy {
-		return medium(new TablePolicy(HARD, this.bundle, this.multi?.bundle ?? null));
+		return medium(
+			new TablePolicy(HARD, this.bundle, this.multi?.bundle ?? null, this.nine?.bundle ?? null)
+		);
 	}
 }

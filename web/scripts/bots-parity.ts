@@ -17,16 +17,21 @@
 //      of its size with three or more dealt in, in one or more seats, against
 //      those bots and itself (P5.7);
 //   6. RiverMind Medium made from the multiway bundle does as in 4, at its
-//      table, against those bots, the blueprint and itself.
+//      table, against those bots, the blueprint and itself;
+//   7. a nine-seat model on that multiway bundle (P5.6, option 1) does as in
+//      5 at a table of nine, and RiverMind Medium made from it as in 6.
 //
 // Without --bundle it checks a synthetic bundle (the real trees with random
 // strategies and card tables), which CI can build in a second. Without
 // --multiway-bundle it checks a synthetic six-seat bundle of the 50 big
 // blind graph, which Python compiles in half a minute where no cache holds it.
+// Without --nine-model it checks a synthetic nine-seat model (random early
+// weights) on the multiway bundle; a real one must build on --multiway-bundle.
 //
 //   node scripts/bots-parity.ts [--hands 250] [--seats 2-9] [--seed 0]
 //     [--bundle <dir>] [--tables <dir>] [--decisions 2000] [--boards 200]
 //     [--multiway-bundle <dir>] [--multiway-decisions 2000]
+//     [--nine-model <dir>] [--nine-decisions 2000]
 
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -39,6 +44,7 @@ import { BlueprintPolicy } from '../src/lib/server/bots/blueprint.ts';
 import { loadBundle } from '../src/lib/server/bots/bundle.ts';
 import { medium } from '../src/lib/server/bots/levels.ts';
 import { MultiwayBlueprintPolicy } from '../src/lib/server/bots/multiway.ts';
+import { loadNineBundle, NineSeatPolicy } from '../src/lib/server/bots/nine.ts';
 import {
 	bucketReport,
 	largestDifference,
@@ -61,7 +67,9 @@ const { values } = parseArgs({
 		decisions: { type: 'string', default: '2000' },
 		boards: { type: 'string', default: '200' },
 		'multiway-bundle': { type: 'string' },
-		'multiway-decisions': { type: 'string', default: '2000' }
+		'multiway-decisions': { type: 'string', default: '2000' },
+		'nine-model': { type: 'string' },
+		'nine-decisions': { type: 'string', default: '2000' }
 	}
 });
 const TOLERANCE = 1e-9;
@@ -312,6 +320,33 @@ try {
 		new MultiwayBlueprintPolicy(bundle)
 	);
 	report.multiway_medium = mediumReport;
+
+	// 7. A nine-seat model on the multiway bundle, and Medium made from it.
+	let ninePath = values['nine-model'];
+	if (ninePath === undefined) {
+		ninePath = join(multiwayScratch ?? mkdtempSync(join(tmpdir(), 'rivermind-nine-')), 'nine');
+		const { exited } = python(['synthetic-nine', ninePath, multiwayPath, '--seed', seed]);
+		await exited;
+	}
+	ninePath = resolve(ninePath);
+	const nine = loadNineBundle(ninePath, bundle);
+	report.nine_model = {
+		path: values['nine-model'] ?? 'synthetic',
+		iteration: nine.manifest.checkpoint.iteration
+	};
+	report.nine_hands = await checkBlueprint(
+		'nine',
+		['nine', ninePath, '--decisions', values['nine-decisions'], '--seed', seed],
+		new NineSeatPolicy(bundle, nine)
+	);
+	report.nine = blueprintReport;
+	report.nine_medium_hands = await checkMedium(
+		'nine medium',
+		['nine', ninePath, '--medium', '--decisions', values['nine-decisions'], '--seed', seed],
+		new NineSeatPolicy(bundle, nine),
+		new NineSeatPolicy(bundle, nine)
+	);
+	report.nine_medium = mediumReport;
 } finally {
 	if (multiwayScratch) rmSync(multiwayScratch, { recursive: true, force: true });
 }

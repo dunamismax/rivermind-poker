@@ -224,3 +224,112 @@ export function writeChampion(
 	writeFileSync(join(models, 'champions.json'), JSON.stringify(registry, null, 2));
 	return { champion, registry, bundle };
 }
+
+/** The checkpoint a test nine-seat bundle names, as a real one names the checkpoint it was exported from. */
+export const TEST_NINE_CHECKPOINT = {
+	manifest_sha256: 'a'.repeat(64),
+	strategy_sha256: 'b'.repeat(64)
+} as const;
+
+/**
+ * A nine-seat champion called `name` on the six-seat champion `six` (P5.6,
+ * option 1): an early table of seeded random weights in
+ * `<models>/<name>/bundle`, and the registry extract with `others` before it.
+ */
+export function writeNineChampion(
+	models: string,
+	six: Champion,
+	{
+		name = 'test-nine',
+		medium = false,
+		others = [],
+		seed = 7
+	}: { name?: string; medium?: boolean; others?: readonly Champion[]; seed?: number } = {}
+): { champion: Champion; registry: ChampionRegistry } {
+	const dir = join(models, name, 'bundle');
+	mkdirSync(dir, { recursive: true });
+	const early = randomStrategy(54 * 169 * 4, seed);
+	writeFileSync(join(dir, 'early.u8'), early);
+	const sha256 = createHash('sha256').update(early).digest('hex');
+	const manifest = {
+		format: 1,
+		kind: 'rivermind-nine-bundle',
+		abstraction: '9max-o1',
+		seats: 9,
+		builds_on: {
+			bundle: `${six.name}/bundle`,
+			files: six.bundle.files,
+			table_set: six.bundle.table_set
+		},
+		strategy: { levels: 255, shape: [54, 169, 4] },
+		checkpoint: { iteration: 1_000, ...TEST_NINE_CHECKPOINT },
+		files: { 'early.u8': { sha256, bytes: early.length } }
+	};
+	writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+	const result = (opponent: string, bb: number, lo: number, hi: number) => ({
+		opponent,
+		name: null,
+		stack_bb: 100,
+		hands: 180_000,
+		bb_per_100: bb,
+		ci95: [lo, hi] as [number, number],
+		gate: true
+	});
+	const champion: Champion = {
+		format: '9-max',
+		seats: 9,
+		name,
+		abstraction: '9max-o1',
+		iterations: 1_000,
+		promoted: '2026-11-24',
+		replaced: null,
+		builds_on: six.name,
+		checkpoint: {
+			manifest_sha256: TEST_NINE_CHECKPOINT.manifest_sha256,
+			files: { 'regrets.npy': 'e'.repeat(64), 'strategy.npy': TEST_NINE_CHECKPOINT.strategy_sha256 }
+		},
+		bundle: { levels: 255, table_set: six.bundle.table_set, files: { 'early.u8': sha256 } },
+		evaluations: [
+			{
+				candidate: 'bundle',
+				report: `evaluations/${name}-served`,
+				deals: 20_000,
+				seed: 0,
+				blinds: [50, 100],
+				evaluated_at: '0'.repeat(40),
+				results: [
+					result('heuristic', 15.2, 9.1, 21.3),
+					result('calling_station', 610.4, 560.2, 660.6)
+				]
+			}
+		]
+	};
+	if (medium) {
+		champion.levels = {
+			medium: {
+				share: 0.5,
+				recorded: '2026-11-24',
+				evaluation: {
+					candidate: 'medium',
+					report: `evaluations/${name}-medium`,
+					deals: 20_000,
+					seed: 0,
+					blinds: [50, 100],
+					evaluated_at: '0'.repeat(40),
+					results: [
+						{ ...result('heuristic', 7.6, 3.5, 11.7), gate: false },
+						{ ...result('calling_station', 760.1, 712.0, 808.2), gate: false },
+						{ ...result('hard', -5.1, -9.6, -0.6), name, gate: false }
+					]
+				}
+			}
+		};
+	}
+	const registry: ChampionRegistry = {
+		format: 1,
+		kind: REGISTRY_KIND,
+		champions: [...others, champion]
+	};
+	writeFileSync(join(models, 'champions.json'), JSON.stringify(registry, null, 2));
+	return { champion, registry };
+}
