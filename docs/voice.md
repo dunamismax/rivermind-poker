@@ -388,7 +388,7 @@ The same run found the voice 6 dB quieter through RNNoise than without it. The w
 
 - **RNNoise's cost on a phone**: still unmeasured; no session has had a phone (P7.1b).
 - **A page hidden and shown again** resumes the context, starts a microphone the system stopped and says why when it cannot. Playwright does not hide pages, so it was checked by hand at [P4C.9](#the-launch-p4c9), in Safari in the iOS Simulator, where it did each of those.
-- **The warning for a stranger in the group** is P4C.3's check shown on screen, with no honest way to bring it about in a browser test; seeing it on a screen is P7.1b's.
+- **The warning for a stranger in the group** is P4C.3's check shown on screen. It was seen on the live site at [P7.1b](#real-phones-a-second-network-and-the-stranger-warning-p71b), which found the panel closed over it and made the panel open by itself for it.
 
 ## Audio quality, resilience and capacity (P4C.7)
 
@@ -666,6 +666,76 @@ The scratch unit, its key and its table were removed afterwards and the live uni
 - **“Away”, for about 20 ms, at your own seat.** A rejoining player's first view was sent before they were marked connected, and their hand log opened with their own “reconnected”. They are marked first now. The recorded table session changed in one step: the joiner gets one message where it got two.
 - **A table closed mid-hand kept the pot.** `Tables.close` paid back stacks and not what had gone into the hand under way. It now pays back both. Only a close by hand can meet a hand in progress, since a table with one never sits idle.
 
+## Real phones, a second network and the stranger warning (P7.1b)
+
+What only real devices can show, gathered from P4C.2a, P4C.6 and P4C.9 under D-16. On 2026-11-24 the owner chose to test the phones and the networks on their own, after the session, rather than in a session guided step by step. So this section has two parts: what was done without a phone, and how to test what is left.
+
+### The warning for someone in the group who is not seated
+
+P4C.3's check: when a page's copy of the group holds someone its table does not show seated, the page holds its microphone and says why. No browser test could bring that about before, because an honest service and honest pages remove a departed person within a second. Now one can, with nothing in the site or the service changed for it ([`e2e/stranger.ts`](../web/e2e/stranger.ts)). It rests on the group's own rule for removals: when the service proposes one, the member with the lowest leaf commits it at once and each member after it a second later (`COMMIT_TURN_MS`). So members that hang ahead of you keep someone who left. The pages hang for real: their scripts are paused in Chromium's debugger.
+
+1. A host and the others who will hang sit at a private table and listen in voice. A ghost listens too, and all of them share one group.
+2. All of them hang except the ghost, who then leaves the table. The service takes the ghost out of the room and proposes its removal, but nobody awake is left to commit it, so its leaf stays in the group.
+3. An observer sits down and joins voice. Its group holds the ghost, whom its table never showed seated, so its microphone is held at once. Its own turn to commit the removal comes as many seconds after it joined as there are hung members, and then it talks.
+
+**On the live site** (`713f093`, release `20261124T020259Z-713f093c5c64`, on 2026-11-24 at 14:49 to 14:56 local time; [`e2e/stranger.tool.ts`](../web/e2e/stranger.tool.ts), run by hand with `pnpm exec playwright test --config playwright.voice-stranger.config.ts`): six hung Chromium members, and an observer in Firefox at 1440 × 900 with its fake microphone, all from this Mac through the public site, `/voice` and the media port. In each of three runs the observer joined the group 1.4 to 1.8 s after its click on “Join voice”. Its microphone was held from then until 7.6 to 8.2 s, when it had removed the ghost on its own turn, and then it sent. While held, nothing on its page read as live. With its panel open, the warning stood in it the whole time, in the alert's own words: “Someone who is not seated at this table is in the voice group. Your microphone is off until they are gone.” The screenshots are in `artifacts/voice-stranger/`, outside Git.
+
+**What was found.** The panel closes itself once someone has joined, and the warning is only in the panel. In the first two runs the panel stayed closed, and the observer's screen showed only a crossed-out microphone on the bar's Mute button and on its own seat, as if they had muted themselves, with nothing to say why. A person would press Mute to unmute and find it did nothing. Now the panel opens by itself when the warning starts, as it does when the microphone is refused (`TableVoice`'s `#epoch`), and it stays open until the person closes it. `voice.e2e.ts` checks this against its own voice service, in the desktop Chromium project, with four members hung. Nothing there opens the panel, so the check fails without the change: in that run the microphone was held for four seconds with no warning on screen, as on the live site. The live site gets the change at its next deploy.
+
+### What is left for real devices, and how to test it
+
+Each check below is one criterion of P7.1b in BUILD.md. None needs a change to the site.
+
+**Reading a page's own figures on a phone.** Plug the phone into this Mac. For an iPhone, turn on Settings → Apps → Safari → Advanced → Web Inspector, and in Safari on the Mac, Settings → Advanced → “Show features for web developers”; the phone's page is then under Develop. For an Android phone, turn on Developer options (tap Build number seven times) and USB debugging, and open `chrome://inspect` in Chrome on the Mac. In that page's console:
+
+- `rivermindVoice()` is the table's own account of voice: the phase, the four words, whether the microphone sends (`live`), the connection's quality, how the mix is played (`loopback`, `direct` or `elements`), whether RNNoise runs, and each person heard, with their gain and pan. It holds no key, and no audio.
+- The connection's statistics and the transform's tallies are not kept anywhere the console can reach. Paste this before “Join voice”, or after “Leave voice” and before joining again, so that it sees the next session's connections and worker:
+
+  ```js
+  const pcs = new Set(), workers = new Set();
+  const sld = RTCPeerConnection.prototype.setLocalDescription;
+  RTCPeerConnection.prototype.setLocalDescription = function (...a) { pcs.add(this); return sld.apply(this, a); };
+  const post = Worker.prototype.postMessage;
+  Worker.prototype.postMessage = function (...a) { workers.add(this); return post.apply(this, a); };
+  ```
+
+  It only notes which connections and which worker the page makes, never what it sends them. After a minute in voice, this prints the path each connection took, what was concealed and the jitter buffer:
+
+  ```js
+  for (const pc of pcs) {
+    const stats = await pc.getStats();
+    for (const s of stats.values()) {
+      if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') {
+        const local = stats.get(s.localCandidateId);
+        console.log('path', local?.protocol, local?.candidateType, local?.networkType ?? '', 'round trip ms', Math.round(1000 * (s.currentRoundTripTime ?? 0)));
+      }
+      if (s.type === 'inbound-rtp' && s.kind === 'audio' && s.totalSamplesReceived)
+        console.log('heard: concealed %', (100 * s.concealedSamples / s.totalSamplesReceived).toFixed(2), 'jitter buffer ms', Math.round(1000 * s.jitterBufferDelay / s.jitterBufferEmittedCount));
+      if (s.type === 'outbound-rtp' && s.kind === 'audio') console.log('sent kB', Math.round(s.bytesSent / 1000));
+    }
+  }
+  ```
+
+  And this asks the worker for its tallies, which hold counts and times only (`FrameCrypto` ignores an answer it did not ask for):
+
+  ```js
+  const worker = [...workers].at(-1);
+  const tallies = await new Promise((done) => {
+    const on = (e) => { if (e.data?.id === 424242) { worker.removeEventListener('message', on); done(e.data.tallies); } };
+    worker.addEventListener('message', on);
+    post.call(worker, { type: 'tallies', id: 424242 });
+  });
+  console.table(tallies.map((t) => ({ direction: t.direction, frames: t.frames, usPerFrame: Math.round(1000 * t.ms / Math.max(1, t.frames)), slowestMs: t.slowestMs, ...t.refused })));
+  ```
+
+  In Chromium the playback loopback's two connections are among `pcs` too. Their path is a host candidate on the phone itself.
+
+**1. Three people across two networks.** An iPhone in Safari, an Android phone in Chrome and a desktop browser, at one private table, with one phone on its mobile network and Wi-Fi off. Each talks and is heard by the others, the four words match on every screen, and each control works by touch: Mute, Deafen, push-to-talk (in the voice settings), a player's “Mute voice” and volume from their seat, and “Leave voice”. The path line says whether the media port was reached over UDP or TCP from outside the home network (Q-9). If a network cannot connect, the table says the network may block the port voice uses. From that network, `nc -vz rivermindpoker.com 3478` tells whether TCP 3478 is blocked too. A network that lets only TCP 443 through is the one that would need a TURN server on 443.
+
+**2. Delay between the two networks.** The marked-tone measure (`pnpm voice:measure delay`) needs both ends' clocks on one machine, which two phones are not. Across real devices, time the sound itself instead. Put the speaking phone and the listening phone side by side by this Mac. Record with this Mac's microphone (`sox -d -r 48000 -c 1 delay.wav trim 0 120`) while short sharp syllables (“ta”) are spoken near the speaking phone, about every two seconds. Each one is then in the recording twice: once from the air, and once from the listening phone's speaker. The gap between the two onsets is mouth to ear, the phones' own microphone and speaker included, which P4C.7's figures leave out. Its error is a few milliseconds: the onset picked to within a frame of audio, and about 3 ms for each metre between the sources and the Mac. Fifty syllables give a 95th percentile. Do it both ways, so that Safari's own figure is the iPhone as listener, and note concealment from the statistics above and which network each phone used. The target is a 95th percentile under 250 ms.
+
+**3. On each phone.** The transform's cost per frame is `usPerFrame` in the tallies, against [this Mac's](#frame-encryption-as-built-p4c2) and the Simulator's Safari (27 and 63 µs in a room of nine, [the launch](#the-launch-p4c9)). RNNoise's CPU is the difference in the page's CPU with “Stronger noise suppression” on and off in the same call: Safari's Timelines → CPU, or the AudioWorklet thread in Chrome's Performance panel. Compare it with 0.5 to 1.1% of a core on this Mac. For a page hidden and shown again, switch to the home screen for twenty seconds and come back: the page should stay in voice, or say why not and offer one tap to bring the sound and the microphone back. For echo without the loopback, run `localStorage.setItem('rivermind.voice.direct', '1')` in Chrome's console, leave voice and join again (`rivermindVoice().output` then reads `direct`), and talk with the speakers on. If the far side does not hear itself, Chrome cancels echo without the loopback on that device, which would take about 53 ms off Chromium's delay. Changing the default is the owner's decision. `localStorage.removeItem('rivermind.voice.direct')` puts it back.
+
 ## Tools considered
 
 | Option | Verdict |
@@ -690,6 +760,7 @@ The scratch unit, its key and its table were removed afterwards and the live uni
   - Without Web Audio, judge what a page hears by `inbound-rtp` statistics (`totalAudioEnergy`, `concealedSamples`). Chromium counts no energy for a track whose only output is a muted element, so there the analyser is the measure.
 - **The voice service:** Vitest drives it with a real mediasoup worker and real MLS members over the wire (`service.spec.ts`), and `pnpm voice:check` puts people in each engine in a room on it (`room.check.ts`), through the site's own `VoiceRoom`, with media over UDP and, for Chromium told to avoid UDP, TCP.
 - **The encryption itself:** a test build of the voice service with a listener attached at the SFU, holding no key, receives every forwarded frame and cannot decode them, while members decode the injected tone, and someone who left or arrived opens nothing outside their epochs (`tap.check.ts`, [P4C.8](#what-a-copy-of-the-audio-is-worth-the-keyless-listener)).
+- **Someone in the group who is not seated:** `voice.e2e.ts` brings it about with members that really hang, paused in Chromium's debugger ([`e2e/stranger.ts`](../web/e2e/stranger.ts), P7.1b), and checks that the panel says so with the microphone held; `e2e/stranger.tool.ts` does the same on a deployed site, by hand.
 - **Recovery:** `recovery.check.ts` in `pnpm voice:check` kills a service's media worker under four people, takes the network away with a relay and brings back another, has someone join and leave through a network that loses and delays packets, blocks all audio, and fills a service ([P4C.7](#recovery)).
 - **Latency and loss:** `pnpm voice:measure`, by hand on a quiet machine: mouth-to-ear delay with a marked tone timed on each page's audio thread, with `getStats` jitter-buffer and round-trip figures, and speech through packet loss and jitter from a relay or from `tc netem` on Linux ([P4C.7](#audio-quality-resilience-and-capacity-p4c7)). Playwright's WebKit can take no part in the marks, and its mock microphone delivers audio in bursts, which fills every listener's jitter buffer: never judge a listener's delay by a WebKit speaker there.
 

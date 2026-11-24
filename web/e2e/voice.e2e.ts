@@ -13,6 +13,7 @@ import { expect, test as base } from '@playwright/test';
 import { canCapture, canTransform } from '../voice/check/browsers.ts';
 import { nameOf, seated, sitDown, tableIdOf } from './fixtures.ts';
 import { TableServer } from './server.ts';
+import { ghostTable, takeSeat, watch, type GhostTable } from './stranger.ts';
 import {
 	card,
 	closePanel,
@@ -322,6 +323,42 @@ test.describe('table voice', () => {
 		} finally {
 			await alice.close();
 			await bob.close();
+		}
+	});
+
+	test('someone in the group who is not seated is shown at once, with the microphone held (P7.1b)', async ({
+		baseURL
+	}, testInfo) => {
+		// Once is enough: the rule is the page's, whatever the engine, and it takes
+		// six browsers (stranger.ts).
+		test.skip(testInfo.project.name !== 'chromium', 'the desktop Chromium project runs this');
+		const engine: Engine = canCapture('chromium') ? 'chromium' : 'firefox';
+		test.skip(!canTransform(engine), 'this build of the engine cannot seal frames');
+		let table: GhostTable | null = null;
+		let observer: Awaited<ReturnType<typeof person>> | null = null;
+		try {
+			// Four members hang, so the observer's turn to remove the ghost comes four
+			// seconds after it joins.
+			table = await ghostTable(testInfo, baseURL!, 4);
+			observer = await person(engine, testInfo, baseURL!, { mic: true });
+			await takeSeat(observer.page, table.link);
+			await expect(card(observer.page)).toBeVisible();
+			const joined = Date.now();
+			await card(observer.page).getByRole('button', { name: 'Join voice' }).click();
+			const seen = await watch(observer.page, joined, 60_000);
+			const warned = seen.filter((one) => one.warned);
+			// The panel opened by itself to say why (nothing here opens it), and the
+			// microphone sent nothing while it did.
+			expect(warned.length, JSON.stringify(seen)).toBeGreaterThan(0);
+			expect(warned.every((one) => one.panel && !one.live)).toBe(true);
+			// The observer removed the ghost on its own turn, and then it talks.
+			const last = seen.at(-1)!;
+			expect(last.warned).toBe(false);
+			expect(last.live).toBe(true);
+			expect(observer.violations).toEqual([]);
+		} finally {
+			await observer?.close();
+			await table?.close();
 		}
 	});
 

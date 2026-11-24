@@ -720,6 +720,9 @@ export class TableVoice {
 		const strangers = !epoch.seats.ok;
 		if (strangers !== this.strangers) {
 			this.strangers = strangers;
+			// The warning is in the panel, so it opens: with it closed, the microphone
+			// only looked muted, with nothing to say why (P7.1b).
+			if (strangers) this.panelOpen = true;
 			void this.#apply();
 		}
 	}
