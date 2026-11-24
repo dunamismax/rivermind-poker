@@ -255,7 +255,13 @@ export function loadTrained(env: Env = process.env, log: Log = consoleLog): Trai
 	}
 	let nine: LoadedNine | null = null;
 	const nineChampion = championFor(registry, NINE_SEATS);
-	if (nineChampion !== null) {
+	if (nineChampion !== null && multi !== null && nineChampion.builds_on !== multi.champion.name) {
+		// A newer six-seat champion: the nine-seat model must be trained again on it before it is served.
+		log.warn(
+			`The ${nineChampion.format} model ${nineChampion.name} builds on ${nineChampion.builds_on}, ` +
+				`not the six-seat champion ${multi.champion.name}; the trained bots play at most six seats`
+		);
+	} else if (nineChampion !== null) {
 		try {
 			if (multi === null)
 				throw new Error(`it builds on ${nineChampion.builds_on}, which is not loaded`);

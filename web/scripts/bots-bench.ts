@@ -5,9 +5,11 @@
 // more dealt in. It reports each blueprint's decision time (p50, p95, p99,
 // max) and load time, and the process's memory with every bundle loaded at
 // once, as the server holds them. The table's short thinking delay is not
-// part of this; it is added on top.
+// part of this; it is added on top. With --nine, a nine-seat model on the
+// multiway bundle (P5.6, option 1) is timed too, at a table of nine with seven
+// to nine dealt in.
 //
-//   node scripts/bots-bench.ts --bundle <dir> [--bundle <dir> …] [--decisions 20000] [--seed 0]
+//   node scripts/bots-bench.ts --bundle <dir> [--bundle <dir> …] [--nine <dir>] [--decisions 20000] [--seed 0]
 
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -15,6 +17,7 @@ import { BlueprintPolicy } from '../src/lib/server/bots/blueprint.ts';
 import { loadBundle, type Bundle } from '../src/lib/server/bots/bundle.ts';
 import { PythonRandom } from '../src/lib/server/bots/mt.ts';
 import { MultiwayBlueprintPolicy } from '../src/lib/server/bots/multiway.ts';
+import { loadNineBundle, NineSeatPolicy } from '../src/lib/server/bots/nine.ts';
 import { simpleBots } from '../src/lib/server/bots/parity.ts';
 import type { Policy } from '../src/lib/server/bots/policies.ts';
 import { apply, handConfig, isOver, startHand } from '../src/lib/server/engine/state.ts';
@@ -26,6 +29,7 @@ const { values } = parseArgs({
 	args: argv[0] === '--' ? argv.slice(1) : argv,
 	options: {
 		bundle: { type: 'string', multiple: true },
+		nine: { type: 'string' },
 		decisions: { type: 'string', default: '20000' },
 		seed: { type: 'string', default: '0' }
 	}
@@ -48,17 +52,22 @@ const opponents = ['heuristic', 'calling_station', 'random', 'blueprint'];
 const rng = new PythonRandom(BigInt(values.seed));
 const mb = (bytes: number) => Math.round(bytes / 2 ** 20);
 
-function bench({ path, bundle, seconds }: (typeof loaded)[number]) {
+type Benched = Policy & { stats: Record<string, number>; newHand(): void };
+
+function bench(
+	{ path, bundle, seconds }: (typeof loaded)[number],
+	nine: NineSeatPolicy | null = null
+) {
 	const multiway = bundle.graphs.length > 0;
-	const blueprint: Policy & { stats: Record<string, number>; newHand(): void } = multiway
-		? new MultiwayBlueprintPolicy(bundle)
-		: new BlueprintPolicy(bundle);
-	const table = multiway ? bundle.seats : 2;
+	const blueprint: Benched =
+		nine ?? (multiway ? new MultiwayBlueprintPolicy(bundle) : new BlueprintPolicy(bundle));
+	const table = nine ? 9 : multiway ? bundle.seats : 2;
+	const fewest = nine ? 7 : 3;
 	const bots: Record<string, Policy> = { ...simpleBots(), blueprint };
 	const times: number[] = [];
 	let hands = 0;
 	while (times.length < target) {
-		const dealt = multiway ? rng.randint(3, table) : 2;
+		const dealt = multiway ? rng.randint(fewest, table) : 2;
 		// The measured blueprint sits in one seat; the others are each opponent in turn, the blueprint among them.
 		const seats = Array.from({ length: table }, (_, s) =>
 			s < dealt ? opponents[(hands + s) % opponents.length] : 'heuristic'
@@ -87,8 +96,8 @@ function bench({ path, bundle, seconds }: (typeof loaded)[number]) {
 	const at = (q: number) =>
 		Math.round(times[Math.min(times.length - 1, Math.floor(q * times.length))] * 1000) / 1000;
 	return {
-		bundle: path,
-		abstraction: bundle.manifest.abstraction,
+		bundle: nine ? `${values.nine} on ${path}` : path,
+		abstraction: nine ? '9max-o1' : bundle.manifest.abstraction,
 		checkpoint: bundle.manifest.checkpoint.path ?? 'synthetic',
 		load_seconds: Math.round(seconds * 10) / 10,
 		hands,
@@ -98,7 +107,20 @@ function bench({ path, bundle, seconds }: (typeof loaded)[number]) {
 	};
 }
 
-const results = loaded.map(bench);
+const results = loaded.map((l) => bench(l));
+if (values.nine !== undefined) {
+	const six = loaded.find((l) => l.bundle.graphs.length > 0);
+	if (six === undefined)
+		throw new Error('--nine needs the six-seat bundle it builds on as a --bundle');
+	const started = performance.now();
+	const early = loadNineBundle(resolve(values.nine), six.bundle);
+	results.push(
+		bench(
+			{ ...six, seconds: (performance.now() - started) / 1000 },
+			new NineSeatPolicy(six.bundle, early)
+		)
+	);
+}
 const memory = process.memoryUsage();
 console.log(
 	JSON.stringify(

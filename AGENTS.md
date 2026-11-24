@@ -290,11 +290,13 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 
 - The bots in `web/src/lib/server/bots` must play exactly as `rivermind/bots` does, seed for seed. Both draw from CPython’s `random.Random` (ported as `PythonRandom`), so keep every random draw in the same order in both languages, and land a bot change in both in the same commit.
 - The multiway policy (`multiway.ts`, `MultiwayBlueprintPolicy` in `policy.py`) is a separate class in both languages, so the heads-up policy the champion plays through stays as it is. A change to either multiway class lands in both, and `pnpm bots:parity` checks them on a synthetic six-seat bundle; `-- --multiway-decisions 20000` is the long run.
+- The nine-seat policy (`nine.ts`, `NineSeatPolicy` in `nine.py`, P5.6 option 1) extends the six-seat one in both languages, and a change to either lands in both. `pnpm bots:parity` checks it on a synthetic nine-seat model (`synthetic-nine`); `-- --multiway-bundle <six-seat bundle> --nine-model <its nine-seat bundle> --nine-decisions 20000` is the long run.
 - A format 2 bundle's `trees.json` is columns, read into typed arrays (`graphFromDocument`). Never give a graph an array a node: the 100 big blind graph has 654,597 of them.
 - A bundle file is read into its own `ArrayBuffer`. `readFileSync` may return a pooled buffer whose offset breaks typed-array views.
 
 ### Training and artifacts
 
+- **Nine-seat early tables** (`blueprint nine-train`) learn by plain regret matching from a folding start, on sampled play-outs. A uniform start and regret matching plus both made a wrong table, one that shoved trash under the gun: [docs/bots.md](docs/bots.md#nine-seats-as-built-option-1-9max-o1) has the measurement. Keep both, and check a changed trainer by the share of hands each early seat enters, against the six-seat champion's first seat (86.5% folds).
 - **Card tables** are byte-for-byte reproducible for their seed whatever the worker count. Keep it that way: scikit-learn’s k-means gave slightly different centres between runs, so the build uses its own. After changing the pipeline, compare two builds’ manifests. Tests build a small set with the hidden `--limit` option.
 - **Blueprint runs** are byte-for-byte a function of their settings, trees and card tables, whatever the worker count or where they were stopped and resumed. After changing the trainer, compare the `regrets.npy` and `strategy.npy` hashes of two runs with different worker counts.
 - **Two walks, one answer.** `mccfr.py` has the heads-up walk and the multiway one (P5.6), which trains any number of seats and merged graphs. On two seats and an unmerged tree the multiway walk must make the heads-up walk's draws and updates exactly; `test_blueprint_multiway.py` checks it. Change either only with the other, and never in a way that moves a `hu-m1` result: the champion's checkpoint is a function of that walk.
@@ -329,6 +331,7 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 
 - The Node server plays only a bundle whose every file matches `web/src/lib/champions.json` (`loadChampion`). Never loosen that check, and never point a live server at `RIVERMIND_CHAMPIONS`: it replaces the registry and is for tests.
 - A trained bot keeps a memory of each hand's mapping, so the runner asks a policy for its own copy per table (`forTable`). Give a new stateful bot one too.
+- A nine-seat model plays only beside the six-seat champion it builds on (`builds_on` in the registry, `loadNineChampion`). After a new six-seat champion is promoted, the server leaves the old nine-seat model out with a warning, and the bots play at most six seats until a nine-seat model is trained on the new champion and promoted.
 - A trained bot plays its format's table size only (`Site.botPlays`). Check it wherever a bot kind is accepted: table creation and practice do.
 - A saved table whose bot the server does not run plays on against `FALLBACK_BOT` under that bot's name. Keep that: closing such a table at start-up would lose its seats' chips.
 - A release candidate (`RIVERMIND_CANDIDATE=1`) starts beside the live server on the same database. It must never restore, deal or save a table: it only checks that every saved table can be restored (`Tables.restorable`), the database and the champion, on `/healthz`.

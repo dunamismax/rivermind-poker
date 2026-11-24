@@ -189,6 +189,29 @@ describe('the runtime', () => {
 	});
 });
 
+describe('a newer six-seat champion', () => {
+	it('leaves out a nine-seat model built on the one before, without failing the candidate check', async () => {
+		const stale = mkdtempSync(join(tmpdir(), 'rivermind-nine-'));
+		try {
+			cpSync(models, stale, { recursive: true });
+			const registry = JSON.parse(readFileSync(join(stale, 'champions.json'), 'utf8'));
+			registry.champions[2].builds_on = 'older-six';
+			writeFileSync(join(stale, 'champions.json'), JSON.stringify(registry));
+			const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
+			vi.spyOn(console, 'log').mockImplementation(() => {});
+			const runtime = createRuntime(env(stale));
+			runtimes.push(runtime);
+			expect(warned.mock.calls.flat().join('\n')).toMatch(
+				/test-nine builds on older-six, not the six-seat champion test-six; the trained bots play at most six seats/
+			);
+			expect(await runtime.candidateChecks.champions()).toBe(true);
+			expect(loadTrained(env(stale), quietLog()).trained[HARD].seats).toEqual([2, 3, 4, 5, 6]);
+		} finally {
+			rmSync(stale, { recursive: true, force: true });
+		}
+	});
+});
+
 describe('Hard at a nine-seat table', () => {
 	it('fills a table of nine and plays its hands', async () => {
 		const trained = loadTrained(env(models), quietLog());
