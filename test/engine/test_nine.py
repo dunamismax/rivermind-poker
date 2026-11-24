@@ -202,3 +202,21 @@ def test_the_registry_records_a_nine_seat_model_on_the_six_seat_champion(six: Pa
     registry["decisions"][0]["bundle"]["files"] = {"strategy.u8": "0"}
     with pytest.raises(reg.RegistryError, match="must build on the six-seat champion"):
         reg.decide(registry, name="again", date="2026-11-24", report=evaluate(f"nine:{model}", plan, deals=1, seed=1), report_path="x", report_sha256="c", checkpoint=checkpoint)
+
+
+def test_a_pot_with_no_room_on_the_graph_is_played_by_easy(six: Path) -> None:
+    """Five players in besides the blinds do not fit the six-seat graph; RiverMind Easy decides."""
+    from rivermind.bots.policies import HeuristicPolicy
+
+    nine = nine_policy(six)
+    state = start_hand(CONFIG, [10_000] * 9, 0, deck=deck_for(0, 3))
+    for _ in range(5):
+        state = apply(state, Action.call())
+    view = seat_view(state, state.to_act)  # type: ignore[arg-type]
+    assert nine.place(view) is None
+    action = nine.act(view, random.Random(0))
+    assert action == HeuristicPolicy().act(view, random.Random(0))
+    assert nine.stats["lost"] == 1 and nine.stats["easy"] == 1
+    # The six-seat policy keeps its own fallback: check or call.
+    base = ServingBundle(six, verify=False).policy()
+    assert base._lost(view, random.Random(0), Action.call()) == Action.call()

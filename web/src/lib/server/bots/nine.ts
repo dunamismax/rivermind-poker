@@ -22,7 +22,7 @@ import type { SeatView } from '../engine/view.ts';
 import { abstractActions, streetLevel, type Abstraction } from './abstraction.ts';
 import { BundleError, type Bundle } from './bundle.ts';
 import { MultiwayBlueprintPolicy, type Hand, type RealTable } from './multiway.ts';
-import type { BotRandom } from './policies.ts';
+import { HeuristicPolicy, type BotRandom } from './policies.ts';
 
 export const NAME = '9max-o1';
 export const SEATS = 9;
@@ -195,6 +195,7 @@ export function loadNineBundle(path: string, six: Bundle): NineBundle {
 export class NineSeatPolicy extends MultiwayBlueprintPolicy {
 	readonly early: EarlyTable;
 	readonly nine: NineBundle | null;
+	readonly easy = new HeuristicPolicy();
 	#placed: Map<number, number> | null = null;
 	#unmapped = new Set<number>();
 
@@ -358,6 +359,17 @@ export class NineSeatPolicy extends MultiwayBlueprintPolicy {
 			}
 		}
 		return best;
+	}
+
+	/**
+	 * Where the graph has no room for the players in, or the mapping found no
+	 * node: RiverMind Easy's action. At nine seats a pot can hold more players
+	 * than the six-seat graph has seats; checking and calling there played a
+	 * calling station's game against players who limp (docs/bots.md).
+	 */
+	protected override lost(view: SeatView): Action {
+		this.count('easy');
+		return this.easy.act(view);
 	}
 
 	// The early seats

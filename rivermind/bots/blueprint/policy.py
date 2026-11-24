@@ -305,7 +305,7 @@ class BlueprintPolicy:
         passive = Action.check() if legal.can_check else Action.call()
         if node is None:
             self.stats["lost"] += 1
-            return passive
+            return self._lost(view, rng, passive)
         d = hand.d
         tree = self.game.trees[d]
         hole = view.hole_cards
@@ -329,6 +329,10 @@ class BlueprintPolicy:
         hand.tokens[len(view.actions)] = token
         hand.seen = view.actions
         return self._real_action(view, tree, node, token)
+
+    def _lost(self, view: SeatView, rng: random.Random, passive: Action) -> Action:
+        """The action where the mapping found no node: check or call."""
+        return passive
 
     def _check_table(self, view: SeatView) -> None:
         if len(view.seat_order) != 2:

@@ -45,6 +45,7 @@ from typing import Any
 import numpy as np
 
 from rivermind.bots.cards import CardTables
+from rivermind.bots.policies import HeuristicPolicy
 from rivermind.engine import Action, ActionKind, HandConfig, Street, apply, start_hand
 from rivermind.engine.view import SeatView, seat_view
 
@@ -202,6 +203,7 @@ class NineSeatPolicy(MultiwayBlueprintPolicy):
         if self.game.seats != SIX:
             raise ValueError("the nine-seat model plays on a six-seat blueprint")
         self.early = early
+        self.easy = HeuristicPolicy()
         self._unmapped: frozenset[int] = frozenset()
         self._placed: dict[int, int] | None = None
 
@@ -325,6 +327,16 @@ class NineSeatPolicy(MultiwayBlueprintPolicy):
             return abs(math.log(a) - math.log(b))
 
         return min(starts, key=distance)
+
+    def _lost(self, view: SeatView, rng: random.Random, passive: Action) -> Action:
+        """Where the graph has no room for the players in, or the mapping found no node: RiverMind Easy's action.
+
+        At nine seats a pot can hold more players than the six-seat graph
+        has seats; checking and calling there played a calling station's
+        game against players who limp (docs/bots.md).
+        """
+        self.stats["easy"] += 1
+        return self.easy.act(view, rng)
 
     # The early seats
 

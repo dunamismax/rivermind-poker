@@ -508,7 +508,7 @@ export class MultiwayBlueprintPolicy implements Policy {
 		const passive = legal.canCheck ? Action.check() : Action.call();
 		if (node === null) {
 			this.count('lost');
-			return passive;
+			return this.lost(view, rng, passive);
 		}
 		const d = hand.d;
 		const hole = view.holeCards;
@@ -535,6 +535,11 @@ export class MultiwayBlueprintPolicy implements Policy {
 		hand.tokens.set(view.actions.length, token);
 		hand.seen = view.actions;
 		return this.realAction(view, d, node, token);
+	}
+
+	/** The action where the mapping found no node: check or call. */
+	protected lost(_view: SeatView, _rng: BotRandom, passive: Action): Action {
+		return passive;
 	}
 
 	protected checkTable(view: SeatView): void {
