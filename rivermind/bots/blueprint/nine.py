@@ -33,6 +33,7 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import math
 import multiprocessing as mp
 import random
 import subprocess
@@ -271,16 +272,18 @@ class NineSeatPolicy(MultiwayBlueprintPolicy):
             tokens = tree.tokens[node]
             if player in self._unmapped and "f" in tokens:
                 node = tree.children[node][tokens.index("f")]
-            elif "k" in tokens:
+                if node < 0:
+                    return None
+                continue
+            if "k" in tokens:
                 node = tree.children[node][tokens.index("k")]
-                self.stats["passed"] += 1
             elif "c" in tokens:
                 node = tree.children[node][tokens.index("c")]
-                self.stats["passed"] += 1
             else:
                 return None
             if node < 0:
                 return None
+            self.stats["passed"] += 1
         return None
 
     def _street_table(self, tree: Tree, node: int, records: list[Any], real: Any, hand: Any, rng: random.Random, seats: dict[int, int], street: Street) -> tuple[bool, int | None]:
@@ -307,9 +310,9 @@ class NineSeatPolicy(MultiwayBlueprintPolicy):
 
         def distance(v: int) -> float:
             a, b = tree.spr[v], target
-            if a <= 0 or b <= 0 or b == float("inf"):
-                return abs(a - b) if b != float("inf") else -a
-            return abs(np.log(a) - np.log(b))
+            if a <= 0 or b <= 0 or math.isinf(b):
+                return abs(a - b) if not math.isinf(b) else -a
+            return abs(math.log(a) - math.log(b))
 
         return min(starts, key=distance)
 

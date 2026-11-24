@@ -116,6 +116,8 @@ def _incumbent_spec(report: dict[str, Any], incumbent: dict[str, Any]) -> str | 
             return str(spec)
         if described.get("spec") == "bundle" and incumbent.get("bundle") and files == incumbent["bundle"]["files"]:
             return str(spec)
+        if described.get("spec") == "nine" and files in (incumbent["checkpoint"]["files"], (incumbent.get("bundle") or {}).get("files")):
+            return str(spec)
     return None
 
 
@@ -161,7 +163,11 @@ def _published(report: Path, registry: Path) -> str:
 def describe_checkpoint(checkpoint: Path) -> dict[str, Any]:
     """What the registry records about a checkpoint, after checking every file against its manifest."""
     from .blueprint import CheckpointError, read_manifest
+    from .blueprint import nine
     from .blueprint.bundle import table_set_digest
+
+    if nine.is_nine(checkpoint):
+        return _describe_nine_checkpoint(checkpoint)
 
     try:
         m = read_manifest(checkpoint, verify=True)
@@ -192,8 +198,11 @@ def describe_bundle(bundle: Path, checkpoint: Path) -> dict[str, Any]:
     of the checkpoint's.
     """
     from .blueprint import CheckpointError, read_manifest
+    from .blueprint import nine
     from .blueprint.bundle import BundleError, ServingBundle, quantize
 
+    if nine.is_nine(bundle):
+        return _describe_nine_bundle(bundle, checkpoint)
     try:
         served = ServingBundle(bundle, verify=True)
         manifest = read_manifest(checkpoint)
@@ -211,6 +220,52 @@ def describe_bundle(bundle: Path, checkpoint: Path) -> dict[str, Any]:
         "levels": served.manifest["strategy"]["levels"],
         "table_set": served.manifest["cards"]["table_set"],
         "files": {k: v["sha256"] for k, v in sorted(served.manifest["files"].items())},
+    }
+
+
+def _describe_nine_checkpoint(checkpoint: Path) -> dict[str, Any]:
+    """A nine-seat model's checkpoint (P5.6, option 1): its early table's files, and the six-seat bundle it builds on."""
+    from .blueprint import nine
+
+    try:
+        m = nine.read_manifest(checkpoint, verify=True)
+    except (ValueError, OSError) as e:
+        raise RegistryError(str(e)) from e
+    if m["kind"] != nine.CHECKPOINT_KIND:
+        raise RegistryError(f"{checkpoint} is not a nine-seat checkpoint")
+    return {
+        "abstraction": m["abstraction"],
+        "iteration": m["iteration"],
+        "manifest_sha256": _sha256(checkpoint / "manifest.json"),
+        "files": {k: v["sha256"] for k, v in sorted(m["files"].items())},
+        "settings": m["settings"],
+        "trained_by": m.get("software", {}).get("commit"),
+        "builds_on": {"files": m["builds_on"]["files"], "table_set": m["builds_on"]["table_set"]},
+        "cards": {"table_set": m["builds_on"]["table_set"]},
+    }
+
+
+def _describe_nine_bundle(bundle: Path, checkpoint: Path) -> dict[str, Any]:
+    """A nine-seat bundle, after checking it is the rounding of ``checkpoint``'s average strategy."""
+    from .blueprint import nine
+
+    try:
+        served = nine.read_manifest(bundle, verify=True)
+        manifest = nine.read_manifest(checkpoint)
+    except (ValueError, OSError) as e:
+        raise RegistryError(str(e)) from e
+    source = served.get("checkpoint", {})
+    if served["kind"] != nine.BUNDLE_KIND or source.get("manifest_sha256") != _sha256(checkpoint / "manifest.json"):
+        raise RegistryError(f"{bundle} was not exported from {checkpoint}")
+    if served["builds_on"]["files"] != manifest["builds_on"]["files"]:
+        raise RegistryError(f"{bundle} builds on another six-seat bundle than {checkpoint}")
+    early = np.fromfile(bundle / "early.u8", dtype=np.uint8)
+    if not np.array_equal(early, nine.quantize(np.load(checkpoint / "strategy.npy")).reshape(-1)):
+        raise RegistryError(f"{bundle}'s early table is not the rounding of {checkpoint}'s")
+    return {
+        "levels": served["strategy"]["levels"],
+        "table_set": served["builds_on"]["table_set"],
+        "files": {k: v["sha256"] for k, v in sorted(served["files"].items())},
     }
 
 
@@ -232,8 +287,15 @@ def decide(
     """The decision on one candidate, appended to ``registry``. Raises when the inputs do not belong together."""
     fmt = _format_of(report)
     c = report["candidate"]
-    if c.get("spec") != "blueprint" or c.get("files") != checkpoint["files"]:
+    model = c.get("spec") == "blueprint" or (c.get("spec") == "nine" and c.get("kind") == "checkpoint")
+    if not model or c.get("files") != checkpoint["files"]:
         raise RegistryError("the report did not evaluate this checkpoint")
+    builds_on = None
+    if "builds_on" in checkpoint:
+        six = champion(registry, FORMATS[6])
+        if six is None or six["bundle"]["files"] != checkpoint["builds_on"]["files"]:
+            raise RegistryError("a nine-seat model must build on the six-seat champion's served bundle")
+        builds_on = six["name"]
     incumbent = champion(registry, fmt)
     if incumbent is not None and incumbent["checkpoint"]["files"] == checkpoint["files"]:
         raise RegistryError(f"this checkpoint is already the {fmt} champion, {incumbent['name']}")
@@ -244,7 +306,8 @@ def decide(
         if bundle is None or served_path is None or served_sha256 is None:
             raise RegistryError("a served report needs its bundle")
         s = served["candidate"]
-        if _format_of(served) != fmt or s.get("spec") != "bundle" or s.get("files") != bundle["files"]:
+        served_model = s.get("spec") == "bundle" or (s.get("spec") == "nine" and s.get("kind") == "bundle")
+        if _format_of(served) != fmt or not served_model or s.get("files") != bundle["files"]:
             raise RegistryError("the served report did not evaluate this bundle")
         evaluations.append({"candidate": "bundle", "report": served_path, "sha256": served_sha256, **assess(served, incumbent)})
     outcomes = [e["outcome"] for e in evaluations]
@@ -270,6 +333,8 @@ def decide(
         "evaluations": evaluations,
         "note": note,
     }
+    if builds_on is not None:
+        decision["builds_on"] = builds_on
     registry["decisions"].append(decision)
     return decision
 
@@ -293,7 +358,7 @@ def level_of(registry: dict[str, Any], name: str, level: str = "medium") -> dict
 def _hard_spec(report: dict[str, Any], champion_decision: dict[str, Any]) -> str | None:
     """The report's name for the champion's own served bundle, the level's RiverMind Hard."""
     for spec, described in report.get("opponents", {}).items():
-        if described.get("spec") == "bundle" and described.get("files") == champion_decision["bundle"]["files"]:
+        if described.get("spec") in ("bundle", "nine") and described.get("files") == champion_decision["bundle"]["files"]:
             return str(spec)
     return None
 
@@ -317,7 +382,8 @@ def record_level(
     if current is None:
         raise RegistryError(f"the {fmt} format has no champion to make a level of")
     strong = c.get("strong", {})
-    if strong.get("spec") != "bundle" or strong.get("files") != current["bundle"]["files"]:
+    served = strong.get("spec") == "bundle" or (strong.get("spec") == "nine" and strong.get("kind") == "bundle")
+    if not served or strong.get("files") != current["bundle"]["files"]:
         raise RegistryError(f"the report's Medium is not made from the {fmt} champion's served bundle, {current['name']}")
     if c.get("share") != MEDIUM_SHARE or c.get("weak", {}).get("spec") != "heuristic":
         raise RegistryError(f"the report's Medium is not the site's: half its hands ({MEDIUM_SHARE}) as the champion and the rest as RiverMind Easy")
@@ -437,6 +503,25 @@ def render(registry: dict[str, Any]) -> str:
                 + ", ".join(f"`{k}` `{v}`" for k, v in c["files"].items())
                 + "."
             )
+            if d.get("builds_on"):
+                lines.append(
+                    f"- **Builds on:** the six-seat champion `{d['builds_on']}`, whose served bundle plays every decision but the early seats' first"
+                    f" (table set `{c['cards']['table_set']}`)."
+                )
+                lines.append(f"- **Training settings:** {_settings(c['settings'])}.")
+                lines.append(
+                    f"- **Serving bundle:** `early.u8` `{b['files']['early.u8']}`, probabilities in multiples of 1/{b['levels']}."
+                    f" `models.json` has all {len(b['files'])} files."
+                )
+                lines.append(f"- **Kept in:** `{STORE}/{d['name']}/` (`checkpoint/` and `bundle/`).")
+                medium = level_of(registry, d["name"])
+                if medium is not None:
+                    lines.append(
+                        f"- **RiverMind Medium:** each hand played as this model with probability {medium['share']:g} and as RiverMind Easy otherwise;"
+                        f" {_level_results(medium)}, over {medium['deals']:,} duplicate deals each, seed {medium['seed']} ({_link(medium, 'report')}; recorded {medium['date']})."
+                    )
+                lines.append("")
+                continue
             lines.append("- **Trees:** " + ", ".join(f"{t['depth']} big blinds `{t['sha256']}`" for t in c["trees"]) + ".")
             buckets = ", ".join(f"`{k}` `{c['cards']['sha256'][k]}`" for k in ("preflop.npy", "flop.npy", "turn.npy", "river.npy") if k in c["cards"]["sha256"])
             lines.append(
@@ -518,7 +603,7 @@ def site_data(registry: dict[str, Any], docs: str | Path) -> dict[str, Any]:
             rows = []
             for r in report["results"]:
                 described = report["opponents"][r["opponent"]]
-                model = described["spec"] in ("blueprint", "bundle")
+                model = described["spec"] in ("blueprint", "bundle", "nine")
                 name = _model_name(registry, described) if model else None
                 opponent = "champion" if model else r["opponent"]
                 gated = ("incumbent" if name == d["incumbent"] and model else r["opponent"], r["stack_bb"]) in gate_opponents
@@ -553,7 +638,7 @@ def site_data(registry: dict[str, Any], docs: str | Path) -> dict[str, Any]:
             rows = []
             for r in report["results"]:
                 described = report["opponents"][r["opponent"]]
-                model = described["spec"] in ("blueprint", "bundle")
+                model = described["spec"] in ("blueprint", "bundle", "nine")
                 name = _model_name(registry, described) if model else None
                 rows.append(
                     {
@@ -591,6 +676,7 @@ def site_data(registry: dict[str, Any], docs: str | Path) -> dict[str, Any]:
                 "checkpoint": {"manifest_sha256": c["manifest_sha256"], "files": c["files"]},
                 "bundle": {"levels": b["levels"], "table_set": b["table_set"], "files": b["files"]},
                 "evaluations": evaluations,
+                **({"builds_on": d["builds_on"]} if d.get("builds_on") else {}),
                 **({"levels": site_levels} if site_levels else {}),
             }
         )

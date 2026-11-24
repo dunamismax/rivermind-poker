@@ -166,3 +166,39 @@ def test_a_nine_seat_model_is_evaluated_at_nine(six: Path, tmp_path: Path) -> No
     (result,) = report["results"]
     assert result["hands"] == 18
     assert json.loads(json.dumps(report)) == report
+
+
+def test_the_registry_records_a_nine_seat_model_on_the_six_seat_champion(six: Path, tmp_path: Path) -> None:
+    from rivermind.bots import registry as reg
+
+    model = train(tmp_path / "run", six, batches=1, chunks=2, per_chunk=4, workers=1)
+    bundle = export(model, tmp_path / "bundle")
+    six_files = {k: v["sha256"] for k, v in json.loads((six / "manifest.json").read_text())["files"].items()}
+    registry = reg.empty()
+    registry["decisions"].append(
+        {"date": "2026-11-23", "format": "6-max", "name": "six", "outcome": "promoted", "incumbent": None, "checkpoint": {"files": {}}, "bundle": {"files": six_files}, "evaluations": []}
+    )
+    checkpoint = reg.describe_checkpoint(model)
+    served = reg.describe_bundle(bundle, model)
+    assert set(served["files"]) == {"early.u8"} and served["levels"] == 255
+    plan = [("heuristic", 100), ("calling_station", 100)]
+    decision = reg.decide(
+        registry,
+        name="nine",
+        date="2026-11-24",
+        report=evaluate(f"nine:{model}", plan, deals=2, seed=0),
+        report_path="evaluations/nine.json",
+        report_sha256="a",
+        checkpoint=checkpoint,
+        served=evaluate(f"nine:{bundle}", plan, deals=2, seed=0),
+        served_path="evaluations/nine-served.json",
+        served_sha256="b",
+        bundle=served,
+    )
+    assert decision["format"] == "9-max" and decision["builds_on"] == "six"
+    decision["outcome"] = "promoted"  # two deals decide nothing; the page is what is checked here
+    assert "the six-seat champion `six`" in reg.render({**registry, "decisions": [decision]})
+    # A model on another six-seat bundle is refused.
+    registry["decisions"][0]["bundle"]["files"] = {"strategy.u8": "0"}
+    with pytest.raises(reg.RegistryError, match="must build on the six-seat champion"):
+        reg.decide(registry, name="again", date="2026-11-24", report=evaluate(f"nine:{model}", plan, deals=1, seed=1), report_path="x", report_sha256="c", checkpoint=checkpoint)

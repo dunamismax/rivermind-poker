@@ -549,12 +549,12 @@ def promote_command(
     try:
         data = reg._read_report(report_path)
         served_data = reg._read_report(Path(served)) if served else None
-        checkpoint_path = Path(checkpoint or data["candidate"].get("checkpoint") or "")
+        checkpoint_path = Path(checkpoint or data["candidate"].get("checkpoint") or data["candidate"].get("model") or "")
         described = reg.describe_checkpoint(checkpoint_path)
         bundle_path = None
         described_bundle = None
         if served_data is not None:
-            bundle_path = Path(bundle or served_data["candidate"].get("bundle") or "")
+            bundle_path = Path(bundle or served_data["candidate"].get("bundle") or served_data["candidate"].get("model") or "")
             described_bundle = reg.describe_bundle(bundle_path, checkpoint_path)
         registry = reg.load(registry_path)
         decision = reg.decide(
@@ -648,7 +648,7 @@ def champions_command(registry_path: str, verify: str | None) -> None:
             "promoted": d["date"],
             "iteration": d["checkpoint"]["iteration"],
             "strategy.npy": d["checkpoint"]["files"].get("strategy.npy"),
-            "strategy.u8": d["bundle"]["files"].get("strategy.u8"),
+            "strategy.u8": d["bundle"]["files"].get("strategy.u8") or d["bundle"]["files"].get("early.u8"),
             "table_set": d["checkpoint"]["cards"]["table_set"],
             "evaluations": [e["report"] for e in d["evaluations"]],
         }
