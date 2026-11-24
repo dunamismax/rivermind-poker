@@ -683,7 +683,134 @@
             }
           ]
         }
-      ]
+      ],
+      "levels": {
+        "medium": {
+          "share": 0.5,
+          "recorded": "2026-11-23",
+          "evaluation": {
+            "candidate": "medium",
+            "report": "evaluations/6max-s1-s0-3600m-medium",
+            "deals": 20000,
+            "seed": 0,
+            "blinds": [
+              50,
+              100
+            ],
+            "evaluated_at": "6ad4fcba7afd9d66ffe619bf8bfc734c3887cb23",
+            "results": [
+              {
+                "opponent": "heuristic",
+                "name": null,
+                "stack_bb": 100,
+                "hands": 120000,
+                "bb_per_100": 9.64,
+                "ci95": [
+                  5.61,
+                  13.66
+                ],
+                "gate": false
+              },
+              {
+                "opponent": "calling_station",
+                "name": null,
+                "stack_bb": 100,
+                "hands": 120000,
+                "bb_per_100": 773.54,
+                "ci95": [
+                  725.49,
+                  821.58
+                ],
+                "gate": false
+              },
+              {
+                "opponent": "random",
+                "name": null,
+                "stack_bb": 100,
+                "hands": 120000,
+                "bb_per_100": 338.77,
+                "ci95": [
+                  311.71,
+                  365.83
+                ],
+                "gate": false
+              },
+              {
+                "opponent": "min_bettor",
+                "name": null,
+                "stack_bb": 100,
+                "hands": 120000,
+                "bb_per_100": 269.01,
+                "ci95": [
+                  232.35,
+                  305.68
+                ],
+                "gate": false
+              },
+              {
+                "opponent": "hard",
+                "name": "6max-s1-s0-3600m",
+                "stack_bb": 100,
+                "hands": 120000,
+                "bb_per_100": -5.3,
+                "ci95": [
+                  -9.87,
+                  -0.74
+                ],
+                "gate": false
+              },
+              {
+                "opponent": "heuristic",
+                "name": null,
+                "stack_bb": 40,
+                "hands": 120000,
+                "bb_per_100": 7.68,
+                "ci95": [
+                  5.46,
+                  9.89
+                ],
+                "gate": false
+              },
+              {
+                "opponent": "heuristic",
+                "name": null,
+                "stack_bb": 150,
+                "hands": 120000,
+                "bb_per_100": 11.01,
+                "ci95": [
+                  5.66,
+                  16.35
+                ],
+                "gate": false
+              },
+              {
+                "opponent": "calling_station",
+                "name": null,
+                "stack_bb": 40,
+                "hands": 120000,
+                "bb_per_100": 343.6,
+                "ci95": [
+                  323.16,
+                  364.05
+                ],
+                "gate": false
+              },
+              {
+                "opponent": "calling_station",
+                "name": null,
+                "stack_bb": 150,
+                "hands": 120000,
+                "bb_per_100": 1104.23,
+                "ci95": [
+                  1032.82,
+                  1175.64
+                ],
+                "gate": false
+              }
+            ]
+          }
+        }
+      }
     }
   ]
 }

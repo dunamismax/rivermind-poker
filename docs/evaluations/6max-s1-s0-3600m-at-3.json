@@ -1,0 +1,143 @@
+{
+  "format": 1,
+  "kind": "rivermind-evaluation",
+  "game": {
+    "rules": "no-limit Texas hold'em, 52-card deck, 3 seats, no ante (docs/rules.md)",
+    "seats": 3,
+    "blinds": [
+      50,
+      100
+    ],
+    "format": "duplicate: each deal played 3 times, the candidate once in every seat against 2 copies of the opponent, fresh stacks each hand",
+    "interval": "95%, normal approximation over deals, all 3 rotations of a deal together"
+  },
+  "seed": 0,
+  "deals_per_matchup": 20000,
+  "candidate": {
+    "spec": "bundle",
+    "bundle": "artifacts/models/6max-s1-s0-3600m/bundle",
+    "iteration": 3600000000,
+    "levels": 255,
+    "files": {
+      "flop.u16": "ebdd11e183fe7c2a6e2e7b21874d9b47cf25caf12933f4143b33eab210c8c8da",
+      "flop_board_class.i32": "67a78cbcee85c489cd3b596f0f9e8d01ad723e5f7e66280efec6fadd697f0d56",
+      "flop_board_perm.u8": "a8ef0761d9e1e9f29613414a1a39f2b9f34085e0f8577f832da38186067456cc",
+      "preflop.u16": "d5af6ddb0de195ca7bd271a0a72e382de518ea533b6388bb427852f1a6a73684",
+      "river.u16": "4657aca8032b2829dcbab327cd408a4d5bca090f948813cff2606ffbddd9d4fb",
+      "river_board_class.i32": "c3dada6d5a3cdb98aa10eb7a27cc910067199f475c40fb253de2453338abf48e",
+      "river_board_perm.u8": "8e9eb9dc0c32f7de8f5623eaf4810b9a08c8b06d0d4ea936c5e5d570d5e6b6ae",
+      "strategy.u8": "32fdd163adb8ca9625d3d4524bfefefe1a8f0d540b32524867f78bb566d73154",
+      "trees.json": "cdbb54512525b3b73d30fe9473c3cbf9b253e35c4ea4bfa54033f949b9c47859",
+      "turn.u16": "594fae66c1fda940b528e70c75b30c63ef32f6a196bfa077640dbe7ef872f29e",
+      "turn_board_class.i32": "eada7f2a31bbca64601652f278170a0e8106df76ffc8bdd55fb5a806053f875a",
+      "turn_board_perm.u8": "a39dec6f2d532e67060b8192251eac6d26d58f6ddcdff149edb254da66dcd925"
+    },
+    "trees": [
+      "cc952203fb974367c81d7a97ce840458e279c1edb10ac75318b8a015c7383f59",
+      "2da67fafbe203a63044e0aa754c02ffdd3c6cf54a106e33449de8e344392b4e3"
+    ],
+    "cards": {
+      "flop.npy": "b245fe1e208d80fc27b8aa3b0dad7259d060969a3838f95d02ca0205916929ee",
+      "flop_board_class.npy": "8c462e944e1a0cc938a5c5006a73b98704082c13b9dd8cee4d3751318f128d90",
+      "flop_board_perm.npy": "79ddeedbfe5f51451f9c4677bea6ef787388508be66956348e9f2d470c6a41e9",
+      "flop_centroids.npy": "2fad31d6ab632d56704f9a38912a7f18f19c9e31830bca56aae53a3c2098bf13",
+      "flop_class_keys.npy": "692202294023b9add67fa711c63e31adf69e482d02b2666057c7cf24da2f27e8",
+      "preflop.npy": "a0a6e5edcc3d3a55fb6acff95b5dbe38615f9687cf56b4d5ca3a6b7f8d8304c9",
+      "river.npy": "2c89cf9411af82885c48ebc27ccde1526fddfd6d39aa08272c3664534f16ae3a",
+      "river_board_class.npy": "2774e5c73e93a1d1bac4a0ee6780598a260d47b7fe0b3de57403f872ef04ca67",
+      "river_board_perm.npy": "b0a7e4fb7ba73ae9fb8ead43e2f5deca46cdc094204d90a9a37e49cd8c2d6310",
+      "river_centroids.npy": "85b4ddd8ef97d0ebc6e762e0417ae5f34a55737446d284f03ed51561b1d96417",
+      "river_class_keys.npy": "3ac0b1e28c229bd72af627f57b05ccab9714907051fbcbae147637e086dec4d2",
+      "turn.npy": "2765327cc21b4e56fb2a4b160b98de37fb2ef1165bb60a4978a1a296f2bfacee",
+      "turn_board_class.npy": "697ed9714efb06a07aa80d50f478c42bbb9669e0af4d3057fd814f1e979d2539",
+      "turn_board_perm.npy": "8e50452ad6c830ee79d4edf3fc951384c18b271b77c80a288d30684dff44dcfb",
+      "turn_centroids.npy": "dd6d004bb3b0633229e0e0ba5801e2dc9679d64ae9e43daec62ab4752912427a",
+      "turn_class_keys.npy": "8d0eb5addf91ea96de22b477da5c6e6b696a002d524328b1d359337c242448d5"
+    },
+    "table_set": "085cfca5ce89a7363be57d1bcf04cd89d599cc55faba669a0bd2b2606279e3e9",
+    "exported_from": {
+      "manifest_sha256": "38c69109d70c2f58fa0b1563870671cf47fa172c1fdc7ac7c983b04940616d84",
+      "strategy_sha256": "8eec4e434766dc3806b6d0dc7463620a746eb39b8aa6498440edc734b413ff7a"
+    },
+    "exported_by": "e9562af106cfdf0670ab113277a69d219ee443e4"
+  },
+  "opponents": {
+    "calling_station": {
+      "spec": "calling_station",
+      "source": "rivermind/bots/policies.py",
+      "source_sha256": "b72a61ddfab206d95bef70e0c890a6241dee23ff8e4095ead7e34e3e0952b4ed"
+    },
+    "heuristic": {
+      "spec": "heuristic",
+      "source": "rivermind/bots/policies.py",
+      "source_sha256": "b72a61ddfab206d95bef70e0c890a6241dee23ff8e4095ead7e34e3e0952b4ed"
+    }
+  },
+  "engine": {
+    "package": "0.1.0.dev0",
+    "source_sha256": "0de2ecb86194f3d623e1a1253693ed5dc77ce01f252bd69de332f259816c8e1c"
+  },
+  "software": {
+    "python": "3.12.15",
+    "numpy": "2.5.5",
+    "commit": "6ad4fcba7afd9d66ffe619bf8bfc734c3887cb23",
+    "dirty": false
+  },
+  "results": [
+    {
+      "opponent": "heuristic",
+      "stack_bb": 100,
+      "deals": 20000,
+      "hands": 60000,
+      "bb_per_100": 24.0,
+      "ci95_bb_per_100": [
+        17.43,
+        30.58
+      ],
+      "button_bb_per_100": 43.39,
+      "big_blind_bb_per_100": 21.66,
+      "showdown_share": 0.0566,
+      "position_bb_per_100": {
+        "button": 43.39,
+        "small_blind": 6.96,
+        "big_blind": 21.66
+      },
+      "candidate_decisions": {
+        "below_smallest": 4143,
+        "borrowed": 24,
+        "decisions": 72244,
+        "off_tree": 4257,
+        "reentries": 127,
+        "resized": 21,
+        "trained": 72216,
+        "untrained_node": 4
+      },
+      "trained_share": 0.9996
+    },
+    {
+      "opponent": "calling_station",
+      "stack_bb": 100,
+      "deals": 20000,
+      "hands": 60000,
+      "bb_per_100": 282.84,
+      "ci95_bb_per_100": [
+        263.29,
+        302.38
+      ],
+      "button_bb_per_100": 463.11,
+      "big_blind_bb_per_100": 304.52,
+      "showdown_share": 1.0,
+      "position_bb_per_100": {
+        "button": 463.11,
+        "small_blind": 80.88,
+        "big_blind": 304.52
+      },
+      "candidate_decisions": {
+        "decisions": 180968,
+        "trained": 180968
+      },
+      "trained_share": 1.0
+    }
+  ],
+  "command": "uv run --locked rivermind-poker blueprint evaluate artifacts/models/6max-s1-s0-3600m/bundle --name 6max-s1-s0-3600m-at-3 --out docs/evaluations --deals 20000 --seed 0 --against heuristic@100 --against calling_station@100 --seats 3"
+}

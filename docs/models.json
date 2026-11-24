@@ -1281,6 +1281,46 @@
           ]
         }
       ]
+    },
+    {
+      "date": "2026-11-23",
+      "format": "6-max",
+      "level": "medium",
+      "champion": "6max-s1-s0-3600m",
+      "share": 0.5,
+      "report": "evaluations/6max-s1-s0-3600m-medium.json",
+      "sha256": "18229b63e3998f073db02c73031c3b03dd807eb3a7f4b7152c045a58d865d40a",
+      "deals": 20000,
+      "seed": 0,
+      "results": [
+        {
+          "opponent": "heuristic",
+          "stack_bb": 100,
+          "bb_per_100": 9.64,
+          "ci95_bb_per_100": [
+            5.61,
+            13.66
+          ]
+        },
+        {
+          "opponent": "calling_station",
+          "stack_bb": 100,
+          "bb_per_100": 773.54,
+          "ci95_bb_per_100": [
+            725.49,
+            821.58
+          ]
+        },
+        {
+          "opponent": "hard",
+          "stack_bb": 100,
+          "bb_per_100": -5.3,
+          "ci95_bb_per_100": [
+            -9.87,
+            -0.74
+          ]
+        }
+      ]
     }
   ]
 }

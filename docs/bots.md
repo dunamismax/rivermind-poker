@@ -310,11 +310,23 @@ So Medium sits between the two levels against every opponent measured, and its o
 
 As heads-up, Medium sits between the two levels against every opponent measured, and its interval holds halfway each time (against the calling station at its edge). Against five copies of Hard, Easy and Medium lose about the same: one Easy at a table of five Hards loses little, since Easy folds most hands and the Hards fight one another for the rest.
 
+**The final champion's six-seat Medium** ([report](evaluations/6max-s1-s0-3600m-medium.md)) was made from `6max-s1-s0-3600m`'s served bundle. It played 20,000 duplicate deals a matchup at `6ad4fcb` with a clean tree, on every core, and was recorded with `blueprint level` on 2026-11-23. This is the Medium the site serves at three to six dealt in. RiverMind Easy's results against the calling station, random and the min-bet probe do not depend on the champion and are the ones above. Its result against five copies of this champion was measured the same way: −11.62 (−16.31 to −6.93).
+
+| Against five, at 100 bb | RiverMind Easy | Medium (95% interval) | Hard (served) | Halfway |
+| --- | --- | --- | --- | --- |
+| RiverMind Easy | 0 | +9.64 (+5.61 to +13.66) | +20.30 | +10.15 |
+| Calling station | +918.61 | +773.54 (+725.49 to +821.58) | +596.27 | +757.44 |
+| Random | +146.25 | +338.77 (+311.71 to +365.83) | +514.65 | +330.45 |
+| Min-bet probe | +171.97 | +269.01 (+232.35 to +305.68) | +353.99 | +262.98 |
+| RiverMind Hard | −11.62 | −5.30 (−9.87 to −0.74) | 0 | −5.81 |
+
+Medium's interval holds halfway against all five opponents. It also won at 40 and 150 big blinds against Easy (+7.68 and +11.01) and against the calling stations (+343.60 and +1,104.23).
+
 **Parity.** `pnpm bots:parity` plays Medium made from the bundle in both languages, heads-up against the simple bots, the blueprint and itself, and compares which bot it chose at every decision, the blueprint's probabilities, the statistics and the hand records. On 2026-11-22 with the champion `hu-m1-s0-1024m`’s bundle (`--decisions 20000`): 20,001 Medium decisions in 9,137 hands, identical.
 
 ## 6-max and 9-max
 
-Six seats first (P5.6). The heads-up pipeline carries over: trees compiled from the engine, the same card abstraction, external-sampling MCCFR in deterministic batches, duplicate matches and the promotion gate. Three things change. The betting tree becomes a graph of merged betting states, because six seats' histories are too many to hold; the card tables get 200 buckets a street; and the bot has to find its seat at a real table, which may have fewer than six players, short stacks and side pots. The code is built and tested, and the first six-seat run started on 2026-11-22; what follows is the design, what was measured in building it, and the estimates and settings for the run.
+Six seats first (P5.6). The heads-up pipeline carries over: trees compiled from the engine, the same card abstraction, external-sampling MCCFR in deterministic batches, duplicate matches and the promotion gate. Three things change. The betting tree becomes a graph of merged betting states, because six seats' histories are too many to hold; the card tables get 200 buckets a street; and the bot has to find its seat at a real table, which may have fewer than six players, short stacks and side pots. The code is built and tested, and the first six-seat run trained from 2026-11-22 to 2026-11-23, reaching 3.6 billion iterations, and its final checkpoint is the six-seat champion. What follows is the design, what was measured in building it, and the estimates and settings for the run.
 
 ### The format: `6max-s1`
 
@@ -443,6 +455,24 @@ What the numbers say about this early blueprint: against RiverMind Easy it loses
 
 **`6max-s1-s0-1000m`** (2026-11-23), the run's checkpoint at exactly 1 billion iterations (8.7 hours on eight workers, 31,700 iterations a second by then, with this Mac quieter), was put to the gate as a replacement over 20,000 deals a matchup at `99c0a23` and **promoted**, replacing `6max-s1-s0-100m`: as served it won +16.37 big blinds per 100 hands (+8.78 to +23.96) at a table of five copies of the champion, +18.08 (+12.66 to +23.51) against five RiverMind Easy and +567.65 against five calling stations, at 100 big blinds; the checkpoint's results were within 0.6 of the bundle's ([checkpoint report](evaluations/6max-s1-s0-1000m.md), [served](evaluations/6max-s1-s0-1000m-served.md)). Against Easy it is a little below the 100 million checkpoint's +21.14, inside both intervals; against five calling stations it wins more (+567.65 against +510.84), against random less (+558.02 against +669.38) and against the min-bet probe the same (+355.06 against +354.63); the gate measures play against these opponents, not exploitability, and head to head it beats the earlier champion. As served it had trained data in 99.9% of its decisions against Easy and 80.5% against the calling stations (75.9% at 100 million). By position against Easy: button +63.4, cutoff +20.0, hijack +19.7, UTG +10.1, big blind +2.5, small blind −7.3, where the 100 million checkpoint lost 13.5 in the small blind. The long parity run on its bundle (`--multiway-decisions 20000`) was identical for 20,001 blueprint decisions and 20,003 Medium decisions. It was copied to ubuntu-vm the same day (all 15 files matching the registry), since a deploy checks every registered champion. Its Medium is not recorded, so until the final champion's is, a server built from this registry plays Medium at two seats only.
 
+**`6max-s1-s0-3600m`** (2026-11-23), the run's final checkpoint at 3.6 billion iterations, is **the six-seat champion**. The run finished at 20:19 on 2026-11-23 after 26 hours on eight workers (38,100 iterations a second at the end, with this Mac quiet; 17.7 GB peak summed over processes). Its checkpoint was evaluated at `e9562af` with a clean tree, over 20,000 deals a matchup, in 172 s on every core. It was put to the gate as a replacement of `6max-s1-s0-1000m` and **promoted** (`6ad4fcb`). As served it won, at 100 big blinds:
+
+- **+7.35** (+2.34 to +12.37) at a table of five copies of the champion.
+- **+20.30** (+15.02 to +25.59) against five RiverMind Easy.
+- **+596.27** against five calling stations.
+
+The checkpoint's results were within 0.1 of the bundle's ([checkpoint report](evaluations/6max-s1-s0-3600m.md), [served](evaluations/6max-s1-s0-3600m-served.md)).
+
+Against Easy it beats the 1 billion checkpoint's +18.08, though inside both intervals. It also wins more against the calling stations (+596.27 against +567.65) and less against random (+514.65 against +558.02). Against Easy it wins at 40 and 150 big blinds too (+14.60 and +27.60).
+
+As served it had trained data in 99.9% of its decisions against Easy, and in 82.6% against the calling stations (80.5% at 1 billion). By position against Easy:
+
+| Button | Cutoff | UTG | Hijack | Big blind | Small blind |
+| --- | --- | --- | --- | --- | --- |
+| +68.2 | +24.5 | +14.9 | +14.7 | +7.1 | −7.5 |
+
+The long parity run on its bundle (`--multiway-decisions 20000`) was identical for 20,002 blueprint decisions and 20,005 Medium decisions. It was copied to ubuntu-vm the same evening. The 15 files the registry records all match there, and the bundle's `manifest.json` is byte for byte this Mac's. Its Medium is recorded ([below](#difficulty-levels-p57)), so the site's Medium plays six seats with it.
+
 ### Serving bundles for a graph
 
 A multiway bundle is **format 2**. Its `strategy.u8` and card-table arrays are as before. Its `trees.json` stores each graph in columns, since a list per node would make Node hold a million small arrays: `player`, `street`, `offset`, `contribution` and `live` (a bit mask of seats) a node; `children` as one flat list, each node’s run following the last, with its length the size of the node’s token set; `tokens` and `measure` as indexes into `token_sets` (6 of them) and `measure_sets` (about 2,000); `spr`; the nodes that open each street; and the terminals’ kind, chips each, pot and seats. A reader rebuilds the graph’s SHA-256 from those columns alone, which `test_a_six_seat_bundle_is_format_two_and_plays` does.
@@ -455,13 +485,30 @@ The Node server loads the registry's six-seat champion beside the heads-up one (
 
 - **Two dealt in** go to the heads-up champion, at any table: heads-up is its own game, and the six-seat policy refuses it. A six-seat table where four have left plays heads-up against the heads-up champion.
 - **Three to six dealt in** go to the six-seat champion.
-- **Tables of three to five seats** are offered, not only six. The six-seat policy plays a hand of four as the six-seat game in which the first two seats to act have folded, and that is the same game exactly: folding in turn puts no chips in the pot, so the four players face the same pot, stacks and options. Such hands already come up at a six-seat table whenever seats are empty, so a smaller table asks nothing of the bot that a six-seat table does not. What differs is the card removal of the folded seats, which the six-seat game has and a four-seat table does not, and which a blueprint with bucketed cards hardly sees. The evaluation is at full six-seat tables, and `/bots` says so; `blueprint evaluate --seats N` measures the six-seat bot at a smaller table, and the final champion's results at three, four and five seats are recorded below once measured.
+- **Tables of three to five seats** are offered, not only six. The six-seat policy plays a hand of four as the six-seat game in which the first two seats to act have folded, and that is the same game exactly: folding in turn puts no chips in the pot, so the four players face the same pot, stacks and options. Such hands already come up at a six-seat table whenever seats are empty, so a smaller table asks nothing of the bot that a six-seat table does not. What differs is the card removal of the folded seats, which the six-seat game has and a four-seat table does not, and which a blueprint with bucketed cards hardly sees. The evaluation is at full six-seat tables, and `/bots` says so; `blueprint evaluate --seats N` measures the six-seat bot at a smaller table. The final champion's results at three, four and five seats are in the table below.
 - **Medium** plays six seats only where the six-seat champion's own Medium is recorded, and both formats' Medium then mix a hand at a time as heads-up's does. Without a recorded six-seat Medium it stays at two seats.
 - **Seven to nine seats** have no trained bot.
 
 `GET /api/config` lists each trained bot with every table size it plays and, in `champions`, each model with its sizes; `champion` stays the heads-up model, as pages from before read it.
 
+**At smaller tables** (2026-11-23): the champion `6max-s1-s0-3600m`'s served bundle with `--seats 3`, `4` and `5`. Each ran 20,000 duplicate deals at `6ad4fcb`, with the candidate once in every seat against copies of the opponent, at 100 big blinds. These reports have no format, so they are never put to the gate. They show the six-seat bot winning at every size the site offers it:
+
+| Seats | Against RiverMind Easy | Against calling stations | Trained data (Easy, calling) | Reports |
+| --- | --- | --- | --- | --- |
+| 3 | +24.00 (+17.43 to +30.58) | +282.84 (+263.29 to +302.38) | 100.0%, 100.0% | [at 3](evaluations/6max-s1-s0-3600m-at-3.md) |
+| 4 | +32.91 (+26.54 to +39.28) | +788.36 (+752.07 to +824.64) | 99.9%, 100.0% | [at 4](evaluations/6max-s1-s0-3600m-at-4.md) |
+| 5 | +22.82 (+17.20 to +28.44) | +807.22 (+751.47 to +862.97) | 99.9%, 92.8% | [at 5](evaluations/6max-s1-s0-3600m-at-5.md) |
+| 6 | +20.30 (+15.02 to +25.59) | +596.27 (+540.14 to +652.41) | 99.9%, 82.6% | [served](evaluations/6max-s1-s0-3600m-served.md) |
+
+The rows are not comparable as a strength order, since each table size is its own game with its own opponents. Trained data rises as seats fall because a smaller table is the six-seat game with its early seats folded, and those lines were trained most.
+
 **Decision time and memory on ubuntu-vm** (2026-11-22, `pnpm bots:bench` with both champions' bundles from `/srv/rivermind-poker/models/champions`, in a transient unit with the web unit's sandbox; 8 CPUs, 15 GB, load average 0.3): the six-seat champion `6max-s1-s0-100m` loaded in 2.1 s and over 20,004 decisions at tables of three to six took 0.005 ms at the median, 0.015 to 0.016 ms at p95, 0.039 ms at p99 and 0.85 ms at most; the heads-up champion beside it 0.009 ms at p95. Both bundles held together are 1,351 MB of array buffers and 1.6 GB resident; the unit's memory peaked at 1.5 GB with room, and sat at the 2 GB `MemoryHigh` when held to it. So the web unit's limits went from 2 GB and 3 GB to 3 GB and 4 GB, by the owner's decision that they may be raised or removed as needed (the host has 15 GB, 11 GB of it available). The 6-max bundle is 873 MB: 438 MB of strategy, 400 MB of card tables and the graphs.
+
+The same check was repeated with the final champion `6max-s1-s0-3600m` on 2026-11-23, under the web unit's new limits of 3 GB and 4 GB (load average 0.9):
+
+- **The six-seat champion** loaded in 1.8 s. Over 20,000 decisions at tables of three to six, it took 0.005 ms at the median, 0.012 ms at p95, 0.033 ms at p99 and 0.74 ms at most.
+- **The heads-up champion** took 0.009 ms at p95.
+- **Memory:** 1,351 MB of array buffers and 1,661 MB resident. The unit's peak, page cache included, was 1.9 GB, under the 3 GB `MemoryHigh`.
 
 ### Nine seats
 

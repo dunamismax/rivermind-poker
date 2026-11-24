@@ -41,6 +41,7 @@ Promoted on 2026-11-23, replacing `6max-s1-s0-1000m`.
 - **Training settings:** `abstraction` 6max-s1, `depths` [50, 100], `seed` 0, `chunk_size` 1,000, `chunks_per_batch` 64, `discount_every` 4,000,000, `discount_until` 160,000,000, `prune_after` 80,000,000, `prune_probability` 0.95, `prune_threshold` -60,000,000, `regret_floor` -66,000,000.
 - **Serving bundle:** `strategy.u8` `32fdd163adb8ca9625d3d4524bfefefe1a8f0d540b32524867f78bb566d73154`, probabilities in multiples of 1/255. `models.json` has all 12 files.
 - **Kept in:** `artifacts/models/6max-s1-s0-3600m/` (`checkpoint/` and `bundle/`).
+- **RiverMind Medium:** each hand played as this served bundle with probability 0.5 and as RiverMind Easy otherwise; +9.64 (+5.61 to +13.66) against RiverMind Easy; +773.54 (+725.49 to +821.58) against the calling station; -5.30 (-9.87 to -0.74) against RiverMind Hard, the champion itself at 100 big blinds, over 20,000 duplicate deals each, seed 0 ([report](evaluations/6max-s1-s0-3600m-medium.md); recorded 2026-11-23).
 
 ## Decisions
 
