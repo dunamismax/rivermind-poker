@@ -299,6 +299,48 @@ def export_command(checkpoint: str, out: str, tables_path: str | None) -> None:
     click.echo(json.dumps(shown, indent=2))
 
 
+@blueprint.command("nine-train")
+@click.argument("out")
+@click.option("--bundle", required=True, help="The six-seat champion's serving bundle the nine-seat model plays on, such as artifacts/models/6max-s1-s0-3600m/bundle.")
+@click.option("--batches", required=True, type=int, help="Batches of chunks; each batch plays CHUNKS x PER_CHUNK deals from one current strategy.")
+@click.option("--chunks", default=16, show_default=True)
+@click.option("--per-chunk", "per_chunk", default=125, show_default=True)
+@click.option("--seed", default=0, show_default=True)
+@click.option("--workers", default=None, type=int, help="Processes to use (default: every CPU); the result does not depend on it.")
+def nine_train_command(out: str, bundle: str, batches: int, chunks: int, per_chunk: int, seed: int, workers: int | None) -> None:
+    """Train the early-seat table of a nine-seat model on a six-seat bundle, and write a checkpoint to OUT (P5.6, option 1)."""
+    import os
+
+    from rivermind.bots.blueprint.nine import train
+
+    if Path(out).exists():
+        raise click.ClickException(f"{out} exists")
+    every = max(1, batches // 20)
+
+    def log(entry: dict) -> None:  # type: ignore[type-arg]
+        if entry["batch"] % every == 0 or entry["batch"] == batches:
+            click.echo(json.dumps(entry), err=True)
+
+    path = train(out, bundle, batches=batches, chunks=chunks, per_chunk=per_chunk, seed=seed, workers=workers or os.cpu_count() or 1, log=log)
+    click.echo(json.dumps({"checkpoint": str(path), "manifest": json.loads((path / "manifest.json").read_text())["training"]}, indent=2))
+
+
+@blueprint.command("nine-export")
+@click.argument("checkpoint")
+@click.option("--out", required=True, help="Bundle directory to create, such as artifacts/bundles/9max-o1-s0.")
+def nine_export_command(checkpoint: str, out: str) -> None:
+    """Export a nine-seat CHECKPOINT's early table as a serving bundle (P5.6, option 1)."""
+    from rivermind.bots.blueprint.nine import export
+
+    if Path(out).exists():
+        raise click.ClickException(f"{out} exists")
+    try:
+        path = export(checkpoint, out)
+    except (ValueError, OSError) as e:
+        raise click.ClickException(str(e)) from e
+    click.echo((path / "manifest.json").read_text())
+
+
 @blueprint.command("strategy")
 @click.argument("checkpoint")
 @click.argument("hole")
@@ -396,7 +438,12 @@ def evaluate_command(
         kind = json.loads((target / "manifest.json").read_text()).get("kind")
     except (OSError, ValueError) as e:
         raise click.ClickException(f"{target} has no readable manifest.json") from e
-    candidate = f"bundle:{target}" if kind == BUNDLE_KIND else f"blueprint:{target}"
+    from rivermind.bots.blueprint.nine import BUNDLE_KIND as NINE_BUNDLE, CHECKPOINT_KIND as NINE_CHECKPOINT
+
+    if kind in (NINE_BUNDLE, NINE_CHECKPOINT):
+        candidate = f"nine:{target}"
+    else:
+        candidate = f"bundle:{target}" if kind == BUNDLE_KIND else f"blueprint:{target}"
     if level is not None:
         candidate = f"{level}:{candidate}"
     plan = []

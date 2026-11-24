@@ -84,11 +84,21 @@ def make_policy(spec: str, tables: str | None = None) -> Policy:
     if spec.startswith("bundle:"):
         policy: Policy = _bundle(spec.split(":", 1)[1]).policy()
         return policy
+    if spec.startswith("nine:"):
+        return _nine(spec.split(":", 1)[1])
     if spec.startswith("medium:"):
         from .levels import medium
 
         return medium(make_policy(spec.split(":", 1)[1], tables))
-    raise ValueError(f"unknown policy {spec!r}; use one of {', '.join(SIMPLE)}, blueprint:<checkpoint>, bundle:<directory> or medium:<either>")
+    raise ValueError(f"unknown policy {spec!r}; use one of {', '.join(SIMPLE)}, blueprint:<checkpoint>, bundle:<directory>, nine:<directory> or medium:<any of them>")
+
+
+def _nine(path: str) -> Policy:
+    """A nine-seat model, checkpoint or bundle, on the six-seat bundle it builds on, which a process opens once (P5.6)."""
+    from .blueprint.nine import NineSeatPolicy, load_table, six_seat_bundle
+
+    base = _bundle(str(six_seat_bundle(path))).policy()
+    return NineSeatPolicy(base.blueprint, base.tables, load_table(path))
 
 
 @dataclass(frozen=True)
@@ -305,6 +315,20 @@ def describe_policy(spec: str) -> dict[str, Any]:
             "source": "rivermind/bots/levels.py",
             "source_sha256": hashlib.sha256(levels).hexdigest(),
         }
+    if spec.startswith("nine:"):
+        from .blueprint.nine import read_manifest as read_nine
+
+        path = Path(spec.split(":", 1)[1])
+        m = read_nine(path, verify=True)
+        return {
+            "spec": "nine",
+            "model": str(path),
+            "kind": "checkpoint" if m["kind"].endswith("checkpoint") else "bundle",
+            "abstraction": m["abstraction"],
+            "iteration": m.get("iteration", m.get("checkpoint", {}).get("iteration")),
+            "files": {k: v["sha256"] for k, v in m["files"].items()},
+            "builds_on": describe_policy(f"bundle:{m['builds_on']['bundle']}"),
+        }
     if spec.startswith("blueprint:"):
         from .blueprint import read_manifest
 
@@ -352,6 +376,8 @@ def policy_seats(spec: str) -> int:
     """The table size a policy is for: a blueprint's or a bundle's abstraction says; the simple bots play any, so 2."""
     if spec.startswith("medium:"):
         return policy_seats(spec.split(":", 1)[1])
+    if spec.startswith("nine:"):
+        return 9
     if not spec.startswith(("blueprint:", "bundle:")):
         return 2
     import json
@@ -403,7 +429,7 @@ def evaluate(
     elif seats != own and not (own > 2 and 3 <= seats <= own):
         raise ValueError(f"{candidate} plays tables of {own}" + (f", or of 3 to {own}" if own > 2 else "") + f", not {seats}")
     for opponent, _ in plan:
-        if opponent.startswith(("blueprint:", "bundle:")) and policy_seats(opponent) != own:
+        if opponent.startswith(("blueprint:", "bundle:", "nine:")) and policy_seats(opponent) != own:
             raise ValueError(f"{opponent} does not play at a table of {own}")
     results = []
     for opponent, stack_bb in plan:
@@ -444,7 +470,22 @@ def evaluate(
 
 def render_markdown(report: dict[str, Any], *, name: str, command: str) -> str:
     c = report["candidate"]
-    if c["spec"] == "medium":
+    if c["spec"] == "nine" or (c["spec"] == "medium" and c["strong"]["spec"] == "nine"):
+        nine = c if c["spec"] == "nine" else c["strong"]
+        six = nine["builds_on"]
+        what = "its average strategy" if nine["kind"] == "checkpoint" else "its strategy rounded to multiples of 1/255, as the site serves it"
+        candidate = (
+            f"Candidate: the nine-seat model `{nine['model']}` ({nine['abstraction']}, {nine['kind']}, {nine['iteration']:,} deals of training):"
+            f" its early-seat table, {what}, on the six-seat serving bundle `{six['bundle']}`"
+            f" ({six['iteration']:,} iterations, `strategy.u8` `{six['files']['strategy.u8'][:8]}…`)."
+        )
+        if c["spec"] == "medium":
+            candidate = (
+                "Candidate: RiverMind Medium, which plays each hand as the model below with probability"
+                f" {c['share']:g} and as RiverMind Easy (the heuristic) otherwise, drawn once a hand (`rivermind/bots/levels.py`). "
+                + candidate.removeprefix("Candidate: ").capitalize()
+            )
+    elif c["spec"] == "medium":
         strong = c["strong"]
         model = f"the serving bundle `{strong['bundle']}`" if strong["spec"] == "bundle" else f"`{strong.get('checkpoint', strong['spec'])}`"
         candidate = (
