@@ -1,6 +1,7 @@
 import { expect, handNumber, noOverflow, playUntil, seated, withCsp as test } from './fixtures.ts';
 
-// The evaluated heads-up opponent on a deployed site (P5.7a, P5.9); see
+// The evaluated heads-up opponent on a deployed site (P5.7a, P5.9), and the
+// six-seat one beside it where the site serves one (P5.7); see
 // playwright.live.config.ts. A site that serves no champion skips this, which
 // `deploy/update.sh` warns about after a deploy.
 
@@ -15,11 +16,19 @@ test('a guest practises against RiverMind Hard, changes to RiverMind Easy and re
 	request
 }) => {
 	const config = (await (await request.get('/api/config')).json()) as {
-		bots: { kind: string; seats?: number[]; champion?: { name: string } }[];
+		bots: {
+			kind: string;
+			seats?: number[];
+			champion?: { name: string };
+			champions?: { name: string; seats?: number[] }[];
+		}[];
 	};
 	const hard = config.bots.find((b) => b.kind === 'hard');
 	test.skip(!hard, 'this site serves no champion');
-	expect(hard!.seats).toEqual([2]);
+	// Two seats are the heads-up champion's; a six-seat champion adds the sizes it plays.
+	const models = hard!.champions ?? [{ name: hard!.champion!.name, seats: [2] }];
+	expect(models[0].seats).toEqual([2]);
+	expect(hard!.seats).toEqual(models.flatMap((m) => m.seats ?? []));
 	expect(hard!.champion!.name).toMatch(/\S/);
 
 	await page.goto('/');
@@ -58,7 +67,7 @@ test('a guest practises against RiverMind Hard, changes to RiverMind Easy and re
 	// The label links to the published evaluation of the model the server said it plays.
 	await page.getByRole('group', { name: 'RiverMind Hard' }).getByRole('link').click();
 	await expect(page).toHaveURL(/\/bots$/);
-	await expect(page.getByText(hard!.champion!.name).first()).toBeVisible();
+	for (const model of models) await expect(page.getByText(model.name).first()).toBeVisible();
 	await expect(
 		page
 			.getByRole('table')
