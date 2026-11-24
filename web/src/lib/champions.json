@@ -410,16 +410,16 @@
     {
       "format": "6-max",
       "seats": 6,
-      "name": "6max-s1-s0-1000m",
+      "name": "6max-s1-s0-3600m",
       "abstraction": "6max-s1",
-      "iterations": 1000000000,
+      "iterations": 3600000000,
       "promoted": "2026-11-23",
-      "replaced": "6max-s1-s0-100m",
+      "replaced": "6max-s1-s0-1000m",
       "checkpoint": {
-        "manifest_sha256": "99c0bb54a896a54052de6d23c5573b889d7b22d2696da0be0300cc02154e6d87",
+        "manifest_sha256": "38c69109d70c2f58fa0b1563870671cf47fa172c1fdc7ac7c983b04940616d84",
         "files": {
-          "regrets.npy": "cef1e2b30598ca4651033da07c1b687142f24bd50a5fc5e6dfa2503e9a2442d9",
-          "strategy.npy": "624b6784914b870e88690e6368629d3ee0563d801bc082b3d170b1f214b36dfd"
+          "regrets.npy": "60133bee656fcb2d5d1e98487555d7a9574b77ca3825fbeccedc85fa5b6388b6",
+          "strategy.npy": "8eec4e434766dc3806b6d0dc7463620a746eb39b8aa6498440edc734b413ff7a"
         }
       },
       "bundle": {
@@ -433,7 +433,7 @@
           "river.u16": "4657aca8032b2829dcbab327cd408a4d5bca090f948813cff2606ffbddd9d4fb",
           "river_board_class.i32": "c3dada6d5a3cdb98aa10eb7a27cc910067199f475c40fb253de2453338abf48e",
           "river_board_perm.u8": "8e9eb9dc0c32f7de8f5623eaf4810b9a08c8b06d0d4ea936c5e5d570d5e6b6ae",
-          "strategy.u8": "3bb9da18604f5b707ef492ad2b3d7475254b589853e2f790e70c1412dea88aaa",
+          "strategy.u8": "32fdd163adb8ca9625d3d4524bfefefe1a8f0d540b32524867f78bb566d73154",
           "trees.json": "cdbb54512525b3b73d30fe9473c3cbf9b253e35c4ea4bfa54033f949b9c47859",
           "turn.u16": "594fae66c1fda940b528e70c75b30c63ef32f6a196bfa077640dbe7ef872f29e",
           "turn_board_class.i32": "eada7f2a31bbca64601652f278170a0e8106df76ffc8bdd55fb5a806053f875a",
@@ -443,24 +443,24 @@
       "evaluations": [
         {
           "candidate": "bundle",
-          "report": "evaluations/6max-s1-s0-1000m-served",
+          "report": "evaluations/6max-s1-s0-3600m-served",
           "deals": 20000,
           "seed": 0,
           "blinds": [
             50,
             100
           ],
-          "evaluated_at": "99c0a23fa818486d13f02e528d178e4204c984ba",
+          "evaluated_at": "e9562af106cfdf0670ab113277a69d219ee443e4",
           "results": [
             {
               "opponent": "heuristic",
               "name": null,
               "stack_bb": 100,
               "hands": 120000,
-              "bb_per_100": 18.08,
+              "bb_per_100": 20.3,
               "ci95": [
-                12.66,
-                23.51
+                15.02,
+                25.59
               ],
               "gate": true
             },
@@ -469,10 +469,10 @@
               "name": null,
               "stack_bb": 100,
               "hands": 120000,
-              "bb_per_100": 567.65,
+              "bb_per_100": 596.27,
               "ci95": [
-                510.86,
-                624.44
+                540.14,
+                652.41
               ],
               "gate": true
             },
@@ -481,10 +481,10 @@
               "name": null,
               "stack_bb": 100,
               "hands": 120000,
-              "bb_per_100": 558.02,
+              "bb_per_100": 514.65,
               "ci95": [
-                522.11,
-                593.93
+                479.88,
+                549.41
               ],
               "gate": false
             },
@@ -493,10 +493,10 @@
               "name": null,
               "stack_bb": 100,
               "hands": 120000,
-              "bb_per_100": 355.06,
+              "bb_per_100": 353.99,
               "ci95": [
-                305.7,
-                404.42
+                306.63,
+                401.34
               ],
               "gate": false
             },
@@ -505,10 +505,10 @@
               "name": null,
               "stack_bb": 40,
               "hands": 120000,
-              "bb_per_100": 14.27,
+              "bb_per_100": 14.6,
               "ci95": [
-                11.16,
-                17.38
+                11.54,
+                17.67
               ],
               "gate": false
             },
@@ -517,10 +517,10 @@
               "name": null,
               "stack_bb": 150,
               "hands": 120000,
-              "bb_per_100": 25.34,
+              "bb_per_100": 27.6,
               "ci95": [
-                18.04,
-                32.65
+                20.6,
+                34.59
               ],
               "gate": false
             },
@@ -529,10 +529,10 @@
               "name": null,
               "stack_bb": 40,
               "hands": 120000,
-              "bb_per_100": 225.31,
+              "bb_per_100": 240.55,
               "ci95": [
-                201.76,
-                248.86
+                217.22,
+                263.89
               ],
               "gate": false
             },
@@ -541,22 +541,22 @@
               "name": null,
               "stack_bb": 150,
               "hands": 120000,
-              "bb_per_100": 847.94,
+              "bb_per_100": 891.23,
               "ci95": [
-                762.59,
-                933.29
+                806.89,
+                975.57
               ],
               "gate": false
             },
             {
               "opponent": "champion",
-              "name": "6max-s1-s0-100m",
+              "name": "6max-s1-s0-1000m",
               "stack_bb": 100,
               "hands": 120000,
-              "bb_per_100": 16.37,
+              "bb_per_100": 7.35,
               "ci95": [
-                8.78,
-                23.96
+                2.34,
+                12.37
               ],
               "gate": true
             }
@@ -564,24 +564,24 @@
         },
         {
           "candidate": "checkpoint",
-          "report": "evaluations/6max-s1-s0-1000m",
+          "report": "evaluations/6max-s1-s0-3600m",
           "deals": 20000,
           "seed": 0,
           "blinds": [
             50,
             100
           ],
-          "evaluated_at": "99c0a23fa818486d13f02e528d178e4204c984ba",
+          "evaluated_at": "e9562af106cfdf0670ab113277a69d219ee443e4",
           "results": [
             {
               "opponent": "heuristic",
               "name": null,
               "stack_bb": 100,
               "hands": 120000,
-              "bb_per_100": 17.86,
+              "bb_per_100": 20.21,
               "ci95": [
-                12.43,
-                23.3
+                14.92,
+                25.5
               ],
               "gate": true
             },
@@ -590,10 +590,10 @@
               "name": null,
               "stack_bb": 100,
               "hands": 120000,
-              "bb_per_100": 567.54,
+              "bb_per_100": 594.45,
               "ci95": [
-                510.73,
-                624.34
+                538.32,
+                650.57
               ],
               "gate": true
             },
@@ -602,10 +602,10 @@
               "name": null,
               "stack_bb": 100,
               "hands": 120000,
-              "bb_per_100": 558.7,
+              "bb_per_100": 517.09,
               "ci95": [
-                522.79,
-                594.61
+                482.3,
+                551.88
               ],
               "gate": false
             },
@@ -614,10 +614,10 @@
               "name": null,
               "stack_bb": 100,
               "hands": 120000,
-              "bb_per_100": 357.37,
+              "bb_per_100": 354.74,
               "ci95": [
-                307.99,
-                406.75
+                307.37,
+                402.1
               ],
               "gate": false
             },
@@ -626,10 +626,10 @@
               "name": null,
               "stack_bb": 40,
               "hands": 120000,
-              "bb_per_100": 13.86,
+              "bb_per_100": 14.69,
               "ci95": [
-                10.74,
-                16.98
+                11.62,
+                17.75
               ],
               "gate": false
             },
@@ -638,10 +638,10 @@
               "name": null,
               "stack_bb": 150,
               "hands": 120000,
-              "bb_per_100": 25.05,
+              "bb_per_100": 27.57,
               "ci95": [
-                17.74,
-                32.35
+                20.57,
+                34.57
               ],
               "gate": false
             },
@@ -650,10 +650,10 @@
               "name": null,
               "stack_bb": 40,
               "hands": 120000,
-              "bb_per_100": 225.84,
+              "bb_per_100": 241.54,
               "ci95": [
-                202.29,
-                249.4
+                218.2,
+                264.88
               ],
               "gate": false
             },
@@ -662,22 +662,22 @@
               "name": null,
               "stack_bb": 150,
               "hands": 120000,
-              "bb_per_100": 847.91,
+              "bb_per_100": 888.49,
               "ci95": [
-                762.54,
-                933.28
+                804.17,
+                972.81
               ],
               "gate": false
             },
             {
               "opponent": "champion",
-              "name": "6max-s1-s0-100m",
+              "name": "6max-s1-s0-1000m",
               "stack_bb": 100,
               "hands": 120000,
-              "bb_per_100": 16.79,
+              "bb_per_100": 7.29,
               "ci95": [
-                9.21,
-                24.38
+                2.27,
+                12.3
               ],
               "gate": true
             }
