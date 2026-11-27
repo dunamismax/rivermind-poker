@@ -174,7 +174,9 @@ rivermind/server/                the Python table model (table.py, snapshot.py),
 ios/                             the iPhone app (Phase 5D, docs/ios.md): RiverMind.xcodeproj with
                                  folder-synchronized groups; RiverMind/ (the screens, SwiftUI),
                                  RiverMindUITests/ (XCUITest), RiverMindKit/ (a Swift package with
-                                 everything that is not a screen, and its Swift Testing tests),
+                                 everything that is not a screen, and its Swift Testing tests;
+                                 Sources/RiverMindKit/Protocol/ holds the generated protocol types
+                                 and Fixtures/ what the TypeScript writes for the tests),
                                  Config/Debug-Info.plist, and test.sh, the app's checks
 poker_ai/                        short-deck prototype, terminal client, legacy serve (until P7.6)
 test/                            engine/, server/ (table model and parity fixture), unit/, functional/, fixtures/
@@ -293,6 +295,7 @@ ios/test.sh app        # xcodebuild test alone, in the simulator "RiverMind Test
 | Apply migrations (what production will run) | `pnpm db:migrate` |
 | Render the pixel art | `pnpm art`, or `pnpm art --preview <dir outside the repo>` for contact sheets |
 | Regenerate the short-deck `protocol.ts` | `pnpm protocol` |
+| Write the iPhone app's protocol types, and the fixture its tests read (P5D.2) | `pnpm protocol:swift`, `pnpm ios:fixtures` |
 | Review reports and collusion signals, give a player a new handle, or list and lift speaking suspensions | `DATABASE_URL=… pnpm moderation reports`, `signals`, `rename PLAYER_ID`, `suspensions` or `lift PLAYER_ID`; `build/moderation.js` in a release |
 | Rewrite the table parity fixture (from the root) | `uv run --locked python -m test.server.table_differential --fixture` |
 | Check the TypeScript table against the Python one | `pnpm table:parity`, or `-- --sequences 400 --ops 300` for the long run |
@@ -459,13 +462,14 @@ The site’s art is pixel art drawn as text: the palette, sprites and font are i
 [docs/ios.md](docs/ios.md) is the design (Phase 5D, D-19).
 
 - **One server, one game.** The app speaks protocol v2 on `/ws`, the HTTP API and voice signalling v1 on `/voice`, as a page does, and decides nothing about cards, turns or chips (D-2). Every settled decision holds in it: no purchase and no ads (D-1), bots labelled with their evaluations (D-7), guests (D-12), voice end-to-end encrypted with no unencrypted path (D-15), no free text (Q-4), no third-party SDK (Q-6).
-- **A newer server must never break an older build.** Decode every server message so that unknown fields are ignored and an unknown kind or code decodes as itself (`Reaction` in `Config.swift`), never as a closed `enum` that fails.
+- **A newer server must never break an older build.** Decode every server message so that unknown fields are ignored and an unknown kind or code decodes as itself (every string union in `ProtocolV2.swift` is an open type with `known` and `isKnown`, and `ServerMessage` and `VoiceNotice` have an `unknown` case), never as a closed `enum` that fails.
+- **The protocol types are generated.** `ios/RiverMindKit/Sources/RiverMindKit/Protocol/ProtocolV2.swift` and `VoiceSignalling.swift` are written by `pnpm protocol:swift` (`web/scripts/protocol-swift.ts`) from `protocol-v2.ts` and `signalling.ts`; never edit them, and run it after changing either source (Vitest fails while they are stale). A new `number` field is an `Int` unless the generator's `FRACTIONAL` lists it. An optional field that may be null (`x?: T | null`) is written as null only when its struct's `nulls` names it: the server reads a missing `bots` as the default bot and a null one as no bots. `ios/RiverMindKit/Fixtures/protocol.json` is every message and body of the two recorded sessions, written by `pnpm ios:fixtures` (Vitest fails while it is stale), and the Swift tests decode each and encode it back to the same JSON.
 - **Logic in the package.** Anything a test needs goes in `RiverMindKit`; the app target holds SwiftUI views. The package must build with Swift 6.2 (CI's Xcode 26.6) as well as this Mac's: its `swift-tools-version` stays 6.2 until CI's Xcode moves.
 - **Warnings fail.** Both targets and `ios/test.sh` treat warnings as errors; the script also fails on a `@preconcurrency` warning the compiler will not promote. Mark an `XCTestCase` `@MainActor`.
 - **Files, not project churn.** The app's folders are synchronized groups: add a file to the folder, never to `project.pbxproj`. A new target or build setting is an edit Xcode makes; keep the project free of absolute paths and of a development team until Q-13.
 - **Which server.** A release build talks to the live site alone. Only a debug build reads `RIVERMIND_SERVER` and allows plain HTTP to a local address (`Config/Debug-Info.plist`); never add that exception to a release build.
-- **Ported code is held to its source.** What the app computes only to show (hand names, bet sizes, replay steps, wording) is ported from the page with fixtures the TypeScript writes, and a change to either side lands in both in the same commit, as the engines do. Until P5D.2 generates them, the hand-written `Config.swift` types follow `protocol-v2.ts` by hand.
-- **The session lives in the Keychain**, not a cookie store: `APIClient`'s URL session keeps no cookies, and the client sends and stores `rm_session` itself (from P5D.2).
+- **Ported code is held to its source.** What the app computes only to show (hand names, bet sizes, replay steps, wording) is ported from the page with fixtures the TypeScript writes, and a change to either side lands in both in the same commit, as the engines do.
+- **The session lives in the Keychain**, not a cookie store: `APIClient`'s URL session keeps no cookies, and the client sends and stores `rm_session` itself (`KeychainSessionStore`). A 401 makes the guest again once with `POST /api/session`, as a page's reload does; a 429 is reported (`APIError.limited`) and never retried.
 - **XCUITest reads a row as one element.** SwiftUI folds a `LabeledContent`'s label and value into one label (`RiverMind Easy, 2 to 9 seats`): find a row by its accessibility identifier and compare its label. A test run that hangs after “Restarting after unexpected exit” is stuck in xcodebuild's retry: stop it and read the log.
 
 ### Legacy code

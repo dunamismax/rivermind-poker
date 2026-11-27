@@ -89,6 +89,8 @@ export interface ContractOptions {
 	 * each time). `digests` are of every message that socket got in the step.
 	 */
 	differs?: (step: number, socket: string, digests: string[], messages: Message[]) => void;
+	/** Given every message a socket got in a step, for fixtures written from the session (P5D.2). */
+	seen?: (step: number, socket: string, messages: Message[]) => void;
 }
 
 /** The session's server: its clocks, decks, ids and players fixed as the recording's were. */
@@ -112,11 +114,13 @@ export class Replay {
 	private readonly sockets = new Map<string, Socket>();
 	private readonly ignore: (path: string, body: string) => string;
 	private readonly differs: ContractOptions['differs'];
+	private readonly seen: ContractOptions['seen'];
 
 	constructor(server: TestServer, options: ContractOptions = {}) {
 		this.server = server;
 		this.ignore = options.ignore ?? ((_path, body) => body);
 		this.differs = options.differs;
+		this.seen = options.seen;
 	}
 
 	private sorted(): [string, Socket][] {
@@ -195,6 +199,7 @@ export class Replay {
 		}
 		await server.settle();
 		this.collect(got, kept);
+		for (const [name, messages] of Object.entries(kept)) this.seen?.(index, name, messages);
 
 		const want = step.result;
 		const where = `step ${index} (${step.do} ${step.path ?? step.text ?? step.table ?? step.socket ?? ''})`;

@@ -3,7 +3,7 @@ import SwiftUI
 
 @main
 struct RiverMindApp: App {
-    @State private var lobby = LobbyModel(client: APIClient(server: RiverMindApp.server))
+    @State private var lobby = LobbyModel(client: .app(server: RiverMindApp.server))
 
     var body: some Scene {
         WindowGroup {

@@ -29,6 +29,23 @@ final class LobbyUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["lobby.server"].label, "127.0.0.1")
     }
 
+    /// The session is kept in the Keychain (P5D.2): the app is the same guest after a relaunch.
+    func testTheGuestSurvivesARelaunch() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["RIVERMIND_SERVER"] = try server()
+        app.launch()
+        let guest = app.staticTexts["lobby.guest"]
+        XCTAssertTrue(guest.waitForExistence(timeout: 20))
+        let first = guest.label
+        // The guest's handle and balance, such as "Keen Marten 47, 20,000 chips".
+        XCTAssertTrue(first.hasSuffix(" chips") && first.count > ", 0 chips".count, first)
+
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.staticTexts["lobby.guest"].waitForExistence(timeout: 20))
+        XCTAssertEqual(app.staticTexts["lobby.guest"].label, first)
+    }
+
     func testTheLobbySaysWhenNoServerAnswers() throws {
         _ = try server()
         let app = XCUIApplication()

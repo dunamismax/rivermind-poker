@@ -484,6 +484,14 @@ PORT=4380 ORIGIN=http://127.0.0.1:4380 RIVERMIND_API=1 pnpm start
 
 Add a Swift file by putting it in its folder: the app's folders are synchronized groups, so the project file does not change.
 
+The app's protocol types are generated from the TypeScript (P5D.2). After changing `web/src/lib/protocol-v2.ts` or `web/src/lib/voice/signalling.ts`, write them again, and after a change to what the server sends in the recorded sessions, write the fixture the Swift tests read; Vitest fails while either is stale.
+
+```sh
+cd web
+pnpm protocol:swift
+pnpm ios:fixtures
+```
+
 ## Deploy rivermindpoker.com
 
 The site runs on the owner’s ubuntu-vm under the host's web platform contract (`/home/sawyer/github/ubuntu-vm-backup/docs/web-platform.md`). Caddy terminates HTTPS and proxies everything to `rivermind-poker-web.service`, the Node server running the current release from `/srv/rivermindpoker.com/current` on `127.0.0.1:4320` on Node 26 (`/opt/node-26/bin/node`): pages and assets, `/api/*` and the tables' `/ws`. Its tables are saved to PostgreSQL after every change and restored at start-up, so a restart or a deploy keeps every game, hands in progress included. After pushing `main`, update the live site with the following command.

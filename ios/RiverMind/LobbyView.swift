@@ -1,8 +1,8 @@
 import RiverMindKit
 import SwiftUI
 
-/// P5D.1's placeholder lobby: what the server offers, read from `GET /api/config`.
-/// P5D.5 brings the clean look and P5D.6 the lobby itself.
+/// P5D.1's placeholder lobby: the guest this app is (`POST /api/session`, P5D.2) and what
+/// the server offers (`GET /api/config`). P5D.5 brings the clean look and P5D.6 the lobby.
 struct LobbyView: View {
     let model: LobbyModel
 
@@ -30,17 +30,26 @@ struct LobbyView: View {
                     .buttonStyle(.borderedProminent)
             }
             .accessibilityIdentifier("lobby.failed")
-        case let .ready(config):
-            offer(config)
+        case let .ready(config, guest):
+            offer(config, guest: guest)
         }
     }
 
-    private func offer(_ config: ConfigResponse) -> some View {
+    private func offer(_ config: ConfigResponse, guest: SessionResponse) -> some View {
         List {
             Section {
                 Text("No-limit Texas hold’em for play money only. Chips can never be bought, sold or cashed out.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+            }
+            Section {
+                LabeledContent(guest.name, value: "\(ConfigResponse.chips(guest.balance)) chips")
+                    .accessibilityIdentifier("lobby.guest")
+            } header: {
+                Text("You")
+            } footer: {
+                // Q-15: a guest here is not the browser's.
+                Text("A guest in this app has its own chips, apart from any browser's.")
             }
             Section("Bots") {
                 ForEach(config.bots) { bot in

@@ -1,14 +1,14 @@
 import Foundation
 import Observation
 
-/// The lobby's state: P5D.1's placeholder, which reads what the server offers.
-/// P5D.6 grows it into the lobby the site has.
+/// The lobby's state: P5D.1's placeholder, which makes or renews the guest and reads
+/// what the server offers. P5D.6 grows it into the lobby the site has.
 @MainActor
 @Observable
 public final class LobbyModel {
     public enum State: Equatable, Sendable {
         case loading
-        case ready(ConfigResponse)
+        case ready(ConfigResponse, guest: SessionResponse)
         case failed(String)
     }
 
@@ -21,11 +21,12 @@ public final class LobbyModel {
         self.server = client.server
     }
 
-    /// Reads `GET /api/config` again.
+    /// `POST /api/session`, then `GET /api/config`, as a page does on load.
     public func load() async {
         state = .loading
         do {
-            state = .ready(try await client.config())
+            let guest = try await client.startSession()
+            state = .ready(try await client.config(), guest: guest)
         } catch is CancellationError {
             return
         } catch {

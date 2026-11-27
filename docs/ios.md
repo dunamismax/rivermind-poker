@@ -2,7 +2,7 @@
 
 RiverMind Poker as a native iPhone app (D-19, Phase 5D in [BUILD.md](../BUILD.md#phase-5d--native-ios-app)). It is one more client of the same server: people in the app and in any browser share tables, invites and end-to-end encrypted table voice. This file is the design (P5D.1), kept as the app is built. CONTRIBUTING.md says how to build and test it, and AGENTS.md holds its conventions.
 
-**Where it stands** (2026-11-27): the skeleton. The app builds, launches in the iOS Simulator and shows a placeholder lobby read from `GET /api/config`. Nothing else is built yet.
+**Where it stands** (2026-11-27): the skeleton (P5D.1) and the protocol (P5D.2). The app builds, launches in the iOS Simulator, makes or renews its guest with `POST /api/session`, keeps the session in the Keychain, and shows a placeholder lobby with the guest and what `GET /api/config` offers. RiverMindKit has every protocol v2 and voice signalling type, generated from the TypeScript, and an API client for every route below. The table connection is next (P5D.3).
 
 ## What the app is made of
 
@@ -50,11 +50,11 @@ The app speaks exactly what a page speaks. Nothing on the server is for the app 
 | `POST /api/session` | make or renew the guest, and its `rm_session` cookie | P5D.2 |
 | `GET /api/wallet` | the play-chip balance and top-up rules | P5D.6 |
 | `GET /api/tables`, `POST /api/tables` | the open tables, and a new one | P5D.6 |
-| `POST /api/tables/{id}/seat`, `/waitlist` | sitting down and waiting | P5D.6 |
+| `POST`, `DELETE /api/tables/{id}/seat`, `/waitlist` | sitting down and waiting, and giving either up | P5D.6 |
 | `POST /api/quick-seat`, `POST /api/practice` | quick seat and one-click practice | P5D.6 |
 | `GET /api/invites/{code}` | a private table's invite | P5D.6, P5D.8 |
 | `GET /api/hands`, `GET /api/hands/{id}` | “Your hands” and the replayer | P5D.8 |
-| `GET /api/relations`, `DELETE /api/relations/{ref}`, `POST /api/reports` | mutes, blocks and reports | P5D.7 |
+| `GET`, `PUT /api/relations`, `DELETE /api/relations/{ref}`, `POST /api/reports` | mutes, blocks and reports | P5D.7 |
 | `GET /api/voice`, `POST /api/tables/{id}/voice` | whether voice is offered, and a voice token | P5D.10 |
 
 Requests stay within the API's and Caddy's rate limits; P5D.2 checks each route the app uses against them.
@@ -62,6 +62,16 @@ Requests stay within the API's and Caddy's rate limits; P5D.2 checks each route 
 **Protocol v2 on `/ws`**, a WebSocket that the session cookie authenticates at the handshake. The app sends `hello`, `join_table`, `leave_table`, `sit`, `sit_out`, `sit_in`, `rebuy`, `act`, `refresh` and `react`, and reads `welcome`, `table` (a view and its events), `left_table`, `table_closed`, `reaction` and `error`. `web/src/lib/protocol-v2.ts` is the source; P5D.2 generates the Swift types from it.
 
 **Voice signalling v1 on `/voice`**, a second WebSocket, which a 60-second voice token from the API admits (D-15, [docs/voice.md](voice.md)): `hello`, `group.create`, `group.commit`, the transport, producer and consumer requests, `status`, the notices, and the close codes in `CLOSE`. `web/src/lib/voice/signalling.ts` is the source.
+
+**The types are generated** (P5D.2). `pnpm protocol:swift` (`web/scripts/protocol-swift.ts`) reads `protocol-v2.ts` and `signalling.ts` with TypeScript's parser and writes `ProtocolV2.swift` and `VoiceSignalling.swift` into RiverMindKit's `Protocol/`:
+
+- An interface or object type becomes a struct with explicit coding: a required `x: T | null` is written as null, and an optional `x?: T` is left out when nil. An optional field that may also be null (`x?: T | null`) is left out unless the struct's `nulls` names it; decoding fills `nulls` with the fields that came as null, so every message encodes back to what came. The server tells the two apart: a new table's missing `bots` means the default bot, a null one no bots.
+- A union of strings becomes an open type: its known values are static members, `known` lists them, and any other value decodes as itself.
+- A union of messages tagged by `type` or `notice` becomes an enum; `ServerMessage` and `VoiceNotice`, which the app reads, have an `unknown` case that keeps the message whole.
+- A required literal (`type: 'act'`, `protocol: 2`) is a constant, written and not stored. A number is an `Int` unless the generator lists it as fractional (times, durations and rates). mediasoup's parameters are `JSONValue`, handed on as they came.
+- Voice requests conform to `VoiceRequest`, which names their response; `VoiceEnvelope` adds the `id` and `type`, and `VoiceAnswer` gives the response of the request it answers, or a `VoiceRefusal`. These envelopes are written by hand, since an answer's shape depends on its request.
+
+`ios/RiverMindKit/Fixtures/protocol.json`, written by `pnpm ios:fixtures`, holds every socket message and HTTP body of the two sessions recorded from the retired `serve-nl` (the table session's messages come from replaying it, checked against the recording's digests). The Swift tests decode each as its type and encode it back to the same JSON, compared parsed. Vitest fails while the Swift or the fixture is stale.
 
 **Reading a newer server.** An app build stays on phones for weeks, so it must read what a newer server sends: unknown fields are ignored, and an unknown event kind, error code, reaction or bot kind decodes as itself and is shown generically (`Reaction` in `Config.swift` is the pattern). P5D.11 adds the oldest supported build to `GET /api/config`.
 
@@ -71,7 +81,8 @@ The site's guest is a signed `rm_session` cookie (`HttpOnly`, `SameSite=Lax`, 18
 
 - `APIClient` uses an ephemeral `URLSession` that stores no cookies, and handles `rm_session` itself: it sends `Cookie: rm_session=…` with each request and on the `/ws` handshake, and stores the value of every `Set-Cookie: rm_session=…` it is given, which is how a renewal arrives.
 - The item is a generic password for the service `com.rivermindpoker.app` and the server's origin as its account, so a debug build's local guests never mix with the live one. It is `kSecAttrAccessibleAfterFirstUnlock`, so a table and voice in the background (Q-16) can reconnect with the screen locked, and not synchronizable, so it stays on this phone.
-- It survives a relaunch and an update. Keychain items have also survived deleting and reinstalling an app, which keeps the guest's chips; that is iOS's behaviour, not a promise, and P5D.2 records what the Simulator does.
+- It survives a relaunch and an update (a UI test relaunches the app and finds the same guest). Keychain items have also survived deleting and reinstalling an app, which keeps the guest's chips; that is iOS's behaviour, not a promise. In the iOS 27.2 Simulator on 2026-11-27 it did: after `simctl uninstall` and `install`, the app was the same guest with the same chips.
+- A 401 means the session ended (it expired, or the server's secret changed): the client makes the guest again with `POST /api/session` and asks once more, as a page's reload does. A 429 is reported with its `Retry-After` and never retried. The client asks once for each thing a person does, as a page does, so it stays within the API's limit (a burst of 60 requests, then 2 a second, per guest) and Caddy's (30 new guests, tables and practice tables, and 60 seatings, a minute per address); a test walks every route against a local server in under 30 requests.
 - The app's guest is not the browser's (Q-15): the app says so where a player would look for their chips. Deleting the guest and their data, from the app and the site, is P5D.11.
 
 ## Ported with parity, or drawn natively
