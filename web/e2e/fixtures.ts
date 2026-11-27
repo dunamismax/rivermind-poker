@@ -1,8 +1,11 @@
 import { test as base, expect, type Browser, type Page } from '@playwright/test';
+import { newContext, withLook } from './look.ts';
 import { TableServer } from './server.ts';
 
 /** Records Content-Security-Policy violations; tests assert there are none. */
 export const withCsp = base.extend<{ cspViolations: string[] }>({
+	// Every test's own context is in the look the run asked for (E2E_LOOK, Phase 5C).
+	context: async ({ context }, use) => use(await withLook(context)),
 	cspViolations: async ({ page }, use) => {
 		const violations: string[] = [];
 		await page.exposeFunction('__reportCsp', (text: string) => violations.push(text));
@@ -128,7 +131,7 @@ export async function noOverflow(page: Page): Promise<void> {
 
 /** Another person: a new browser context, so a new player. */
 export async function stranger(browser: Browser): Promise<Page> {
-	const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+	const context = await newContext(browser, { viewport: { width: 1280, height: 800 } });
 	return context.newPage();
 }
 

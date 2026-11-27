@@ -16,6 +16,7 @@ import {
 	type TestInfo
 } from '@playwright/test';
 import { launch } from '../voice/check/browsers.ts';
+import { newContext } from './look.ts';
 
 export type Engine = 'chromium' | 'firefox' | 'webkit';
 export type Person = { page: Page; violations: string[]; close: () => Promise<void> };
@@ -47,7 +48,7 @@ export async function person(
 		hasTouch: size?.touch ?? use.hasTouch ?? false,
 		...(mic && engine !== 'firefox' ? { permissions: ['microphone'] } : {})
 	};
-	const page = await (await own.newContext(context)).newPage();
+	const page = await (await newContext(own, context)).newPage();
 	const violations: string[] = [];
 	await page.exposeFunction('__reportCsp', (text: string) => violations.push(text));
 	await page.addInitScript(() => {

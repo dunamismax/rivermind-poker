@@ -12,6 +12,7 @@
 import { expect, test as base } from '@playwright/test';
 import { canCapture, canTransform } from '../voice/check/browsers.ts';
 import { nameOf, seated, sitDown, tableIdOf } from './fixtures.ts';
+import { newContext, withLook } from './look.ts';
 import { TableServer } from './server.ts';
 import { ghostTable, takeSeat, watch, type GhostTable } from './stranger.ts';
 import {
@@ -28,6 +29,7 @@ import {
 } from './voice.ts';
 
 const test = base.extend<object, { voiceServer: TableServer }>({
+	context: async ({ context }, use) => use(await withLook(context)),
 	voiceServer: [
 		// eslint-disable-next-line no-empty-pattern
 		async ({}, use, workerInfo) => {
@@ -370,7 +372,7 @@ test.describe('table voice', () => {
 		await expect(page.getByText('Looking for tables…')).toHaveCount(0);
 		await page.getByRole('button', { name: 'Practice vs bots' }).click();
 		await expect(seated(page)).toBeVisible();
-		const other = await (await browser.newContext()).newPage();
+		const other = await (await newContext(browser)).newPage();
 		await sitDown(other, 3);
 		await page.waitForTimeout(1500);
 		for (const one of [page, other]) {

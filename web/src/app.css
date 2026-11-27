@@ -207,9 +207,7 @@
 	}
 
 	body {
-		background: var(--color-night) url('./lib/art/ui/wallpaper.png') repeat;
-		background-size: calc(32 * var(--px)) calc(32 * var(--px));
-		image-rendering: pixelated;
+		background: var(--color-night);
 		color: var(--color-paper);
 		font-family: var(--font-pixel);
 		font-size: var(--text-m);
@@ -217,10 +215,19 @@
 		min-height: 100vh;
 		min-height: 100dvh;
 		padding-bottom: env(safe-area-inset-bottom);
-		-webkit-font-smoothing: none;
-		-moz-osx-font-smoothing: unset;
 		font-synthesis: none;
 		font-variant-numeric: tabular-nums;
+	}
+
+	/* The pixel look (Phase 5C): the wallpaper, and every pixel left hard-edged.
+	   `:where` adds no specificity, so this cascades as it did before there were two looks. */
+	:where([data-look='pixel']) body {
+		background-image: url('./lib/art/ui/wallpaper.png');
+		background-repeat: repeat;
+		background-size: calc(32 * var(--px)) calc(32 * var(--px));
+		image-rendering: pixelated;
+		-webkit-font-smoothing: none;
+		-moz-osx-font-smoothing: unset;
 	}
 
 	h1,
@@ -230,8 +237,8 @@
 	}
 
 	/* The pixel font has one weight. */
-	b,
-	strong {
+	:where([data-look='pixel']) b,
+	:where([data-look='pixel']) strong {
 		font-weight: inherit;
 	}
 

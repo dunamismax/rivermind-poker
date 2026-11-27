@@ -58,13 +58,17 @@
 		max-width: none;
 		width: calc(71 * var(--card-a));
 		height: calc(95 * var(--card-a));
-		image-rendering: pixelated;
-		filter: drop-shadow(0 calc(2 * var(--card-a)) 0 rgb(0 0 0 / 0.4));
-		animation: deal 0.24s steps(4, end);
 		user-select: none;
 		-webkit-user-select: none;
 	}
-	.slot {
+	/* The pixel look's deck (Phase 5C): hard edges, a hard shadow and a stepped deal.
+	   The size above is shared, so a card takes the same room in either look. */
+	:global(:where([data-look='pixel'])) .card {
+		image-rendering: pixelated;
+		filter: drop-shadow(0 calc(2 * var(--card-a)) 0 rgb(0 0 0 / 0.4));
+		animation: deal 0.24s steps(4, end);
+	}
+	:global(:where([data-look='pixel'])) .slot {
 		filter: none;
 		animation: none;
 	}

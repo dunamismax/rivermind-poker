@@ -25,10 +25,19 @@ import {
 	type Page
 } from '@playwright/test';
 import { newTableForm, playUntil, sitDown } from '../fixtures.ts';
+import { LOOK, withLook } from '../look.ts';
+import { isLook } from '../../src/lib/look.ts';
 import { FIXED_TIME, HANDLES } from './fixed.ts';
 
 const WEB = resolve(import.meta.dirname, '..', '..');
 const OUT = resolve(WEB, process.env.VISUAL_OUT ?? '../artifacts/visual/current');
+/** The look the scenes are captured in (Phase 5C): VISUAL_LOOK, else E2E_LOOK, else the site's default. */
+const VISUAL_LOOK = (() => {
+	const value = process.env.VISUAL_LOOK;
+	if (!value) return LOOK;
+	if (!isLook(value)) throw new Error(`VISUAL_LOOK is ${value}, not a look`);
+	return value;
+})();
 /** Each worker takes twenty ports from here, one for each size and density. */
 const FIRST_PORT = Number(process.env.VISUAL_PORT ?? 8950);
 
@@ -108,7 +117,7 @@ async function visitor(
 	// Date.now() stands still at the server's time while timers keep running, so a turn's
 	// clock shows the same time left in every capture.
 	await context.clock.setFixedTime(new Date(FIXED_TIME * 1000));
-	return context;
+	return withLook(context, VISUAL_LOOK);
 }
 
 /** Save a full-page screenshot once two captures in a row are identical. */

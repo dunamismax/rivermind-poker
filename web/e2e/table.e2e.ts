@@ -8,6 +8,7 @@ import {
 	sitDown,
 	test
 } from './fixtures.ts';
+import { newContext } from './look.ts';
 
 // The no-limit table (P3.6) against the Node table server, at 2, 6 and 9 seats.
 
@@ -174,7 +175,7 @@ test('keeps the player in an HttpOnly session cookie', async ({ page, context, b
 	await expect(page.getByRole('group', { name: /^Your seat/ })).toContainText(name ?? '');
 	await page.reload();
 	await expect(me).toHaveText(name ?? '');
-	const other = await browser.newContext();
+	const other = await newContext(browser);
 	const stranger = await other.newPage();
 	await stranger.goto(page.url());
 	await expect(stranger.locator('header .me')).toHaveText(/^[A-Z][a-z]+ [A-Z][a-z]+ \d{1,2}$/);
