@@ -1,5 +1,6 @@
-// Writes the site's art: the pixel art (see scripts/pixel-art/render.js) and
-// the clean look's deck (scripts/clean-art/deck.js, P5C.3), and removes any card
+// Writes the site's art: the pixel art (see scripts/pixel-art/render.js), the
+// clean look's deck and sprites (scripts/clean-art/, P5C.3 and P5C.4) and the
+// site's icons (scripts/clean-art/icons.js, P5C.7), and removes any card
 // image it no longer makes. With --preview DIR it also writes contact sheets
 // there for review: every card, every interface sprite and a font specimen, at
 // 1x and 4x (the cards also at 2x), and the clean deck as a page (clean.html)
@@ -7,6 +8,7 @@
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { renderDeck } from './clean-art/deck.js';
+import { renderIcons } from './clean-art/icons.js';
 import { renderUi } from './clean-art/ui.js';
 import { Canvas, PALETTE } from './pixel-art/canvas.js';
 import { BACKS, CARD_H, CARD_W, RANKS, SUITS, slot } from './pixel-art/cards.js';
@@ -16,7 +18,14 @@ import { loadFont, renderAll, renderImages } from './pixel-art/render.js';
 const WEB = resolve(import.meta.dirname, '..');
 const deck = renderDeck();
 const cleanUi = renderUi();
-const files = new Map([...renderAll(), ...deck, ...cleanUi]);
+const icons = renderIcons();
+const files = new Map([
+	...renderAll(),
+	...deck,
+	...cleanUi,
+	...icons.svgs,
+	...[...icons.images].map(([path, image]) => [path, encodePng(image)])
+]);
 for (const [path, bytes] of files) {
 	const target = resolve(WEB, path);
 	mkdirSync(dirname(target), { recursive: true });

@@ -1,5 +1,6 @@
 // Renders every piece of the site's pixel art from the sources in web/art/:
-// the cards, interface sprites, the font, the Tailwind theme and the icons.
+// the cards, interface sprites, the font and the Tailwind theme. The site's
+// icons are the clean look's since P5C.7 (scripts/clean-art/icons.js).
 // scripts/generate-pixel-art.js writes the result; src/lib/art/art.spec.ts
 // fails when a committed file no longer matches.
 import { readFileSync } from 'node:fs';
@@ -7,7 +8,7 @@ import { ART, PALETTE } from './canvas.js';
 import { renderDeck, slot } from './cards.js';
 import { PixelFont } from './font.js';
 import { encodePng } from './png.js';
-import { renderIcons, renderUi } from './ui.js';
+import { renderUi } from './ui.js';
 import { fromSfnt } from './woff.js';
 
 /**
@@ -18,7 +19,6 @@ export function renderImages() {
 	const out = new Map();
 	out.set('src/lib/art/cards/slot.png', slot());
 	for (const [path, canvas] of renderUi()) out.set(`src/lib/art/${path}`, canvas);
-	for (const [path, canvas] of renderIcons()) out.set(`static/${path}`, canvas);
 	return out;
 }
 

@@ -162,6 +162,10 @@ export async function watch(
 			.map((text) => text.replace(/\s+/g, ' ').trim())
 			.join(' | ');
 		const panel = await card(page).isVisible();
+		// Each read is its own round trip, so the group can change between them: under load
+		// the ghost's removal once landed after `warned` was read and before `live` was. A
+		// moment counts only when the warning reads the same after the others.
+		if ((await strangerWarning(page).isVisible()) !== warned) continue;
 		const moment = {
 			ms: Date.now() - since,
 			warned,

@@ -352,18 +352,3 @@ export function renderUi() {
 	out.set('ui/wallpaper.png', wallpaper());
 	return out;
 }
-
-/** The favicon (the emblem at 2x on 36 × 36) and a 180 × 180 home-screen icon. */
-export function renderIcons() {
-	const emblem = paint(sprite('emblem'));
-	const icon = new Canvas(36, 36);
-	icon.stamp(emblem.scale(2), 3, 1);
-	const touch = new Canvas(180, 180);
-	touch.rect(0, 0, 180, 180, 'night');
-	const big = emblem.scale(9);
-	touch.stamp(big, (180 - big.width) >> 1, (180 - big.height) >> 1);
-	return new Map([
-		['favicon.png', icon],
-		['apple-touch-icon.png', touch]
-	]);
-}

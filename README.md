@@ -15,13 +15,13 @@ RiverMind is also a poker AI project. Its bots are trained offline with Monte Ca
 
 ## Status
 
-**Phase 4B, the TypeScript stack migration. Pre-1.0, live and playable.**
+**Phase 5C, two looks. Pre-1.0, live and playable.**
 
-The live site has no-limit hold’em at 2 to 9 seats against labelled bots: random, calling station, RiverMind Easy, a tight-aggressive rule-based player, and RiverMind Hard, a trained heads-up bot with a [published evaluation](https://rivermindpoker.com/bots). Guests keep a play-chip wallet and find each other in a lobby with quick seat, waitlists and private tables with invite links. They can react with presets, mute, block and report, and step through any hand they played, from “Your hands” or from the table without leaving their seat. A guest at any balance can start a heads-up practice hand in one click. Tables, mid-hand included, are stored in PostgreSQL and survive restarts. The site is drawn in its own pixel-art style.
+The live site has no-limit hold’em at 2 to 9 seats against labelled bots: random, calling station, RiverMind Easy, a tight-aggressive rule-based player, and the trained RiverMind Medium and RiverMind Hard, each with a [published evaluation](https://rivermindpoker.com/bots). Hard plays a heads-up champion at two seats, a six-seat champion at three to six and a nine-seat model built on it at seven to nine. Guests keep a play-chip wallet and find each other in a lobby with quick seat, waitlists and private tables with invite links. They can react with presets, mute, block and report, and step through any hand they played, from “Your hands” or from the table without leaving their seat. A guest at any balance can start a practice hand in one click. People seated together can talk over table voice, end-to-end encrypted so that the site relays sound it cannot hear. Tables, mid-hand included, are stored in PostgreSQL and survive restarts.
 
-**Now:** the live site runs on the TypeScript stack (decision D-14 in [BUILD.md](BUILD.md#settled-decisions)): SvelteKit and Tailwind CSS 4 on Node, with the table server, the engine and the bots in the same Node service and Drizzle on PostgreSQL. The engine, the bots and the table server are checked against their Python originals byte for byte, and open tables, guests and hands carried over at the cutover. The Python table server was retired at P4B.8; deploys fix forward, each release checked as a candidate before it takes traffic. Python keeps the offline work: the reference engine, training and evaluation.
+**Now:** the site gets a second look (decision D-18 in [BUILD.md](BUILD.md#settled-decisions)): a clean, professional look drawn in CSS and SVG beside the pixel-art one, on the same pages and with the same behaviour, switched from the header at any time. The clean look is finished and becomes the default with its next deploy; a player who prefers the pixel art keeps it.
 
-**Next:** table voice (Phase 4C). The three player priorities are live and were checked together on the site: one-click practice, an evaluated heads-up opponent, and replay, in which a player steps through any hand they played, from the table or from “Your hands”, and plays on with the review open. RiverMind Hard plays the heads-up champion `hu-m1-s0-1024m`, 1.024 billion training iterations of the `hu-m1` blueprint, at two-seat tables and in practice. Over 20,000 duplicate deals each at 100 big blinds, the strategy the site serves won +58.8 big blinds per 100 hands against RiverMind Easy (95% interval +50.1 to +67.5), +224.9 against the calling station and +21.1 (+10.5 to +31.8) against the first champion, trained for an eighth as long. The server plays the model only after checking every file against [the registry](docs/models.md), which lists every run put to the promotion gate with its reports.
+**Next:** the full-featured site (Phase 6): replay sharing, friend invites, stats, leaderboards, sit-and-go tournaments, settings, accessibility, content pages and installability, each built in both looks. Then hardening and the 1.0 release (Phase 7).
 
 ## What RiverMind is
 
@@ -51,8 +51,10 @@ The live site has no-limit hold’em at 2 to 9 seats against labelled bots: rand
 | 3 | Table server v2: multi-seat tables in PostgreSQL, action clocks, the live cutover | Done |
 | 4 | Multiplayer and identity: guests, play-chip wallets, the lobby, safety controls, fair dealing | Done |
 | 4B | TypeScript stack migration: SvelteKit on Node, Tailwind CSS 4, Drizzle | Done |
+| 4C | Table voice, end-to-end encrypted with SFrame under MLS keys | Done |
 | 5A | One-click practice, an evaluated heads-up opponent, replay from the table | Done |
-| 5B | 6-max and 9-max bots, difficulty levels | |
+| 5B | 6-max and 9-max bots, difficulty levels | Done |
+| 5C | Two looks, clean and pixel, with clean the default | In progress |
 | 6 | Full-featured site: replay sharing, stats, leaderboards, sit-and-go tournaments, accessibility | |
 | 7 | Hardening and the 1.0 release: monitoring, backups, load tests, a security review | |
 
@@ -61,11 +63,12 @@ The live site has no-limit hold’em at 2 to 9 seats against labelled bots: rand
 | Layer | Target (D-14) | Live today |
 | --- | --- | --- |
 | Pages and assets | SvelteKit 3, Svelte 5 and strict TypeScript on Node through `adapter-node` | The same, since P4B.1 |
-| Styling | Tailwind CSS 4, with a theme generated from the pixel-art palette | The same, since P4B.2 |
+| Styling | Tailwind CSS 4 on a generated theme, with two looks on the same markup: clean (CSS and SVG) and pixel art | Tailwind since P4B.2; the clean look is built (Phase 5C) and becomes the default with its deploy |
 | Table server and API | TypeScript in the same Node server, with the `/ws` WebSocket on the same port | The same, since the P4B.7 cutover. The Python `serve-nl` was retired at P4B.8 |
 | Game engine | A TypeScript engine kept byte-identical to the Python reference engine by differential tests | The same, since P4B.7 |
-| Bots | Trained and evaluated offline in Python, exported as serving bundles that Node reads | The TypeScript ports of the three rule-based bots, since P4B.7; no trained bot is on the site yet |
+| Bots | Trained and evaluated offline in Python, exported as serving bundles that Node reads | The same: the rule-based bots since P4B.7, the heads-up champion since P5.7a, six seats and nine seats since Phase 5B |
 | Database | PostgreSQL 18 with Drizzle ORM migrations | The same, since P4B.7. Alembic was retired at P4B.8 |
+| Table voice | SFrame (RFC 9605) under MLS (RFC 9420) keys, relayed by a mediasoup service that cannot decrypt it | The same, since P4C.9 |
 | Hosting | The owner’s server, with Caddy for HTTPS and systemd services | The same |
 
 Hands follow the written [no-limit rules](docs/rules.md). The engines are pure: states are immutable and randomness comes only from the caller, so every hand can be replayed exactly. The bot design, card abstraction, training and evaluation method are in [docs/bots.md](docs/bots.md), and the art rules in [docs/design.md](docs/design.md).

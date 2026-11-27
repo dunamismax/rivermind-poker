@@ -22,9 +22,9 @@ jobs:
   # server serving the tables itself, as the live site does.
   web:
     runs-on: ubuntu-latest
-    # A run takes about 15 minutes, but Playwright's system packages come from
-    # Ubuntu's mirror, which has taken half an hour on a slow day.
-    timeout-minutes: 50
+    # A run takes about 20 minutes with Playwright in both looks, but Playwright's
+    # system packages come from Ubuntu's mirror, which has taken half an hour on a slow day.
+    timeout-minutes: 60
     # PostgreSQL for the Vitest database tests (*.db.spec.ts), which fail
     # rather than skip in CI. The parity checks run the Python references, so
     # the job needs uv as well.
@@ -77,9 +77,16 @@ jobs:
       - run: pnpm table:parity
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium firefox webkit
+      # Both looks (Phase 5C, D-18): the default, clean, then pixel, each with its
+      # own traces and report.
       - run: pnpm e2e
         env:
           E2E_SKIP_BUILD: '1'
+      - run: pnpm e2e
+        if: success() || failure()
+        env:
+          E2E_SKIP_BUILD: '1'
+          E2E_LOOK: pixel
       # Table voice (Phase 4C): RFC 9605's test vectors on each engine's own
       # WebCrypto, and a WebRTC call whose frames are sealed and opened in the
       # encoded-transform worker, built as the client is and under the site's CSP.
@@ -90,6 +97,8 @@ jobs:
           name: playwright-report
           path: |
             web/playwright-report/
+            web/playwright-report-pixel/
             web/test-results/
+            web/test-results-pixel/
             web/test-results-voice-check/
           retention-days: 7

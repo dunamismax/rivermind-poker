@@ -30,8 +30,8 @@ describe('the look', () => {
 	it('has two looks and a default among them', () => {
 		expect(LOOKS).toEqual(['clean', 'pixel']);
 		expect(LOOKS).toContain(DEFAULT_LOOK);
-		// The pixel look stays the default until the clean one is finished (P5C.7).
-		expect(DEFAULT_LOOK).toBe('pixel');
+		// The clean look is the default since P5C.7 (D-18).
+		expect(DEFAULT_LOOK).toBe('clean');
 	});
 
 	it('knows a look from anything else', () => {
@@ -39,6 +39,12 @@ describe('the look', () => {
 		expect(isLook('pixel')).toBe(true);
 		for (const other of ['Clean', '', 'dark', null, undefined, 1, {}])
 			expect(isLook(other)).toBe(false);
+	});
+
+	it('keeps a browser that chose pixel in pixel, now that clean is the default', () => {
+		const page = root();
+		expect(look.start(page, memory({ [LOOK_KEY]: 'pixel' }))).toBe('pixel');
+		expect(page.dataset.look).toBe('pixel');
 	});
 
 	it('reads the kept look', () => {
@@ -77,9 +83,9 @@ describe('the look', () => {
 	it('still switches for this page when storage will not keep the choice', () => {
 		const page = root();
 		expect(look.start(page, blocked)).toBe(DEFAULT_LOOK);
-		look.set('clean');
-		expect(page.dataset.look).toBe('clean');
-		expect(look.current).toBe('clean');
+		look.set('pixel');
+		expect(page.dataset.look).toBe('pixel');
+		expect(look.current).toBe('pixel');
 	});
 
 	it('ignores something that is not a look', () => {

@@ -6,8 +6,8 @@
 export const LOOKS = ['clean', 'pixel'] as const;
 export type Look = (typeof LOOKS)[number];
 
-/** What a browser with no choice of its own gets. It becomes `clean` at P5C.7, once that look is finished. */
-export const DEFAULT_LOOK: Look = 'pixel';
+/** What a browser with no choice of its own gets: clean since P5C.7. A browser that chose pixel keeps it. */
+export const DEFAULT_LOOK: Look = 'clean';
 
 /** Where the choice is kept. */
 export const LOOK_KEY = 'rivermind.look';

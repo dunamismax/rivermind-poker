@@ -123,12 +123,30 @@ function robot(colour, c) {
 	]);
 }
 
+/**
+ * The RiverMind mark, on its 30 × 34 box: a gold spade (FeltPrep's, in a 100 × 100
+ * box, placed by `transform`) with a river in the night colour running across it.
+ * The icons (icons.js) draw the same shapes.
+ */
+export const MARK = {
+	spade: {
+		transform: 'translate(0 2) scale(0.3)',
+		d: 'M50 4C74 26 95 42 95 62C95 75 85 83 73 83C65 83 58 79 54 72C55 83 59 90 67 96L33 96C41 90 45 83 46 72C42 79 35 83 27 83C15 83 5 75 5 62C5 42 26 26 50 4Z'
+	},
+	river: { d: 'M5.4 19.4C8.4 16.6 11.2 16.6 14 18.6C16.8 20.6 19.6 20.6 24.6 17.2', width: 2 }
+};
+
+/** The mark's two shapes as SVG elements. */
+export function markShapes(c) {
+	return [
+		`<path transform="${MARK.spade.transform}" d="${MARK.spade.d}" fill="${c('gold')}"/>`,
+		`<path d="${MARK.river.d}" fill="none" stroke="${c('night')}" stroke-width="${MARK.river.width}" stroke-linecap="round"/>`
+	];
+}
+
 /** The RiverMind mark: a gold spade with a river running across it. */
 function emblem(c) {
-	return svg(30, 34, [
-		`<path transform="translate(0 2) scale(0.3)" d="M50 4C74 26 95 42 95 62C95 75 85 83 73 83C65 83 58 79 54 72C55 83 59 90 67 96L33 96C41 90 45 83 46 72C42 79 35 83 27 83C15 83 5 75 5 62C5 42 26 26 50 4Z" fill="${c('gold')}"/>`,
-		`<path d="M5.4 19.4C8.4 16.6 11.2 16.6 14 18.6C16.8 20.6 19.6 20.6 24.6 17.2" fill="none" stroke="${c('night')}" stroke-width="2" stroke-linecap="round"/>`
-	]);
+	return svg(30, 34, markShapes(c));
 }
 
 /** Two card backs fanned, the deck's burgundy in miniature: a pod's hidden hand. */

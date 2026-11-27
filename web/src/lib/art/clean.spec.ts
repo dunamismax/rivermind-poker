@@ -196,3 +196,67 @@ test('every back is the same after a half turn', () => {
 		expect(svg).toContain('<title>Face-down card</title>');
 	}
 });
+
+// The site's icons (P5C.4, P5C.7): the clean mark on night, one set for both looks.
+type Raster = { width: number; height: number; data: Uint8Array };
+const icons = (await import(
+	/* @vite-ignore */ new URL('../../../scripts/clean-art/icons.js', import.meta.url).href
+)) as {
+	ICONS: Record<string, { size: number; radius: number; scale: number }>;
+	renderIcons: () => { svgs: Map<string, string>; images: Map<string, Raster> };
+};
+const { decodePng } = (await import(
+	/* @vite-ignore */ new URL('../../../scripts/pixel-art/png.js', import.meta.url).href
+)) as { decodePng: (png: Uint8Array) => Raster };
+
+test('the icons are the clean mark, drawn as their generator draws them, and the page names them', () => {
+	const { svgs, images } = icons.renderIcons();
+	expect([...svgs.keys(), ...images.keys()].sort()).toEqual(Object.keys(icons.ICONS).sort());
+	// Nothing else is in static/ but robots.txt.
+	expect(readdirSync(new URL('static/', WEB)).sort()).toEqual(
+		[...Object.keys(icons.ICONS).map((p) => p.replace('static/', '')), 'robots.txt'].sort()
+	);
+	const colours = new Set(palette.values());
+	for (const [path, svg] of svgs) {
+		expect(read(path), `${path} is stale: run pnpm art`).toBe(svg);
+		const names = checkXml(svg);
+		for (const name of names)
+			expect(['svg', 'rect', 'g', 'path'], `${path}: <${name}>`).toContain(name);
+		expect(svg).not.toMatch(/<script|<style|style=|href|url\(|<image|foreignObject|\son\w+=/i);
+		for (const hex of svg.match(/#[0-9a-fA-F]{3,8}\b/g) ?? [])
+			expect(colours.has(hex), hex).toBe(true);
+		// The same two shapes as the mark the clean header shows.
+		const mark = sprites.get(`${ui.DIR}/emblem.svg`) ?? '';
+		for (const shape of mark.match(/<path [^>]*\/>/g) ?? []) expect(svg).toContain(shape);
+	}
+	const night = palette.get('night')!;
+	const gold = palette.get('gold')!;
+	const rgba = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).concat(255);
+	for (const [path, image] of images) {
+		const committed = decodePng(new Uint8Array(readFileSync(new URL(path, WEB))));
+		expect(committed, `${path} is stale: run pnpm art`).toEqual(image);
+		const { size, radius } = icons.ICONS[path];
+		expect([image.width, image.height]).toEqual([size, size]);
+		const at = (x: number, y: number) => [
+			...image.data.subarray((y * size + x) * 4, (y * size + x) * 4 + 4)
+		];
+		// Night at the edge (or nothing, where the corner is rounded), gold in the spade's lobes.
+		expect(at(0, 0)).toEqual(radius ? [0, 0, 0, 0] : rgba(night));
+		expect(at(size >> 1, 1)).toEqual(rgba(night));
+		expect(at(Math.round(size * 0.34), Math.round(size * 0.66))).toEqual(rgba(gold));
+		expect(at(Math.round(size * 0.66), Math.round(size * 0.66))).toEqual(rgba(gold));
+	}
+	// The page's head: the SVG first, the PNG for browsers without SVG icons, the home-screen
+	// icon, and a theme colour that is the clean look's night (the default look, D-18).
+	const head = read('src/app.html');
+	expect(head).toContain(
+		'<link rel="icon" type="image/svg+xml" href="%sveltekit.assets%/favicon.svg" />'
+	);
+	expect(head).toContain(
+		'<link rel="icon" type="image/png" sizes="48x48" href="%sveltekit.assets%/favicon.png" />'
+	);
+	expect(head).toContain(
+		'<link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />'
+	);
+	expect(head).toContain(`<meta name="theme-color" content="${night}" />`);
+});

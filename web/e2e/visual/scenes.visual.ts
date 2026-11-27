@@ -7,7 +7,11 @@
 //
 //   VISUAL_OUT=../artifacts/visual/before-1 pnpm visual   at the old commit, two or three times
 //   VISUAL_OUT=../artifacts/visual/after pnpm visual      at the new one
-//   pnpm visual:compare ../artifacts/visual/before-1 ../artifacts/visual/before-2 ../artifacts/visual/after
+//   pnpm visual:compare ../artifacts/visual/before-{1,2}/pixel ../artifacts/visual/after/pixel
+//
+// Each look's scenes go under its own directory (pixel/, clean/), and a run captures
+// both looks (P5C.7) unless VISUAL_LOOK or E2E_LOOK names one. Captures from before
+// P5C.7 hold one look with no such directory.
 //
 // Several "before" runs, because browsers do not draw every pixel the same way twice:
 // Chromium's anti-aliasing of the fanned (rotated) cards varies by a few dozen pixels at
@@ -26,19 +30,19 @@ import {
 } from '@playwright/test';
 import { newTableForm, playUntil, sitDown } from '../fixtures.ts';
 import { LOOK, withLook } from '../look.ts';
-import { isLook } from '../../src/lib/look.ts';
+import { LOOKS, isLook, type Look } from '../../src/lib/look.ts';
 import { FIXED_TIME, HANDLES } from './fixed.ts';
 
 const WEB = resolve(import.meta.dirname, '..', '..');
 const OUT = resolve(WEB, process.env.VISUAL_OUT ?? '../artifacts/visual/current');
-/** The look the scenes are captured in (Phase 5C): VISUAL_LOOK, else E2E_LOOK, else the site's default. */
-const VISUAL_LOOK = (() => {
+/** The looks the scenes are captured in (Phase 5C): VISUAL_LOOK, else E2E_LOOK, else both. */
+const VISUAL_LOOKS: readonly Look[] = (() => {
 	const value = process.env.VISUAL_LOOK;
-	if (!value) return LOOK;
+	if (!value) return LOOK ? [LOOK] : LOOKS;
 	if (!isLook(value)) throw new Error(`VISUAL_LOOK is ${value}, not a look`);
-	return value;
+	return [value];
 })();
-/** Each worker takes twenty ports from here, one for each size and density. */
+/** Each worker takes a run of ports from here, one for each look, size and density. */
 const FIRST_PORT = Number(process.env.VISUAL_PORT ?? 8950);
 
 /** Every size at every density, and two more sizes at one density for the layouts between them. */
@@ -100,10 +104,11 @@ class Site {
 	}
 }
 
-/** A person's browser with its clock, time zone and locale pinned. */
+/** A person's browser in a look, with its clock, time zone and locale pinned. */
 async function visitor(
 	browser: Browser,
 	site: Site,
+	look: Look,
 	viewport: { width: number; height: number },
 	deviceScaleFactor: number
 ): Promise<BrowserContext> {
@@ -117,7 +122,7 @@ async function visitor(
 	// Date.now() stands still at the server's time while timers keep running, so a turn's
 	// clock shows the same time left in every capture.
 	await context.clock.setFixedTime(new Date(FIXED_TIME * 1000));
-	return withLook(context, VISUAL_LOOK);
+	return withLook(context, look);
 }
 
 /** Save a full-page screenshot once two captures in a row are identical. */
@@ -172,21 +177,23 @@ async function firstTurn(page: Page): Promise<void> {
 	await expect(panel).toBeVisible();
 }
 
-CONFIGS.forEach(({ size, density }, config) => {
+const RUNS = VISUAL_LOOKS.flatMap((look) => CONFIGS.map((config) => ({ look, ...config })));
+
+RUNS.forEach(({ look, size, density }, run) => {
 	const tag = `${size.width}x${size.height}@${density}`;
-	test(`scenes at ${tag}`, async ({ browser, browserName }, testInfo) => {
-		const site = new Site(FIRST_PORT + testInfo.parallelIndex * 20 + config);
+	test(`scenes at ${tag} in ${look}`, async ({ browser, browserName }, testInfo) => {
+		const site = new Site(FIRST_PORT + testInfo.parallelIndex * RUNS.length + run);
 		await site.start();
 		try {
-			const file = (scene: string) => resolve(OUT, browserName, `${scene}-${tag}.png`);
+			const file = (scene: string) => resolve(OUT, look, browserName, `${scene}-${tag}.png`);
 
 			// Someone else's table, so the lobby has one to list. They arrive first.
-			const other = await visitor(browser, site, { width: 1280, height: 800 }, 1);
+			const other = await visitor(browser, site, look, { width: 1280, height: 800 }, 1);
 			const stranger = await other.newPage();
 			await sitDown(stranger, 6);
 			await expect(stranger.locator('header .me')).toHaveText(HANDLES[0]);
 
-			const context = await visitor(browser, site, size, density);
+			const context = await visitor(browser, site, look, size, density);
 			const page = await context.newPage();
 			await page.goto('/');
 			await expect(page.locator('header .me')).toHaveText(HANDLES[1]);
