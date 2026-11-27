@@ -137,8 +137,15 @@
 	<div class="grid min-h-32 content-start gap-1 text-s leading-[1.4] text-paper" role="status">
 		{#each step.lines as line, i (i)}<p>{line}</p>{/each}
 	</div>
+	<!-- Where the board's places overlap, the clean look cuts each empty slot's edge out of the
+	     card before it (as far as they overlap), so the row reads as single edges, not crossed ones. -->
 	<div
-		class={['board flex', roomy ? 'gap-2 lt-600:[&>.card+.card]:-ml-7' : '[&>.card+.card]:-ml-12']}
+		class={[
+			'board flex',
+			roomy
+				? 'gap-2 lt-600:[&>.card+.card]:-ml-7 clean:lt-600:[&>.card+.slot]:[clip-path:inset(0_0_0_14px)]'
+				: '[&>.card+.card]:-ml-12 clean:[&>.card+.slot]:[clip-path:inset(0_0_0_24px)]'
+		]}
 		aria-label="Board"
 	>
 		{#each board as card, i (i)}

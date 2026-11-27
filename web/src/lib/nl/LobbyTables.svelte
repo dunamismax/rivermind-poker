@@ -62,11 +62,11 @@
 
 	const fieldLabel = 'field-label mb-3 block text-gold text-shadow-ink';
 	const seatState = 'state text-s text-green-light text-shadow-ink';
-	/** A pip's colour by who has the seat; each is a square with an inset edge. */
+	/** A pip's colour by who has the seat; each is a square with an inset edge, or in the clean look a dot. */
 	const PIPS = {
-		person: 'person bg-gold [box-shadow:inset_0_0_0_2px_var(--color-ink)]',
-		bot: 'bot bg-blue-light [box-shadow:inset_0_0_0_2px_var(--color-ink)]',
-		held: 'held bg-amber opacity-60 [box-shadow:inset_0_0_0_2px_var(--color-ink)]',
+		person: 'person bg-gold [box-shadow:inset_0_0_0_2px_var(--color-ink)] clean:[box-shadow:none]',
+		bot: 'bot bg-blue-light [box-shadow:inset_0_0_0_2px_var(--color-ink)] clean:[box-shadow:none]',
+		held: 'held bg-amber opacity-60 [box-shadow:inset_0_0_0_2px_var(--color-ink)] clean:[box-shadow:none]',
 		empty: 'empty bg-transparent [box-shadow:inset_0_0_0_2px_var(--color-haze)]'
 	};
 
@@ -169,7 +169,8 @@
 						</span>
 						<span class="seats flex flex-wrap items-center gap-4 text-s text-mist">
 							<span class="pips flex gap-1" aria-hidden="true">
-								{#each pips(t) as pip, i (i)}<span class="pip size-5 {PIPS[pip]}"></span>{/each}
+								{#each pips(t) as pip, i (i)}<span class="pip size-5 clean:rounded-full {PIPS[pip]}"
+									></span>{/each}
 							</span>
 							<span>{seatsText(t)}</span>
 						</span>

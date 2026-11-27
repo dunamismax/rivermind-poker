@@ -224,6 +224,8 @@
 		font-weight: 600;
 		line-height: 1;
 		white-space: nowrap;
+		/* A link drawn as a button is a button: no underline. */
+		text-decoration: none;
 		box-shadow:
 			0 0 0 1px var(--btn-edge),
 			var(--elevation-1);

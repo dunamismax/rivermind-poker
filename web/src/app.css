@@ -24,7 +24,7 @@
  */
 @source './routes';
 @source './lib/nl';
-@source './lib/components/{ConnectionStatus,PlayingCard,SiteHeader}.svelte';
+@source './lib/components/{ConnectionStatus,LookSwitch,PlayingCard,SiteHeader}.svelte';
 @source not inline('{container,contents,filter,inline,outline,ring,static,table,transform,transition,visible}');
 
 /*
@@ -142,6 +142,14 @@
 		text-shadow: var(--text-shadow-title);
 	}
 }
+
+/*
+ * A utility for one look alone (Phase 5C): `clean:rounded-full`. `:where` adds no
+ * specificity, and a variant sorts after the plain utilities, so it wins over them
+ * in its look and does nothing in the other.
+ */
+@custom-variant clean (&:where([data-look='clean'] *));
+@custom-variant pixel (&:where([data-look='pixel'] *));
 
 /* Hover on every device, as the kit's own buttons do; Tailwind's default skips touch screens. */
 @custom-variant hover (&:hover);

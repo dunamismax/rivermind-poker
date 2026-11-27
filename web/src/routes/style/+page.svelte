@@ -1,14 +1,14 @@
 <script lang="ts">
 	// The design reference: every color, text size, spacing step, frame, button,
 	// field, card and sprite in the kit of the look it is viewed in (Phase 5C), as
-	// the site draws them, with the Tailwind utilities that name them. The switch
-	// shows the other look's. See docs/design.md.
+	// the site draws them, with the Tailwind utilities that name them. The header's
+	// look switch shows the other look's. See docs/design.md.
 	import { CARD_BACKS, CARD_RANKS, CLEAN_CARD_BACKS } from '#lib/card-assets.ts';
 	import themeCss from '#lib/art/theme.css?raw';
 	import cleanCss from '../../styles/clean.css?raw';
 	import PlayingCard from '#lib/components/PlayingCard.svelte';
 	import SiteHeader from '#lib/components/SiteHeader.svelte';
-	import { LOOKS, LOOK_NAMES, look } from '#lib/look.svelte.ts';
+	import { look } from '#lib/look.svelte.ts';
 	import type { Suit } from '#lib/protocol.ts';
 
 	/** A look's colors and text sizes, read from the stylesheet that defines them. */
@@ -82,22 +82,7 @@
 <SiteHeader />
 
 <main class="mx-auto grid max-w-[1180px] gap-16 px-8 pt-12 pb-32">
-	<div class="flex flex-wrap items-center justify-between gap-6">
-		<h2 class="text-xl text-gold text-shadow-ink">Design reference</h2>
-		<div class="look flex items-center gap-4" role="group" aria-labelledby="look-label">
-			<span id="look-label" class="text-s text-mist">Look</span>
-			{#each LOOKS as name (name)}
-				<button
-					type="button"
-					class="px-btn small choice"
-					aria-pressed={look.current === name}
-					onclick={() => look.set(name)}
-				>
-					{LOOK_NAMES[name]}
-				</button>
-			{/each}
-		</div>
-	</div>
+	<h2 class="text-xl text-gold text-shadow-ink">Design reference</h2>
 	{#if pixel}
 		<p class="lead max-w-[60ch] text-mist">
 			Every piece of the pixel kit as the site draws it. Art pixels are drawn at 2x for the
