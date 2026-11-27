@@ -241,9 +241,11 @@
 							<a class="text-gold-light" href={resolve('/bots')}>How it was measured</a>
 						</p>
 					</div>
+					<!-- The label wraps where it must: in a wide system font (DejaVu Sans on Linux)
+					     "Practice vs RiverMind Medium" is wider than a 375px phone leaves it. -->
 					<button
 						type="button"
-						class="px-btn blue practice-trained w-full"
+						class="px-btn blue practice-trained w-full whitespace-normal text-center"
 						disabled={practising}
 						onclick={() => practice(bot.kind)}
 					>
