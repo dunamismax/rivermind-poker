@@ -47,8 +47,10 @@ test('the header switches the look at once, keeps it, and moves nothing else', a
 	const context = await plainContext(browser, server.url, testInfo);
 	const page = await context.newPage();
 	await page.goto('/');
+	// Waited for, not read at once: before the app starts, <html> has no look yet (and the
+	// lobby's "Looking for tables…" is not there either), which WebKit in CI caught once.
+	await expect(page.locator('html')).toHaveAttribute('data-look', DEFAULT_LOOK);
 	await expect(page.getByText('Looking for tables…')).toHaveCount(0);
-	expect(await lookOf(page)).toBe(DEFAULT_LOOK);
 
 	const group = page.getByRole('group', { name: 'Look' });
 	await expect(group).toBeVisible();
