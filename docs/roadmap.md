@@ -31,6 +31,7 @@ The stack is SvelteKit 3 · Svelte 5 · TypeScript · Tailwind CSS 4 · PostgreS
 7. **Practice, heads-up opponent and replay (Phase 5A).** One click gets a guest into a hand at any balance. Heads-up is the cheapest format in which to train, evaluate and serve the first opponent. Replay then lets the guest revisit a decision from the table and play another hand. The three features must work together on the live site before the build expands.
 8. **Multi-seat bots and difficulty levels (Phase 5B).** These wait for both Phase 5A and table voice. Extend the measured heads-up pipeline to six seats, then nine, and verify the difficulty levels and serving budgets for each format.
 9. **Site features, then hardening (Phases 6 and 7).** Replay sharing, stats, tournaments and polish build on the working game. Monitoring, backups, load tests and a security review precede the 1.0 release.
+10. **Train, after 1.0 (Phase 9).** The owner wants one brand and one site (D-20). Their FeltPrep trainer, built in its own repository on the same stack and engine, becomes the Train section of the site and the app, and FeltPrep is then discontinued. It waits for 1.0 because the release is the larger, nearer goal, and because by then FeltPrep's solver and lessons will have more to bring. Train comes after the tables are hardened, so it is held to the same load test and security review rather than added beside them.
 
 ## What Phase 0 established
 
