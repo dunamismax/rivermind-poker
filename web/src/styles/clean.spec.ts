@@ -132,8 +132,14 @@ describe('the clean kit', () => {
 		for (const size of ['xs', 's', 'm', 'l', 'xl']) expect(kit).toMatch(`--text-${size}: `);
 		for (const name of ['--font-pixel', '--text-shadow-ink', '--text-shadow-title'])
 			expect(kit).toMatch(`${name}:`);
-		for (const name of ['blink', 'wait', 'drop', 'slide', 'pop', 'fade', 'rise', 'nudge', 'speak'])
+		for (const name of ['blink', 'wait', 'drop', 'slide', 'pop', 'fade', 'rise', 'speak'])
 			expect(kit).toMatch(`--animate-${name}: ${name} `);
+		// The seat to act glows in place rather than bobbing (P5C.6): a smooth bob never
+		// stands still, so its name moved under a finger and Playwright could not click it.
+		expect(kit).toMatch('--animate-nudge: turn ');
+		const turn = /@keyframes turn \{([\s\S]*?)\n\}/.exec(kit)?.[1] ?? '';
+		expect(turn).toMatch(/box-shadow/);
+		expect(turn).not.toMatch(/transform|translate|scale|margin|inset|top|left/);
 		for (const kitClass of [
 			'.px-panel',
 			'.px-raised',
@@ -161,6 +167,8 @@ describe('the clean kit', () => {
 	test('is scoped to the clean look', () => {
 		const blocks = [...kit.matchAll(/^([^\s{}][^{}]*)\{/gm)].map(([, selector]) => selector.trim());
 		expect(blocks.length).toBeGreaterThan(0);
-		for (const selector of blocks) expect(selector).toMatch(/^:where\(\[data-look='clean'\]\)/);
+		// Keyframes have no selector: only the clean look's own animation variables name them.
+		for (const selector of blocks)
+			expect(selector).toMatch(/^(:where\(\[data-look='clean'\]\)|@keyframes (turn)$)/);
 	});
 });

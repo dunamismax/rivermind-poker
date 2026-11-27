@@ -3,6 +3,7 @@
 	import { tableCardUrls } from '../card-assets.ts';
 	import { look } from '../look.svelte.ts';
 	import ConnectionStatus from '../components/ConnectionStatus.svelte';
+	import LookSwitch from '../components/LookSwitch.svelte';
 	import PlayingCard from '../components/PlayingCard.svelte';
 	import type {
 		BotOption,
@@ -254,15 +255,28 @@
 
 	const note = 'note text-green-light text-shadow-ink';
 	const bet =
-		'bet absolute z-2 flex -translate-1/2 animate-pop items-center gap-3 bg-[rgb(12_13_21/0.72)] py-1 pr-4 pl-2 text-s whitespace-nowrap text-paper phone:gap-[3px] phone:py-0 phone:pr-2 phone:pl-1 phone:text-xs';
+		'bet absolute z-2 flex -translate-1/2 animate-pop items-center gap-3 bg-[rgb(12_13_21/0.72)] py-1 pr-4 pl-2 text-s whitespace-nowrap text-paper clean:rounded-full clean:bg-[rgb(12_13_21/0.94)] phone:gap-[3px] phone:py-0 phone:pr-2 phone:pl-1 phone:text-xs';
 	// A seat nobody is in: a dashed outline on the felt, and a button when the viewer may take it.
 	const emptySeat =
-		'empty absolute -translate-1/2 border-2 border-dashed bg-[rgb(12_13_21/0.35)] px-5 py-2 text-s phone:px-3 phone:py-1';
+		'empty absolute -translate-1/2 border-2 border-dashed bg-[rgb(12_13_21/0.35)] px-5 py-2 text-s clean:rounded-[10px] phone:px-3 phone:py-1';
 	const empty = `${emptySeat} phone:text-xs`;
 	const openSeat = `${emptySeat} open z-3 cursor-pointer border-gold text-gold-light enabled:hover:bg-[rgb(12_13_21/0.7)] enabled:hover:outline-2 enabled:hover:outline-gold-light focus-visible:bg-[rgb(12_13_21/0.7)] focus-visible:outline-2 focus-visible:outline-gold-light disabled:cursor-default disabled:opacity-60`;
 
 	let sharing = $state(false);
 	let copied = $state(false);
+	/** The table bar's menu (P5C.6): on a phone, where the site header is left out, it holds the look switch. */
+	let menuOpen = $state(false);
+	$effect(() => {
+		// One panel under the bar at a time: the menu gives way to the invite link and a player's menu.
+		if (sharing || picked !== null) menuOpen = false;
+	});
+	function toggleMenu() {
+		menuOpen = !menuOpen;
+		if (menuOpen) {
+			sharing = false;
+			picked = null;
+		}
+	}
 	const inviteLink = $derived(
 		view.invite ? `${location.origin}/?invite=${encodeURIComponent(view.invite)}` : null
 	);
@@ -299,7 +313,7 @@
 	aria-label="Table"
 >
 	<div
-		class="bar relative col-span-full row-1 flex min-h-24 flex-wrap items-center gap-6 phone:z-6 phone:min-h-20 phone:gap-4 pocket:gap-3"
+		class="bar relative col-span-full row-1 flex min-h-24 flex-wrap items-center gap-6 phone:z-6 phone:min-h-20 phone:gap-4 pocket:gap-2"
 	>
 		{#if me}
 			<button
@@ -334,7 +348,7 @@
 		{/if}
 		{#if view.practice}
 			<span
-				class="practice-tag bg-gold px-4 py-1 text-s whitespace-nowrap text-ink [box-shadow:0_2px_0_var(--color-amber-deep)]"
+				class="practice-tag bg-gold px-4 py-1 text-s whitespace-nowrap text-ink [box-shadow:0_2px_0_var(--color-amber-deep)] clean:rounded-full clean:[box-shadow:var(--elevation-1)]"
 				title="Practice chips: your wallet is not touched"
 			>
 				Practice
@@ -350,13 +364,39 @@
 			class="stakes ml-auto flex items-center gap-3 text-paper-shade text-shadow-ink phone:text-s"
 			aria-label="Blinds"
 		>
-			<span class="sprite chip chip-red size-7" aria-hidden="true"></span>{view.settings
-				.small_blind}/{view.settings.big_blind}
+			<span class="sprite chip chip-red size-7 pocket:hidden" aria-hidden="true"></span>{view
+				.settings.small_blind}/{view.settings.big_blind}
 		</div>
 		<!-- A phone has no site header at a table, so its connection lamp is here. -->
 		<span class="lamp hidden pocket:inline-flex">
 			<ConnectionStatus status={connection.status} />
 		</span>
+		<!-- And no look switch: the bar's menu holds it there (P5C.6). The bar keeps to one line in
+		     voice at a private table, so on a phone the blinds drop their chip and the gaps are 4px. -->
+		<button
+			type="button"
+			class="px-btn small table-menu-open hidden px-0 pocket:inline-flex pocket:w-15"
+			aria-label="Table menu"
+			aria-expanded={menuOpen}
+			aria-controls="table-menu"
+			onclick={toggleMenu}
+		>
+			<span class="flex gap-[3px]" aria-hidden="true">
+				{#each [0, 1, 2] as dot (dot)}<span class="size-[4px] bg-current clean:rounded-full"
+					></span>{/each}
+			</span>
+		</button>
+		{#if menuOpen}
+			<div
+				id="table-menu"
+				class="table-menu px-inset hidden flex-[1_1_100%] flex-wrap items-center justify-between gap-4 p-4 pocket:absolute pocket:inset-x-0 pocket:top-[calc(100%+4px)] pocket:flex"
+				role="dialog"
+				aria-label="Table menu"
+			>
+				<LookSwitch labelled />
+				<button type="button" class="px-btn small" onclick={() => (menuOpen = false)}>Close</button>
+			</div>
+		{/if}
 		{#if sharing && inviteLink}
 			<div
 				class="share px-inset flex flex-[1_1_100%] flex-wrap items-center gap-4 p-4 phone:absolute phone:inset-x-0 phone:top-[calc(100%+4px)]"
@@ -493,7 +533,12 @@
 						<span class="pot text-gold-light text-shadow-ink">Pot {hand.pot}</span>
 					{/if}
 				</div>
-				<div class="board flex gap-4 phone:gap-0 phone:[&>.card+.card]:-ml-3" aria-label="Board">
+				<!-- On a phone the board's places overlap by 6px; the clean look cuts that much off each
+				     empty slot's drawn edge, so the row reads as single edges, as the replay's does. -->
+				<div
+					class="board flex gap-4 phone:gap-0 phone:[&>.card+.card]:-ml-3 clean:phone:[&>.card+.slot]:[clip-path:inset(0_0_0_6px)]"
+					aria-label="Board"
+				>
 					{#each board as card, i (i)}
 						<PlayingCard {card} />
 					{/each}

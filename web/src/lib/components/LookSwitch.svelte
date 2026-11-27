@@ -11,11 +11,20 @@
 	 * technology. Named by aria-labelledby instead, the group crashed Firefox's page at a
 	 * nine-seat table in Playwright, every time, as soon as a test looked up a group by
 	 * its name (`table.e2e.ts`, "rejoins the same table after a reload").
+	 *
+	 * `labelled` keeps the label on a phone too, where the switch has a row of its own:
+	 * the table bar's menu (P5C.6).
 	 */
+	let { labelled = false }: { labelled?: boolean } = $props();
 </script>
 
 <div class="look-switch flex flex-none items-center gap-3" role="group" aria-label="Look">
-	<span aria-hidden="true" class="w-16 text-right text-s text-mist lt-640:hidden">Look</span>
+	<span
+		aria-hidden="true"
+		class={['w-16 text-right text-s text-mist', !labelled && 'lt-640:hidden']}
+	>
+		Look
+	</span>
 	<span class="flex gap-2">
 		{#each LOOKS as name (name)}
 			<button

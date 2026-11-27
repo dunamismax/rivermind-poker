@@ -3,8 +3,14 @@
 // would be kept; without it each context gets the site's default. A test of the
 // switch itself opens a context without `withLook`, since the kept choice is put
 // back on every page load.
-import type { Browser, BrowserContext, BrowserContextOptions } from '@playwright/test';
-import { LOOK_KEY, isLook, type Look } from '../src/lib/look.ts';
+import {
+	expect,
+	type Browser,
+	type BrowserContext,
+	type BrowserContextOptions,
+	type Page
+} from '@playwright/test';
+import { LOOK_KEY, LOOK_NAMES, isLook, type Look } from '../src/lib/look.ts';
 
 function chosen(): Look | null {
 	const value = process.env.E2E_LOOK;
@@ -42,4 +48,31 @@ export async function newContext(
 	options?: BrowserContextOptions
 ): Promise<BrowserContext> {
 	return withLook(await browser.newContext(options));
+}
+
+/**
+ * Switch the page to its other look where a player would: the site header, or at a table
+ * on a phone, where the header is left out, the table bar's menu (P5C.6). Returns the look.
+ */
+export async function switchLook(page: Page): Promise<Look> {
+	const next: Look =
+		(await page.evaluate(() => document.documentElement.dataset.look)) === 'clean'
+			? 'pixel'
+			: 'clean';
+	const menu = page.getByRole('button', { name: 'Table menu' });
+	const inMenu = await menu.isVisible();
+	if (inMenu) await menu.click();
+	await page
+		.getByRole('group', { name: 'Look' })
+		.getByRole('button', { name: LOOK_NAMES[next], exact: true })
+		.click();
+	await expect(page.locator('html')).toHaveAttribute('data-look', next);
+	if (inMenu) {
+		await page
+			.getByRole('dialog', { name: 'Table menu' })
+			.getByRole('button', { name: 'Close' })
+			.click();
+		await expect(page.getByRole('dialog', { name: 'Table menu' })).toHaveCount(0);
+	}
+	return next;
 }

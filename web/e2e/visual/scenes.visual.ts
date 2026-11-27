@@ -251,6 +251,14 @@ CONFIGS.forEach(({ size, density }, config) => {
 			await page.getByRole('button', { name: 'Sit out next hand' }).click();
 			await expect(page.getByRole('button', { name: 'I’m back' })).toBeVisible();
 			await shoot(page, file('tools'));
+			// On a phone the site header is left out at a table, and the bar's menu holds the look
+			// switch (P5C.6).
+			if (size.width < 640) {
+				await page.getByRole('button', { name: 'Table menu' }).click();
+				await expect(page.getByRole('dialog', { name: 'Table menu' })).toBeVisible();
+				await shoot(page, file('table-menu'));
+				await page.getByRole('button', { name: 'Table menu' }).click();
+			}
 
 			await page.goto('/style');
 			await expect(page.getByRole('heading', { level: 2 })).toBeVisible();

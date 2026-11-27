@@ -1,5 +1,6 @@
 import type { Browser, BrowserContext, Page, TestInfo } from '@playwright/test';
-import { expect, test } from './fixtures.ts';
+import { expect, handNumber, noOverflow, sitDown, test } from './fixtures.ts';
+import { panel, ourTurn } from './review.ts';
 import { DEFAULT_LOOK, LOOK_KEY, type Look } from '../src/lib/look.ts';
 
 // The look switch in the site header (P5C.5). Each test opens its own context
@@ -120,4 +121,72 @@ test('a kept value that is not a look, or storage that throws, gets the default'
 	await expect(other.getByRole('group', { name: 'Look' })).toBeVisible();
 	expect(await lookOf(other)).toBe(DEFAULT_LOOK);
 	await blocked.close();
+});
+
+test("at a table on a phone, the bar's menu switches the look mid-hand and play goes on", async ({
+	browser,
+	server,
+	cspViolations
+}, testInfo) => {
+	const context = await plainContext(browser, server.url, testInfo);
+	const page = await context.newPage();
+	await sitDown(page, 2);
+	const menu = page.getByRole('button', { name: 'Table menu' });
+	if (!testInfo.project.name.endsWith('-phone')) {
+		// A wider screen keeps the site header, and its switch, at the table: the bar has no menu.
+		await expect(page.locator('header.topbar').getByRole('group', { name: 'Look' })).toBeVisible();
+		await expect(menu).toBeHidden();
+		await context.close();
+		return;
+	}
+	await expect(page.locator('header.topbar')).toBeHidden();
+	await ourTurn(page);
+	const hand = await handNumber(page);
+	const seat = page.getByRole('group', { name: /^Your seat/ });
+	const name = ((await seat.getAttribute('aria-label')) ?? '').replace(/^Your seat: /, '');
+	await page.evaluate(() => ((window as unknown as { stayed: boolean }).stayed = true));
+	const bar = await page.locator('.nl-table > .bar').boundingBox();
+
+	// The menu opens over the table, from the far end of the bar, and moves nothing.
+	await expect(menu).toHaveAttribute('aria-expanded', 'false');
+	await menu.click();
+	await expect(menu).toHaveAttribute('aria-expanded', 'true');
+	const dialog = page.getByRole('dialog', { name: 'Table menu' });
+	const group = dialog.getByRole('group', { name: 'Look' });
+	await expect(group).toBeVisible();
+	await expect(group).toContainText('Look');
+	expect(await page.locator('.nl-table > .bar').boundingBox()).toEqual(bar);
+	expect(await page.evaluate(() => scrollY)).toBe(0);
+	await group.getByRole('button', { name: NAMES[OTHER], exact: true }).click();
+	await expect(page.locator('html')).toHaveAttribute('data-look', OTHER);
+	await expect(group.getByRole('button', { name: NAMES[OTHER], exact: true })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+	expect(await page.evaluate((key) => localStorage.getItem(key), LOOK_KEY)).toBe(OTHER);
+	await dialog.getByRole('button', { name: 'Close' }).click();
+	await expect(dialog).toHaveCount(0);
+	await expect(menu).toHaveAttribute('aria-expanded', 'false');
+
+	// The same page, seat, socket and hand, and the turn's panel answers straight away.
+	expect(await page.evaluate(() => (window as unknown as { stayed?: boolean }).stayed)).toBe(true);
+	await expect(page.locator('.bar .lamp .status')).toHaveAttribute('data-state', 'open');
+	await expect(seat).toBeVisible();
+	expect(await handNumber(page)).toBe(hand);
+	const act = panel(page).getByRole('button', { name: /^(Check|Call \d+)$/ });
+	const said = (await act.textContent())?.startsWith('Check') ? 'checks' : 'calls';
+	await act.click();
+	await expect(page.getByRole('region', { name: 'Hand log' })).toContainText(`${name} ${said}`);
+
+	// The button closes the menu as it opens it, and the choice outlives a reload.
+	await menu.click();
+	await expect(dialog).toBeVisible();
+	await menu.click();
+	await expect(dialog).toHaveCount(0);
+	await page.reload();
+	await expect(page.locator('html')).toHaveAttribute('data-look', OTHER);
+	await expect(seat).toBeVisible();
+	await noOverflow(page);
+	expect(cspViolations).toEqual([]);
+	await context.close();
 });

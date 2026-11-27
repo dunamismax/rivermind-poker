@@ -12,7 +12,7 @@
 import { expect, test as base } from '@playwright/test';
 import { canCapture, canTransform } from '../voice/check/browsers.ts';
 import { nameOf, seated, sitDown, tableIdOf } from './fixtures.ts';
-import { newContext, withLook } from './look.ts';
+import { newContext, switchLook, withLook } from './look.ts';
 import { TableServer } from './server.ts';
 import { ghostTable, takeSeat, watch, type GhostTable } from './stranger.ts';
 import {
@@ -125,6 +125,17 @@ test.describe('table voice', () => {
 			await expect(alice.page.getByRole('img', { name: 'Microphone live' }).first()).toBeVisible();
 			await expect(voiceOf(alice.page, aliceSeat)).toHaveAttribute('data-voice', 'talking');
 			await expect(voiceOf(bob.page, aliceSeat)).toHaveAttribute('data-voice', 'talking');
+			await expect(voiceOf(bob.page, aliceSeat)).toHaveAttribute('data-speaking', 'true', {
+				timeout: 30_000
+			});
+
+			// Bob switches look mid-call (P5C.6), from the header or, on a phone, the table bar's
+			// menu: only the drawing changes, and he stays in the same group, hearing Alice.
+			const before = await diagnostics(bob.page);
+			await switchLook(bob.page);
+			const after = await diagnostics(bob.page);
+			expect(after.phase).toBe('in');
+			expect(after.code).toEqual(before.code);
 			await expect(voiceOf(bob.page, aliceSeat)).toHaveAttribute('data-speaking', 'true', {
 				timeout: 30_000
 			});

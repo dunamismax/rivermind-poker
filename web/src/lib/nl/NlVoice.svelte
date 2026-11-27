@@ -138,7 +138,8 @@
 				aria-label="Microphone live"
 				title="Your microphone is live"
 			>
-				<span class="size-4 bg-red-light [box-shadow:0_0_0_2px_var(--color-ink)]"></span>
+				<span class="size-4 bg-red-light [box-shadow:0_0_0_2px_var(--color-ink)] clean:rounded-full"
+				></span>
 				<span class="pocket:hidden" aria-hidden="true">Live</span>
 			</span>
 		{/if}
@@ -168,7 +169,7 @@
 		</span>
 		{#if voice.quality}<span
 				class={[
-					'size-3',
+					'size-3 clean:rounded-full',
 					voice.quality === 'good'
 						? 'bg-green-light'
 						: voice.quality === 'fair'
@@ -188,7 +189,7 @@
 		role="img"
 		aria-label="Microphone live"
 	>
-		<span class="size-4 bg-red-light"></span><span aria-hidden="true">Live</span>
+		<span class="size-4 bg-red-light clean:rounded-full"></span><span aria-hidden="true">Live</span>
 	</span>
 {/if}
 
@@ -320,8 +321,9 @@
 			{#if voice.mode === 'talk'}
 				<div class="flex items-center gap-4 text-s">
 					<span>Input</span>
+					<!-- The clean look keeps the lamps, drawn smooth and without the ink frame. -->
 					<svg
-						class="block h-6 w-73"
+						class="block h-6 w-73 clean:[shape-rendering:geometricPrecision]"
 						viewBox="0 0 {SEGMENTS * 6 + 1} 6"
 						role="meter"
 						aria-label="Microphone level"
@@ -330,7 +332,7 @@
 						aria-valuenow={lit}
 						shape-rendering="crispEdges"
 					>
-						<rect class="fill-ink" x="0" y="0" width={SEGMENTS * 6 + 1} height="6" />
+						<rect class="fill-ink clean:hidden" x="0" y="0" width={SEGMENTS * 6 + 1} height="6" />
 						{#each segments as i (i)}
 							<rect
 								class={i < lit
