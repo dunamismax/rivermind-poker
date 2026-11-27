@@ -1,0 +1,401 @@
+/*
+ * The clean look (Phase 5C, D-18): a dark card room drawn without pixel art.
+ * Charcoal and slate surfaces, a deep muted felt, one gold accent for the
+ * viewer's seat and the turn, the system's own fonts, soft shadows and smooth
+ * motion. Nothing here is an image file: frames, buttons, fields and the table
+ * are CSS. docs/design.md has the language and the measured contrast.
+ *
+ * It applies only under data-look="clean" on <html>. `:where` adds no
+ * specificity, so a utility always overrides a kit class here as it does in the
+ * pixel look. The kit's sizes are shared (kit.css), and every frame, button and
+ * field keeps the pixel kit's border widths, so a box takes the same room in
+ * either look and only its drawing differs.
+ */
+
+/* --- Tokens. ------------------------------------------------------------------
+   The theme's variables take the clean values: every palette name keeps its role
+   (gold is the accent, felt the table, red-light a loss, green-light a win).
+   clean.spec.ts measures the contrast of every pair of text and background that
+   the pages use, and of the controls' edges and the focus ring. */
+
+:where([data-look='clean']) {
+	--color-ink: #0a0c11;
+	--color-night: #11141b;
+	--color-deep-slate: #181c25;
+	--color-slate: #232935;
+	--color-dusk: #687186;
+	--color-haze: #a1a9ba;
+	--color-mist: #b3bbca;
+	--color-felt-deep: #0d2721;
+	--color-felt-dark: #12352d;
+	--color-felt: #174237;
+	--color-felt-light: #1f5646;
+	--color-felt-glow: #2b6e59;
+	--color-wood-deep: #0e0f13;
+	--color-wood-dark: #1a1c22;
+	--color-wood: #262931;
+	--color-wood-light: #353943;
+	--color-brass: #a88d5c;
+	--color-paper-deep: #9aa2b1;
+	--color-paper-shade: #cdd3de;
+	--color-paper: #eceff4;
+	--color-white: #ffffff;
+	--color-red-deep: #35161a;
+	--color-red-dark: #bd3a44;
+	--color-red: #d9474f;
+	--color-red-light: #ff8f86;
+	--color-blue-deep: #12213f;
+	--color-blue-dark: #2d67cc;
+	--color-blue: #3b7be0;
+	--color-blue-light: #8fbcff;
+	--color-green-deep: #0f2d1f;
+	--color-green-dark: #1f7a4c;
+	--color-green: #2fa065;
+	--color-green-light: #7fd9a2;
+	--color-amber-deep: #3e2710;
+	--color-amber-dark: #a8601f;
+	--color-amber: #e8923a;
+	--color-gold: #f0bd4f;
+	--color-gold-light: #ffdc8a;
+	--color-violet-deep: #211b3d;
+	--color-violet: #4b3c96;
+	--color-violet-light: #b0a1f5;
+	--color-skin-deep: #6b3d2f;
+	--color-skin: #b47657;
+	--color-skin-light: #e8b896;
+
+	/* Roles that one palette name plays twice in the pixel look. */
+	--color-warn: #e8923a;
+
+	/* The deck (P5C.3, FeltPrep's colours): warm white with a thin edge, and one
+	   colour per suit, so a card never depends on telling red from black. */
+	--color-card: #fffdf7;
+	--color-card-edge: #bdb7a6;
+	--color-card-back-burgundy: #7a2f3a;
+	--color-card-back-navy: #243a63;
+	--color-card-back-green: #1f5240;
+	--color-card-back-mark: #e8c9a0;
+	--color-suit-clubs: #19703a;
+	--color-suit-diamonds: #1a58ad;
+	--color-suit-hearts: #b4231b;
+	--color-suit-spades: #1a1d22;
+
+	/* The system's own fonts: no font file and no third-party origin. */
+	--font-pixel:
+		system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', Arial, sans-serif;
+	--default-font-family: var(--font-pixel);
+	--default-mono-font-family:
+		ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+
+	/* Text sizes: text-xs to text-xl. */
+	--text-xs: 11px;
+	--text-s: 13px;
+	--text-m: 16px;
+	--text-l: 22px;
+	--text-xl: 28px;
+
+	/* Soft shadows under text on art, and under the site's name. */
+	--text-shadow-ink: 0 1px 2px rgb(0 0 0 / 0.45);
+	--text-shadow-title: 0 1px 3px rgb(0 0 0 / 0.5);
+
+	/* Corners, one soft shadow scale, and motion. */
+	--radius-s: 6px;
+	--radius-m: 10px;
+	--radius-l: 16px;
+	--elevation-1: 0 1px 2px rgb(0 0 0 / 0.35);
+	--elevation-2: 0 4px 14px rgb(0 0 0 / 0.35);
+	--elevation-3: 0 14px 36px rgb(0 0 0 / 0.45);
+	--ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+	--ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+	--edge: rgb(255 255 255 / 0.07);
+
+	/* The same keyframes as the pixel look, played smoothly. */
+	--animate-blink: blink 1.2s var(--ease-in-out) infinite;
+	--animate-wait: wait 1.4s var(--ease-in-out) infinite;
+	--animate-drop: drop 0.24s var(--ease-out);
+	--animate-slide: slide 0.18s var(--ease-out);
+	--animate-pop: pop 0.2s var(--ease-out);
+	--animate-fade: fade 0.24s var(--ease-out);
+	--animate-rise: rise 0.6s var(--ease-out);
+	--animate-nudge: nudge 1.6s var(--ease-in-out) infinite;
+	--animate-speak: speak 1s var(--ease-in-out) infinite;
+}
+
+/* --- The page. ----------------------------------------------------------------- */
+
+:where([data-look='clean']) body {
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+:where([data-look='clean']) {
+	/* --- Frames. ---------------------------------------------------------------------
+	   The pixel frames' 3-pixel border stays, transparent, under the surface, and
+	   the edge is a ring just outside it, so the content sits where it did. */
+
+	.px-panel,
+	.px-raised,
+	.px-inset,
+	.px-paper,
+	.px-gold,
+	.px-glow,
+	.px-danger {
+		border: calc(3 * var(--px)) solid transparent;
+		border-radius: var(--radius-m);
+		background-color: var(--color-deep-slate);
+		box-shadow:
+			0 0 0 1px var(--edge),
+			var(--elevation-2);
+	}
+	.px-raised {
+		background-color: var(--color-slate);
+		box-shadow:
+			0 0 0 1px rgb(255 255 255 / 0.09),
+			var(--elevation-1);
+	}
+	.px-inset {
+		background-color: var(--color-ink);
+		box-shadow:
+			0 0 0 1px var(--edge),
+			inset 0 1px 3px rgb(0 0 0 / 0.5);
+	}
+	.px-paper {
+		background-color: var(--color-paper);
+		color: var(--color-ink);
+		box-shadow: var(--elevation-2);
+	}
+	/* The viewer's seat, and the seat to act: the accent. */
+	.px-gold {
+		box-shadow:
+			0 0 0 2px var(--color-gold),
+			var(--elevation-2);
+	}
+	.px-glow {
+		box-shadow:
+			0 0 0 2px var(--color-gold-light),
+			0 0 0 6px rgb(240 189 79 / 0.22),
+			var(--elevation-2);
+	}
+	.px-danger {
+		background-color: var(--color-red-deep);
+		box-shadow:
+			0 0 0 2px var(--color-red),
+			var(--elevation-2);
+	}
+
+	/* The table: a dark rail around a deep felt, lit from above. It draws behind
+	   the seats and holds no content, so only its own border is its own. */
+	.px-table {
+		border: calc(8 * var(--table-px, 3px)) solid var(--color-wood-dark);
+		border-radius: calc(48 * var(--table-px, 3px));
+		background: radial-gradient(
+			ellipse at 50% 40%,
+			var(--color-felt-light),
+			var(--color-felt) 55%,
+			var(--color-felt-dark)
+		);
+		box-shadow:
+			inset 0 0 0 1px rgb(255 255 255 / 0.06),
+			inset 0 10px 48px rgb(0 0 0 / 0.4),
+			0 0 0 1px rgb(255 255 255 / 0.06),
+			var(--elevation-3);
+	}
+
+	/* --- Buttons. ----------------------------------------------------------------------
+	   As tall and wide as the pixel buttons (the same border widths in all), with
+	   the label centred; pressing darkens the face and never moves the label. */
+
+	.px-btn {
+		--btn-bg: var(--color-slate);
+		--btn-down: #1b2029;
+		--btn-fg: var(--color-paper);
+		--btn-edge: var(--color-dusk);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: calc(3 * var(--px));
+		min-height: 48px;
+		padding: 0 calc(3 * var(--px));
+		border: transparent solid;
+		border-width: calc(4 * var(--px)) calc(3 * var(--px));
+		border-radius: var(--radius-s);
+		background: var(--btn-bg);
+		color: var(--btn-fg);
+		font-weight: 600;
+		line-height: 1;
+		white-space: nowrap;
+		box-shadow:
+			0 0 0 1px var(--btn-edge),
+			var(--elevation-1);
+		transition:
+			background-color 0.12s var(--ease-out),
+			box-shadow 0.12s var(--ease-out),
+			filter 0.12s var(--ease-out);
+		user-select: none;
+		-webkit-user-select: none;
+		-webkit-tap-highlight-color: transparent;
+		touch-action: manipulation;
+	}
+	.px-btn:hover:not(:disabled) {
+		filter: brightness(1.12);
+	}
+	.px-btn:active:not(:disabled),
+	.px-btn[aria-pressed='true'],
+	.px-btn.down {
+		background: var(--btn-down);
+		box-shadow:
+			0 0 0 1px var(--btn-edge),
+			inset 0 2px 4px rgb(0 0 0 / 0.4);
+	}
+	.px-btn.red {
+		--btn-bg: var(--color-red-dark);
+		--btn-down: #9c2f38;
+		--btn-fg: var(--color-white);
+		--btn-edge: rgb(255 255 255 / 0.14);
+	}
+	.px-btn.blue {
+		--btn-bg: var(--color-blue-dark);
+		--btn-down: #2556ab;
+		--btn-fg: var(--color-white);
+		--btn-edge: rgb(255 255 255 / 0.14);
+	}
+	.px-btn.amber {
+		--btn-bg: var(--color-amber);
+		--btn-down: #c9772a;
+		--btn-fg: var(--color-ink);
+		--btn-edge: rgb(255 255 255 / 0.18);
+	}
+	.px-btn.green {
+		--btn-bg: var(--color-green-dark);
+		--btn-down: #18633d;
+		--btn-fg: var(--color-white);
+		--btn-edge: rgb(255 255 255 / 0.14);
+	}
+	.px-btn.gold {
+		--btn-bg: var(--color-gold);
+		--btn-down: #d6a53f;
+		--btn-fg: var(--color-ink);
+		--btn-edge: rgb(255 255 255 / 0.2);
+	}
+	.px-btn:disabled,
+	.px-btn.gold:disabled,
+	.px-btn.red:disabled,
+	.px-btn.blue:disabled,
+	.px-btn.amber:disabled,
+	.px-btn.green:disabled {
+		--btn-bg: var(--color-deep-slate);
+		--btn-down: var(--color-deep-slate);
+		--btn-fg: var(--color-haze);
+		--btn-edge: rgb(255 255 255 / 0.08);
+		box-shadow: 0 0 0 1px var(--btn-edge);
+	}
+	.px-btn.small {
+		min-height: 40px;
+		font-size: var(--text-s);
+	}
+
+	/* A choice that turns gold when it is the one chosen. */
+	.px-btn.choice[aria-pressed='true'],
+	input:checked + .px-btn.choice {
+		--btn-bg: var(--color-gold);
+		--btn-down: var(--color-gold);
+		--btn-fg: var(--color-ink);
+		--btn-edge: rgb(255 255 255 / 0.2);
+		background: var(--btn-bg);
+		box-shadow:
+			0 0 0 1px var(--btn-edge),
+			var(--elevation-1);
+	}
+	input:focus-visible + .px-btn.choice {
+		outline: var(--px) solid var(--color-gold-light);
+		outline-offset: var(--px);
+	}
+
+	/* --- Fields. ----------------------------------------------------------------------- */
+
+	.px-field {
+		border: calc(3 * var(--px)) solid transparent;
+		border-radius: var(--radius-s);
+		background-color: var(--color-ink);
+		color: var(--color-paper);
+		min-height: 44px;
+		padding: 0 calc(2 * var(--px));
+		box-shadow: 0 0 0 1px var(--color-dusk);
+	}
+	.px-field:focus-visible {
+		outline-offset: 0;
+	}
+	/* The caret is two gradients, a chevron in the field's right end. */
+	select.px-field {
+		appearance: none;
+		-webkit-appearance: none;
+		padding-right: calc(12 * var(--px));
+		background-image:
+			linear-gradient(45deg, transparent 50%, var(--color-mist) 50%),
+			linear-gradient(135deg, var(--color-mist) 50%, transparent 50%);
+		background-position:
+			right 11px center,
+			right 6px center;
+		background-size: 5px 5px;
+		background-repeat: no-repeat;
+		cursor: pointer;
+	}
+	select.px-field option {
+		background: var(--color-deep-slate);
+		color: var(--color-paper);
+	}
+	input.px-field[type='number'] {
+		-moz-appearance: textfield;
+		appearance: textfield;
+	}
+	input.px-field[type='number']::-webkit-inner-spin-button,
+	input.px-field[type='number']::-webkit-outer-spin-button {
+		-webkit-appearance: none;
+		margin: 0;
+	}
+
+	/* The bet slider: a slim groove and a round gold thumb, as large as the pixel chip. */
+	input.px-range {
+		-webkit-appearance: none;
+		appearance: none;
+		width: 100%;
+		height: 44px;
+		background: none;
+		margin: 0;
+		cursor: pointer;
+	}
+	input.px-range::-webkit-slider-runnable-track {
+		height: 6px;
+		border-radius: 3px;
+		background: var(--color-ink);
+		box-shadow: 0 0 0 1px var(--color-dusk);
+	}
+	input.px-range::-moz-range-track {
+		height: 6px;
+		border-radius: 3px;
+		background: var(--color-ink);
+		box-shadow: 0 0 0 1px var(--color-dusk);
+	}
+	input.px-range::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		width: calc(11 * var(--px));
+		height: calc(11 * var(--px));
+		margin-top: -8px;
+		border: 2px solid var(--color-ink);
+		border-radius: 50%;
+		background: var(--color-gold);
+		box-shadow: var(--elevation-1);
+	}
+	input.px-range::-moz-range-thumb {
+		width: calc(11 * var(--px));
+		height: calc(11 * var(--px));
+		box-sizing: border-box;
+		border: 2px solid var(--color-ink);
+		border-radius: 50%;
+		background: var(--color-gold);
+		box-shadow: var(--elevation-1);
+	}
+	input.px-range:disabled {
+		opacity: 0.5;
+	}
+}

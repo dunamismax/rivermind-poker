@@ -1,16 +1,20 @@
-// Writes the site's pixel art (see scripts/pixel-art/render.js) and removes
-// any card image it no longer makes. With --preview DIR it also writes
-// contact sheets there for review: every card, every interface sprite and a
-// font specimen, at 1x and 4x (the cards also at 2x).
+// Writes the site's art: the pixel art (see scripts/pixel-art/render.js) and
+// the clean look's deck (scripts/clean-art/deck.js, P5C.3), and removes any card
+// image it no longer makes. With --preview DIR it also writes contact sheets
+// there for review: every card, every interface sprite and a font specimen, at
+// 1x and 4x (the cards also at 2x), and the clean deck as a page (clean.html)
+// to open in a browser at each density.
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
+import { renderDeck } from './clean-art/deck.js';
 import { Canvas, PALETTE } from './pixel-art/canvas.js';
 import { BACKS, CARD_H, CARD_W, RANKS, SUITS, slot } from './pixel-art/cards.js';
 import { decodePng, encodePng } from './pixel-art/png.js';
 import { loadFont, renderAll, renderImages } from './pixel-art/render.js';
 
 const WEB = resolve(import.meta.dirname, '..');
-const files = renderAll();
+const deck = renderDeck();
+const files = new Map([...renderAll(), ...deck]);
 for (const [path, bytes] of files) {
 	const target = resolve(WEB, path);
 	mkdirSync(dirname(target), { recursive: true });
@@ -18,18 +22,21 @@ for (const [path, bytes] of files) {
 }
 console.log(`Wrote ${files.size} files.`);
 
-// The site bundles every PNG under src/lib/art/cards/, so nothing else may stay there.
-const cardsDir = resolve(WEB, 'src/lib/art/cards');
-for (const entry of readdirSync(cardsDir, { recursive: true, withFileTypes: true })) {
-	const path = relative(WEB, resolve(entry.parentPath, entry.name));
-	if (entry.isFile() && !files.has(path)) {
-		rmSync(resolve(WEB, path));
-		console.log(`Removed ${path}`);
+// The site bundles every card file under each deck's directory, so nothing else may stay there.
+for (const cardsDir of ['src/lib/art/cards', 'src/lib/art/clean/cards'].map((d) =>
+	resolve(WEB, d)
+)) {
+	for (const entry of readdirSync(cardsDir, { recursive: true, withFileTypes: true })) {
+		const path = relative(WEB, resolve(entry.parentPath, entry.name));
+		if (entry.isFile() && !files.has(path)) {
+			rmSync(resolve(WEB, path));
+			console.log(`Removed ${path}`);
+		}
 	}
-}
-for (const entry of readdirSync(cardsDir, { withFileTypes: true })) {
-	const dir = resolve(cardsDir, entry.name);
-	if (entry.isDirectory() && readdirSync(dir).length === 0) rmSync(dir, { recursive: true });
+	for (const entry of readdirSync(cardsDir, { withFileTypes: true })) {
+		const dir = resolve(cardsDir, entry.name);
+		if (entry.isDirectory() && readdirSync(dir).length === 0) rmSync(dir, { recursive: true });
+	}
 }
 
 const at = process.argv.indexOf('--preview');
@@ -111,5 +118,24 @@ if (at > 0) {
 	spec.rect(0, 0, spec.width, spec.height, 'deep slate');
 	sample.forEach((s, i) => font.draw(spec, s, 3, 3 + i * 11, 'paper'));
 	save('font-4x.png', spec, 4);
+	// The clean deck as a page: on the felt and on the page's night, at the sizes a
+	// table asks for. Open it at each device-pixel ratio to review it.
+	const cleanDir = resolve(dir, 'clean');
+	mkdirSync(cleanDir, { recursive: true });
+	const names = [...deck.keys()].map((path) => {
+		const name = path.split('/').slice(-2).join('-').replace('cards-', '');
+		writeFileSync(resolve(cleanDir, name), deck.get(path));
+		return name;
+	});
+	const sections = [0.75, 1, 1.4, 2]
+		.map(
+			(k) =>
+				`<h2>--k: ${k}</h2><div>${names.map((n) => `<img src="clean/${n}" width="${71 * k}" height="${95 * k}" alt="${n}">`).join('')}</div>`
+		)
+		.join('');
+	writeFileSync(
+		resolve(dir, 'clean.html'),
+		`<!doctype html><meta charset="utf-8"><title>Clean deck</title><style>body{margin:8px;background:#174237;color:#eceff4;font:13px system-ui}div{display:flex;flex-wrap:wrap;gap:6px}h2{font-size:13px}.night{background:#11141b;padding:8px}</style><body>${sections}<section class="night">${sections}</section>`
+	);
 	console.log(`Previews in ${dir}`);
 }

@@ -130,7 +130,7 @@
 		clock?.bank
 			? 'fill-red-light'
 			: clock && clock.fraction < 0.3
-				? 'fill-gold'
+				? 'fill-warn'
 				: 'fill-green-light'
 	);
 </script>

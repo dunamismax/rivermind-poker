@@ -1,0 +1,20 @@
+The clean deck (web/src/lib/art/clean/cards/, drawn by web/scripts/clean-art/deck.js)
+
+RiverMind Poker's clean look (Phase 5C, decision D-18) draws its playing cards
+after the code-drawn cards of FeltPrep, a separate project by the same owner,
+first drawn there at FeltPrep commit cd8293a (2026-11-26, its step P3.1):
+web/src/lib/ui/PlayingCard.svelte, SuitPip.svelte and cards.ts. RiverMind takes
+FeltPrep's card layout (a large rank at the top left, a small pip under it and
+a large pip at the bottom right), its four suit colours (clubs green, diamonds
+blue, hearts red, spades near black) on its warm white face and edge, its four
+suit shapes, and its burgundy lattice back. RiverMind redraws them on its own
+71 x 95 card box, draws each rank as strokes rather than text, and adds navy
+and green backs drawn the same way.
+
+FeltPrep's code is licensed under the GNU Affero General Public License,
+version 3 or later, and FeltPrep reserves its name, logo and artwork, which
+neither of its licenses covers. The owner, who holds the rights to both
+projects, contributes these card drawings to RiverMind Poker under RiverMind's
+own license, the GNU General Public License, version 3 or later (see LICENSE).
+This grant covers the card drawings named above as they appear in RiverMind
+Poker. It does not license FeltPrep's name, logo or any other FeltPrep artwork.

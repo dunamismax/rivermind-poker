@@ -1,0 +1,68 @@
+/*
+ * The kit's geometry, shared by both looks (Phase 5C): how big each sprite is and
+ * how a compact hand is cut. Layouts depend on these sizes, so a look draws into
+ * them and never changes them. Each look's art is in its own sheet: pixel.css
+ * under data-look="pixel", clean.css under data-look="clean".
+ */
+
+.sprite {
+	display: inline-block;
+	flex: none;
+	background: no-repeat center / 100% 100%;
+}
+.chip {
+	width: calc(11 * var(--px));
+	height: calc(11 * var(--px));
+}
+.pot-pile {
+	width: calc(29 * var(--px));
+	height: calc(16 * var(--px));
+}
+.dealer-button {
+	width: calc(11 * var(--px));
+	height: calc(11 * var(--px));
+}
+/* Table voice's glyphs (P4C.6), 11 × 11. */
+.voice-glyph {
+	width: calc(11 * var(--px));
+	height: calc(11 * var(--px));
+}
+.mini-cards {
+	width: calc(14 * var(--px));
+	height: calc(13 * var(--px));
+}
+/* A compact hand: cards fanned tight and cut to a 58 × 50 art-pixel window
+   (the first card's index and the second card's corner), at 2 device pixels
+   per art pixel or more where the screen has them, so the ranks read in a
+   list or a small seat. --peek-a is one art pixel, snapped as PlayingCard's. */
+.card-peek {
+	--k: 0.75;
+	--card-min: 2;
+	--peek-a: calc(
+		1px *
+			max(
+				min(var(--card-min), round(down, var(--dpr, 1), 1)),
+				round(nearest, calc(var(--k) * var(--dpr, 1)), 1)
+			) /
+			var(--dpr, 1)
+	);
+	display: flex;
+	flex: none;
+	width: calc(58 * var(--peek-a));
+	height: calc(50 * var(--peek-a));
+	overflow: hidden;
+}
+.card-peek > .card {
+	transform: none;
+}
+.card-peek > .card + .card {
+	margin-left: calc(-53 * var(--peek-a));
+}
+.emblem {
+	width: calc(15 * var(--px));
+	height: calc(17 * var(--px));
+}
+.avatar {
+	width: calc(16 * var(--px));
+	height: calc(16 * var(--px));
+}

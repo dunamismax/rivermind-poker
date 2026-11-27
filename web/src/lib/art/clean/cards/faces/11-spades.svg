@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="71" height="95" viewBox="0 0 71 95">
+<title>Jack of spades</title>
+<rect x="0.75" y="0.75" width="69.5" height="93.5" rx="6" fill="#fffdf7" stroke="#bdb7a6" stroke-width="1.5"/>
+<g class="rank" fill="none" stroke="#1a1d22" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(8.2 8.2)"><path d="M4 0H11.5V15.2C11.5 19.6 9.2 22 5.8 22C2.9 22 0.8 20.3 0 17.4"/></g></g>
+<g class="pip" fill="#1a1d22" transform="translate(6 38) scale(0.15)"><path d="M50 4C74 26 95 42 95 62C95 75 85 83 73 83C65 83 58 79 54 72C55 83 59 90 67 96L33 96C41 90 45 83 46 72C42 79 35 83 27 83C15 83 5 75 5 62C5 42 26 26 50 4Z"/></g>
+<g class="pip" fill="#1a1d22" transform="translate(31 53) scale(0.34)"><path d="M50 4C74 26 95 42 95 62C95 75 85 83 73 83C65 83 58 79 54 72C55 83 59 90 67 96L33 96C41 90 45 83 46 72C42 79 35 83 27 83C15 83 5 75 5 62C5 42 26 26 50 4Z"/></g>
+</svg>

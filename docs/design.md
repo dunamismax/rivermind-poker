@@ -1,6 +1,8 @@
 # RiverMind Poker design
 
-The site is drawn in hand-made pixel art: a night-blue card room, a green felt table with a wooden rail, a detailed pixel-art deck with four suit colors, and one pixel font for everything. The aim is the easiest poker table to read and play on a phone or a desktop, with the warmth of a pixel-art card game. The [design reference page](../web/src/routes/style/+page.svelte) (`/style` on any build) shows every piece of the kit as the site draws it.
+The site has two looks (Phase 5C, D-18), chosen by the player and kept in their browser: the **pixel look**, described first, and the **clean look**, [described below](#the-clean-look). Both share every page, component and line of markup; a look is a stylesheet, a set of art and a deck, chosen by `data-look` on `<html>`.
+
+The pixel look is drawn in hand-made pixel art: a night-blue card room, a green felt table with a wooden rail, a detailed pixel-art deck with four suit colors, and one pixel font for everything. The aim is the easiest poker table to read and play on a phone or a desktop, with the warmth of a pixel-art card game. The [design reference page](../web/src/routes/style/+page.svelte) (`/style` on any build) shows every piece of the kit as the site draws it.
 
 The interface art and the font are original and licensed with the rest of the project under [GPL-3.0-or-later](../LICENSE). The card deck is a set of pixel-art sprites the owner chose and added to the repository (see [The cards](#the-cards)).
 
@@ -84,6 +86,65 @@ Check any change to styles or markup with `pnpm visual` against captures of the 
 The deck is pixel art at 73 × 97, delivered as PNGs enlarged 12 times (fronts) and 13 times (backs); on the site a card is 71 × 95 after the clear outer ring is cropped. It is a four-colour deck: the number cards use the standard pip layouts, the aces a large suit, and the courts are framed figures whose robes and trim take the suit’s color. There are 18 backs: five classic ornate backs (red, the site’s default, plus blue, green, amber and slate), a dusk gradient ornate back, parchment, argyle, confetti, maze, tracks, moons, nebula, rose marble, two contour maps (blue and rainbow), a violet swirl and shapes. Their names are the files’ names. [`card-assets.ts`](../web/src/lib/card-assets.ts) maps cards to files, lists the backs for the settings in P6.5 and preloads only the faces and the back in use. The sprites’ original file names were `8BitDeck_opt2.png` to `8BitDeck_opt53.png` (hearts, clubs, diamonds, spades; 2 to ace) and `Deck Backs1.png` to `Deck Backs18.png`; their source and license terms are still to be recorded in [`licenses/`](../licenses/).
 
 To replace a card, drop a new PNG with the same name into `web/art/cards/` (any whole-number enlargement of 73 × 97 with hard-edged transparency), run `pnpm art --preview <dir>` and look at the sheets. To add a back, add its file and its name to `BACKS` in [`cards.js`](../web/scripts/pixel-art/cards.js) and `CARD_BACKS` in `card-assets.ts`.
+
+## The clean look
+
+A dark card room drawn without pixel art (P5C.2): charcoal and slate surfaces, a deep muted felt inside a dark rail, one gold accent for the viewer's seat and the turn, the system's own fonts, soft shadows and smooth motion. It is dark only for 1.0 (Q-12). Everything is in [`web/src/styles/clean.css`](../web/src/styles/clean.css), under `:where([data-look='clean'])`, which adds no specificity, so a utility overrides a kit class exactly as in the pixel look.
+
+**Tokens.** The clean look gives the theme's variables its own values rather than adding a second set of names, so the markup is the same in both looks and every utility (`bg-felt`, `text-gold`) follows the look. Each palette name keeps its role: gold is the accent, felt is the table, `green-light` a win, `red-light` a loss, ink the darkest ground and paper the main text. Where one name plays two roles in the markup, a role token replaces it there and is mapped back to the same value in the pixel look, so the pixel look is unchanged: `warn` (the turn clock under 30% and the voice meter's middle) is `var(--color-gold)` in the pixel look and amber in the clean one. The deck's colours (P5C.3) are role tokens of the clean look alone: `card` (`#fffdf7`) with its `card-edge`, and one colour per suit, FeltPrep's: clubs green `#19703a`, diamonds blue `#1a58ad`, hearts red `#b4231b`, spades near black `#1a1d22`.
+
+| Token | Clean value |
+| --- | --- |
+| Surfaces | ink `#0a0c11` (header, wells, fields), night `#11141b` (the page), deep-slate `#181c25` (panels), slate `#232935` (raised panels, buttons), dusk `#687186` (the edge of a control) |
+| Text | paper `#eceff4`, paper-shade `#cdd3de`, mist `#b3bbca` (secondary), haze `#a1a9ba` (tertiary and disabled) |
+| The table | felt `#174237` from felt-light `#1f5646` to felt-dark `#12352d`, inside a rail of wood-dark `#1a1c22` |
+| Accent | gold `#f0bd4f`, gold-light `#ffdc8a` |
+| Win, loss, warning | green-light `#7fd9a2`, red-light `#ff8f86`, warn `#e8923a` |
+| Fonts | `system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', Arial, sans-serif` through `--font-pixel`, the theme's one family, and the system's monospace for code. No font file and no third-party origin. |
+| Text sizes | `text-xs` 11px, `text-s` 13px, `text-m` 16px (the page), `text-l` 22px, `text-xl` 28px |
+| Radii | `--radius-s` 6px (buttons, fields), `--radius-m` 10px (frames), `--radius-l` 16px |
+| Shadows | `--elevation-1` `0 1px 2px` (buttons), `--elevation-2` `0 4px 14px` (frames), `--elevation-3` `0 14px 36px` (the table), all black at 35 to 45%; `text-shadow-ink` is a soft `0 1px 2px` |
+| Motion | The same keyframes as the pixel look, eased instead of stepped: `--ease-out` `cubic-bezier(0.2, 0.7, 0.2, 1)` at 180 to 240 ms for a notice, a panel, a bet or a reaction, 600 ms for winnings rising, and `--ease-in-out` for the loops (a waiting lamp, the turn, a speaker). `prefers-reduced-motion` stops them all, as in the pixel look. |
+
+**Contrast.** Every pair of text and background that the pages use meets WCAG 2.2 AA, measured by [`clean.spec.ts`](../web/src/styles/clean.spec.ts) from the values in `clean.css`, so a change that breaks one fails the tests. Text on the surfaces it sits on (4.5:1 needed):
+
+| Text | night `#11141b` | ink `#0a0c11` | deep-slate `#181c25` | slate `#232935` | felt-dark `#12352d` | felt `#174237` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| paper `#eceff4` | 16.0 | 17.0 | 14.8 | 12.7 | 11.6 | 9.7 |
+| paper-shade `#cdd3de` | 12.3 | 13.0 | 11.3 | 9.7 | 8.9 | 7.5 |
+| mist `#b3bbca` | 9.5 | 10.1 | 8.8 | 7.6 | 6.9 | 5.8 |
+| haze `#a1a9ba` | 7.8 | 8.3 | 7.2 | 6.2 | 5.7 | 4.8 |
+| gold `#f0bd4f` | 10.6 | 11.3 | 9.8 | 8.4 | 7.7 | 6.5 |
+| gold-light `#ffdc8a` | 13.9 | 14.8 | 12.9 | 11.0 | 10.1 | 8.5 |
+| green-light `#7fd9a2` | 10.8 | 11.5 | 10.0 | 8.6 | 7.9 | 6.6 |
+| red-light `#ff8f86` | 8.4 | 8.9 | 7.7 | 6.6 | 6.1 | 5.1 |
+| violet-light `#b0a1f5` | 8.1 | 8.6 | 7.5 | 6.4 | 5.9 | 5.0 |
+| blue-light `#8fbcff` | 9.5 | 10.1 | 8.8 | 7.5 | 6.9 | 5.8 |
+| amber and warn `#e8923a` | 7.5 | 8.0 | 7.0 | 6.0 | 5.5 | 4.6 |
+
+Text on a colour of its own (4.5:1): paper on a slate button 12.7, white on a red, blue or green button 5.5, 5.4 and 5.3, ink on an amber or gold button 8.0 and 11.3, ink on paper 17.0, amber-deep on a chosen gold option 8.1, violet-light (the “Bot” tag) on ink 8.6, and each suit on the card face: clubs 6.0, diamonds 6.8, hearts 6.5, spades 16.6.
+
+Controls and focus (3:1): a slate button's or a field's edge (dusk) on night 3.8, on deep-slate 3.5 and on ink 4.0; the red, blue and green button faces on night 3.4, 3.4 and 3.5, and amber 7.5; the focus ring and the slider's thumb (gold) on night 10.6, ink 11.3, deep-slate 9.8, slate 8.4 and felt 6.5; a chosen option's focus ring (gold-light) on deep-slate 12.9; the error frame's ring (red) on its red-deep ground 3.9.
+
+**The kit.** `clean.css` draws every class of the pixel kit without an image file, and keeps its geometry: frames and fields keep their 3-pixel border, transparent, under the surface, with the edge drawn as a ring just outside it, and buttons keep the same total border width with the label centred, so a box takes the same room in either look and only its drawing differs. The sizes of sprites and the compact hand's window are shared by both looks in [`kit.css`](../web/src/styles/kit.css).
+
+| Class | Clean drawing |
+| --- | --- |
+| `.px-panel`, `.px-raised`, `.px-inset`, `.px-paper` | Rounded cards: deep-slate with a faint edge and a soft shadow, slate, a sunken ink well, and paper with ink text. |
+| `.px-gold`, `.px-glow`, `.px-danger` | A 2px gold ring for the viewer's seat; a gold-light ring with a soft gold halo for the seat to act; a red ring on red-deep for an error. |
+| `.px-btn` and its colours | A rounded face with a 1px edge and a small shadow, the label in semibold. Slate by default; red, blue and green with white labels, amber and gold with ink labels. Pressing darkens the face and sinks it with an inner shadow; the label never moves. Disabled is deep-slate with a haze label. |
+| `.px-btn.choice` | Gold with an ink label when chosen, pressed or checked. |
+| `.px-field`, `select.px-field` | An ink well with a dusk edge; a select's caret is a chevron of two gradients. |
+| `.px-range` | A slim rounded groove and a round gold thumb as large as the pixel chip. |
+| `.px-table` | A deep felt lit from above (a radial gradient) inside a dark rail, with the same corner radius as the pixel table's nine-slice. |
+
+The sprites (chips, avatars, the dealer button and the rest) are drawn for the clean look in P5C.4; until then the clean look leaves the sprites' boxes empty. `/style` shows the kit of the look it is viewed in, with a switch to the other.
+
+### The clean deck
+
+The clean look's cards (P5C.3) are the code-drawn cards of the owner's FeltPrep project, redrawn on RiverMind's 71 × 95 card box so every slot, fan and peek keeps its geometry: a large rank at the top left, a small pip under it and a large pip at the bottom right, in the four suit colours above on warm white with a thin edge, with FeltPrep's own pip shapes. FeltPrep sets the rank in the system's sans-serif; an SVG shown as an image takes whatever font the device has, so here each rank is drawn as round strokes instead, the same on every device, and the ten always keeps its two digits clear of the edge. The backs are FeltPrep's burgundy lattice and the same lattice in navy and green (`lattice-burgundy`, the default, `lattice-navy`, `lattice-green`), each the same after a half turn, and the empty board slot is a card's outline sunk into the felt.
+
+[`web/scripts/clean-art/deck.js`](../web/scripts/clean-art/deck.js) draws them from the clean palette in `clean.css`, and `pnpm art` writes them as SVG files into [`web/src/lib/art/clean/cards/`](../web/src/lib/art/clean/cards/) beside the pixel art; `pnpm art --preview <dir>` also writes `clean.html`, the deck on the felt and on the page at `--k` 0.75 to 2, to open at each device-pixel ratio. Never edit a file there by hand. `PlayingCard` shows the look's deck in the same `<img>`, with the same alt text and the same size by `--k`, drawn smooth with a soft shadow and an eased deal; `card-assets.ts` gives each look's faces, backs and slot (`cardFacePath(card, look)` and so on), and a back of the other deck's draws as the look's default. [`clean.spec.ts`](../web/src/lib/art/clean.spec.ts) fails if a file drifts from the generator or the directory holds another, if a file is not well-formed SVG of drawing alone (no script, style or external reference), if a colour is off the clean palette, if a face does not show its own rank and suit, if the ten comes within 3 units of the edge, or if a back changes under a half turn. The drawings' provenance is in [`licenses/FeltPrep-cards.txt`](../licenses/FeltPrep-cards.txt): FeltPrep is AGPL-3.0 with its artwork reserved, and the owner, who holds both projects, contributes these drawings to RiverMind under GPL-3.0-or-later (D-18).
 
 ## The table
 

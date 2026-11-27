@@ -1,5 +1,12 @@
 <script lang="ts">
-	import { CARD_SLOT, cardBackPath, cardFacePath, type CardBack } from '../card-assets.ts';
+	import {
+		cardBackPath,
+		cardFacePath,
+		cardSlotPath,
+		type CardBack,
+		type CleanCardBack
+	} from '../card-assets.ts';
+	import { look } from '../look.svelte.ts';
 	import type { Card } from '../protocol.ts';
 	import { cardName } from '../wording.ts';
 
@@ -9,6 +16,8 @@
 	 * pixels wide), and the card snaps to the nearest whole number of device
 	 * pixels per art pixel, so it stays crisp on every screen. `--card-min`
 	 * sets the fewest device pixels per art pixel, for cards that must stay legible.
+	 * The deck is the look's (Phase 5C): the pixel sprites, or the clean deck's SVG
+	 * drawn on the same 71 × 95 box, so a card takes the same room in either.
 	 */
 	let {
 		card,
@@ -18,17 +27,24 @@
 		card: Card | null | undefined;
 		/** Older layouts: half a size up. */
 		large?: boolean;
-		back?: CardBack;
+		back?: CardBack | CleanCardBack;
 	} = $props();
 </script>
 
 {#if card === undefined}
-	<img class="card slot" class:large src={CARD_SLOT} alt="" aria-hidden="true" draggable="false" />
+	<img
+		class="card slot"
+		class:large
+		src={cardSlotPath(look.current)}
+		alt=""
+		aria-hidden="true"
+		draggable="false"
+	/>
 {:else if card === null}
 	<img
 		class="card back"
 		class:large
-		src={cardBackPath(back)}
+		src={cardBackPath(back, look.current)}
 		alt="Face-down card"
 		draggable="false"
 	/>
@@ -36,7 +52,7 @@
 	<img
 		class="card face"
 		class:large
-		src={cardFacePath(card)}
+		src={cardFacePath(card, look.current)}
 		alt={cardName(card)}
 		draggable="false"
 	/>
@@ -69,6 +85,15 @@
 		animation: deal 0.24s steps(4, end);
 	}
 	:global(:where([data-look='pixel'])) .slot {
+		filter: none;
+		animation: none;
+	}
+	/* The clean look's deck (P5C.3): smooth, with a soft shadow and an eased deal. */
+	:global(:where([data-look='clean'])) .card {
+		filter: drop-shadow(0 calc(1.5 * var(--card-a)) calc(2 * var(--card-a)) rgb(0 0 0 / 0.35));
+		animation: deal 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
+	}
+	:global(:where([data-look='clean'])) .slot {
 		filter: none;
 		animation: none;
 	}

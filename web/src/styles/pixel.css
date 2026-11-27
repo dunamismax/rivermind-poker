@@ -7,7 +7,7 @@
  *   .px-btn with .red .blue .amber .green .gold (slate by default)
  *   .px-field  text and number inputs, selects
  *   .px-table  the felt and its rail
- *   .chip-* .avatar-* .dealer-button .pot-pile  sprites
+ *   .chip-* .avatar-* .dealer-button .pot-pile  sprites (sized in kit.css)
  *   .voice-glyph .voice-*                        table voice's glyphs (P4C.6)
  *
  * The kit belongs to the pixel look (Phase 5C) and applies only under
@@ -235,14 +235,7 @@
 	/* --- Sprites. ----------------------------------------------------------------- */
 
 	.sprite {
-		display: inline-block;
-		flex: none;
-		background: no-repeat center / 100% 100%;
 		image-rendering: pixelated;
-	}
-	.chip {
-		width: calc(11 * var(--px));
-		height: calc(11 * var(--px));
 	}
 	.chip-white {
 		background-image: url('../lib/art/ui/chip-white.png');
@@ -266,20 +259,18 @@
 		background-image: url('../lib/art/ui/chip-gold.png');
 	}
 	.pot-pile {
-		width: calc(29 * var(--px));
-		height: calc(16 * var(--px));
 		background-image: url('../lib/art/ui/pot.png');
 	}
 	.dealer-button {
-		width: calc(11 * var(--px));
-		height: calc(11 * var(--px));
 		background-image: url('../lib/art/ui/dealer.png');
 	}
-	/* Table voice's glyphs (P4C.6), 11 × 11. */
-	.voice-glyph {
-		width: calc(11 * var(--px));
-		height: calc(11 * var(--px));
+	.mini-cards {
+		background-image: url('../lib/art/ui/mini-cards.png');
 	}
+	.emblem {
+		background-image: url('../lib/art/ui/emblem.png');
+	}
+	/* Table voice's glyphs (P4C.6). */
 	.voice-mic {
 		background-image: url('../lib/art/ui/voice-mic.png');
 	}
@@ -294,48 +285,6 @@
 	}
 	.voice-out {
 		background-image: url('../lib/art/ui/voice-out.png');
-	}
-	.mini-cards {
-		width: calc(14 * var(--px));
-		height: calc(13 * var(--px));
-		background-image: url('../lib/art/ui/mini-cards.png');
-	}
-	/* A compact hand: cards fanned tight and cut to a 58 × 50 art-pixel window
-	   (the first card's index and the second card's corner), at 2 device pixels
-	   per art pixel or more where the screen has them, so the ranks read in a
-	   list or a small seat. --peek-a is one art pixel, snapped as PlayingCard's. */
-	.card-peek {
-		--k: 0.75;
-		--card-min: 2;
-		--peek-a: calc(
-			1px *
-				max(
-					min(var(--card-min), round(down, var(--dpr, 1), 1)),
-					round(nearest, calc(var(--k) * var(--dpr, 1)), 1)
-				) /
-				var(--dpr, 1)
-		);
-		display: flex;
-		flex: none;
-		width: calc(58 * var(--peek-a));
-		height: calc(50 * var(--peek-a));
-		overflow: hidden;
-	}
-	.card-peek > .card {
-		transform: none;
-	}
-	.card-peek > .card + .card {
-		margin-left: calc(-53 * var(--peek-a));
-	}
-
-	.emblem {
-		width: calc(15 * var(--px));
-		height: calc(17 * var(--px));
-		background-image: url('../lib/art/ui/emblem.png');
-	}
-	.avatar {
-		width: calc(16 * var(--px));
-		height: calc(16 * var(--px));
 	}
 	.avatar-person-0 {
 		background-image: url('../lib/art/ui/avatar-person-0.png');

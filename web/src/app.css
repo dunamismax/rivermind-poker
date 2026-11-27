@@ -1,14 +1,19 @@
 /*
- * RiverMind's look: hand-drawn pixel art on a night-blue room, a felt table,
- * one pixel font. Tailwind CSS 4 styles the pages, on a theme generated from
- * web/art/ (lib/art/theme.css: the palette, the font, the spacing step and the
- * text sizes, and nothing of Tailwind's own). The frames and buttons in
- * pixel.css are nine-slice images drawn from the same palette.
- * See docs/design.md.
+ * RiverMind's two looks (Phase 5C, D-18), chosen by data-look on <html>. The
+ * pixel look: hand-drawn pixel art on a night-blue room, a felt table, one pixel
+ * font. The clean look: a dark card room drawn in CSS, with the system's fonts.
+ * Tailwind CSS 4 styles the pages, on a theme generated from web/art/
+ * (lib/art/theme.css: the palette, the font, the spacing step and the text
+ * sizes, and nothing of Tailwind's own), which clean.css gives its own values.
+ * The kit's sizes are shared (kit.css); the frames and buttons in pixel.css are
+ * nine-slice images drawn from the palette, and clean.css draws the same classes
+ * without images. See docs/design.md.
  */
 @import 'tailwindcss' source(none);
 @import './lib/art/theme.css';
+@import './styles/kit.css' layer(components);
 @import './styles/pixel.css' layer(components);
+@import './styles/clean.css' layer(components);
 
 /*
  * Only the pages and their components carry utilities: the server code and the
@@ -47,8 +52,12 @@
 @custom-variant tab (@media (min-width: 640px) and (max-width: 1099px) and (orientation: portrait));
 @custom-variant pocket (@media (max-width: 639px));
 
-/* What the generated theme leaves to the pages: title lettering and the stepped animations. */
+/* What the generated theme leaves to the pages: role colours, title lettering and the stepped animations. */
 @theme {
+	/* A role that a palette name plays besides its own (Phase 5C): the turn clock and the
+	   voice meter's middle. It is gold in the pixel look, as before; clean.css sets its own. */
+	--color-warn: var(--color-gold);
+
 	/* Gold lettering on an amber and ink drop: the site's name and the lobby's title. */
 	--text-shadow-title:
 		0 var(--spacing) 0 var(--color-amber-deep), 0 calc(var(--spacing) * 2) 0 var(--color-ink);
@@ -116,6 +125,20 @@
 		50% {
 			outline-color: var(--color-green);
 		}
+	}
+}
+
+/*
+ * Tailwind writes a text shadow's value into its utility rather than reading the
+ * theme's variable, so the clean look reads the variable itself. Later in the same
+ * layer and as specific, these win over the generated utilities.
+ */
+@layer utilities {
+	:where([data-look='clean']) .text-shadow-ink {
+		text-shadow: var(--text-shadow-ink);
+	}
+	:where([data-look='clean']) .text-shadow-title {
+		text-shadow: var(--text-shadow-title);
 	}
 }
 

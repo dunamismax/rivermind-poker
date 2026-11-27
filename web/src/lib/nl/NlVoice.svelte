@@ -172,7 +172,7 @@
 					voice.quality === 'good'
 						? 'bg-green-light'
 						: voice.quality === 'fair'
-							? 'bg-gold'
+							? 'bg-warn'
 							: 'bg-red-light'
 				]}
 				aria-hidden="true"
@@ -337,7 +337,7 @@
 									? i >= SEGMENTS - 2
 										? 'fill-red-light'
 										: i >= SEGMENTS - 4
-											? 'fill-gold'
+											? 'fill-warn'
 											: 'fill-green-light'
 									: 'fill-deep-slate'}
 								x={1 + i * 6}

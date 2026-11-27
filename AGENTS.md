@@ -430,6 +430,7 @@ The site’s art is pixel art drawn as text: the palette, sprites and font are i
 
 - Never edit a generated PNG, the font or `theme.css` by hand. Change the source, run `pnpm art --preview <dir outside the repo>`, look at the contact sheets, and commit both.
 - Draw only with palette names, keep art at whole-number scales, and size text in multiples of 10px.
+- The clean look has no pixel art (Phase 5C). Its tokens and kit are CSS in `web/src/styles/clean.css`, whose contrast `clean.spec.ts` measures; the kit's shared sizes are in `kit.css`. Its deck is SVG drawn by `web/scripts/clean-art/deck.js`, which `pnpm art` writes into `src/lib/art/clean/cards/`: never edit those files by hand, and draw only with clean palette colours.
 - The cards are the exception: the owner’s PNG sprites in `web/art/cards/` (`fronts/<rank>-<suit>.png`, `backs/<name>.png`) are the only card art, are not on the palette, and are shrunk by `pnpm art` to 71 × 95. Size cards with `--k`; they snap to whole device pixels per art pixel, so check them at DPR 1, 2 and 3.
 
 ### Legacy code

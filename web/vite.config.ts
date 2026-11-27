@@ -69,7 +69,7 @@ export default defineConfig({
 		// The CSP allows data: images but not data: fonts or scripts, so the font,
 		// and voice's noise suppression worklet and its WebAssembly, are always
 		// their own hashed files.
-		assetsInlineLimit: (file) => (/\.(woff|js|wasm)$/.test(file) ? false : undefined)
+		assetsInlineLimit: (file) => (/\.(woff|js|wasm|svg)$/.test(file) ? false : undefined)
 	},
 	server: { proxy },
 	preview: { proxy },

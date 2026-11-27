@@ -1,19 +1,31 @@
 <script lang="ts">
 	// The design reference: every color, text size, spacing step, frame, button,
-	// field, card and sprite in the pixel kit, as the site draws them, with the
-	// Tailwind utilities that name them. See docs/design.md.
-	import { CARD_BACKS, CARD_RANKS } from '#lib/card-assets.ts';
+	// field, card and sprite in the kit of the look it is viewed in (Phase 5C), as
+	// the site draws them, with the Tailwind utilities that name them. The switch
+	// shows the other look's. See docs/design.md.
+	import { CARD_BACKS, CARD_RANKS, CLEAN_CARD_BACKS } from '#lib/card-assets.ts';
 	import themeCss from '#lib/art/theme.css?raw';
+	import cleanCss from '../../styles/clean.css?raw';
 	import PlayingCard from '#lib/components/PlayingCard.svelte';
 	import SiteHeader from '#lib/components/SiteHeader.svelte';
+	import { LOOKS, LOOK_NAMES, look } from '#lib/look.svelte.ts';
 	import type { Suit } from '#lib/protocol.ts';
 
-	const palette = [...themeCss.matchAll(/--color-([a-z-]+): (#[0-9a-f]{6});/g)].map(
-		([, name, hex]) => ({
-			name: name.replace(/-/g, ' '),
-			hex
-		})
-	);
+	/** A look's colors and text sizes, read from the stylesheet that defines them. */
+	function tokens(css: string) {
+		return {
+			palette: [...css.matchAll(/--color-([a-z-]+): (#[0-9a-f]{6});/g)].map(([, name, hex]) => ({
+				name: name.replace(/-/g, ' '),
+				hex
+			})),
+			sizes: Object.fromEntries(
+				[...css.matchAll(/--text-(xs|s|m|l|xl): (\d+px);/g)].map(([, name, px]) => [name, px])
+			)
+		};
+	}
+	const KITS = { pixel: tokens(themeCss), clean: tokens(cleanCss) };
+	const kit = $derived(KITS[look.current]);
+	const pixel = $derived(look.current === 'pixel');
 	const suits: Suit[] = ['spades', 'hearts', 'diamonds', 'clubs'];
 	const buttons = ['', 'red', 'blue', 'amber', 'green', 'gold'];
 	const frames = [
@@ -70,15 +82,40 @@
 <SiteHeader />
 
 <main class="mx-auto grid max-w-[1180px] gap-16 px-8 pt-12 pb-32">
-	<h2 class="text-xl text-gold text-shadow-ink">Design reference</h2>
-	<p class="lead max-w-[60ch] text-mist">
-		Every piece of the pixel kit as the site draws it. Art pixels are drawn at 2x for the interface;
-		cards at a whole number of screen pixels per art pixel, the size <code class="text-gold-light">
-			--k
-		</code>
-		asks for. Sources live in <code class="text-gold-light">web/art/</code>; run
-		<code class="text-gold-light">pnpm art</code> after changing them.
-	</p>
+	<div class="flex flex-wrap items-center justify-between gap-6">
+		<h2 class="text-xl text-gold text-shadow-ink">Design reference</h2>
+		<div class="look flex items-center gap-4" role="group" aria-labelledby="look-label">
+			<span id="look-label" class="text-s text-mist">Look</span>
+			{#each LOOKS as name (name)}
+				<button
+					type="button"
+					class="px-btn small choice"
+					aria-pressed={look.current === name}
+					onclick={() => look.set(name)}
+				>
+					{LOOK_NAMES[name]}
+				</button>
+			{/each}
+		</div>
+	</div>
+	{#if pixel}
+		<p class="lead max-w-[60ch] text-mist">
+			Every piece of the pixel kit as the site draws it. Art pixels are drawn at 2x for the
+			interface; cards at a whole number of screen pixels per art pixel, the size <code
+				class="text-gold-light"
+			>
+				--k
+			</code>
+			asks for. Sources live in <code class="text-gold-light">web/art/</code>; run
+			<code class="text-gold-light">pnpm art</code> after changing them.
+		</p>
+	{:else}
+		<p class="lead max-w-[60ch] text-mist">
+			Every piece of the clean kit as the site draws it: the same classes and sizes as the pixel
+			kit, drawn in CSS with the system's fonts. Its tokens and kit are in
+			<code class="text-gold-light">web/src/styles/clean.css</code>.
+		</p>
+	{/if}
 
 	<section>
 		<h3 class={heading}>Palette</h3>
@@ -89,7 +126,7 @@
 			<code class="text-gold-light">border-deep-slate</code>.
 		</p>
 		<ul class="palette grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-x-8 gap-y-4">
-			{#each palette as color (color.name)}
+			{#each kit.palette as color (color.name)}
 				<li class="grid grid-cols-[32px_1fr] items-center gap-x-4 text-s">
 					<svg
 						class="row-span-2 size-16 [box-shadow:0_0_0_2px_var(--color-ink)]"
@@ -106,14 +143,16 @@
 	</section>
 
 	<section>
-		<h3 class={heading}>Type: RiverMind Pixel</h3>
-		<p class="text-xl text-gold text-shadow-ink">40px · text-xl · No-limit hold’em</p>
-		<p class="text-l">30px · text-l · Pot 12,450 · A♠ K♥</p>
-		<p class="text-m">20px · text-m · The quick brown fox jumps over the lazy dog. 0123456789</p>
-		<p class="text-s text-mist">
-			15px · text-s · secondary text, hand log, tags (crisp on 2x screens)
+		<h3 class={heading}>Type: {pixel ? 'RiverMind Pixel' : 'the system’s fonts'}</h3>
+		<p class="text-xl text-gold text-shadow-ink">{kit.sizes.xl} · text-xl · No-limit hold’em</p>
+		<p class="text-l">{kit.sizes.l} · text-l · Pot 12,450 · A♠ K♥</p>
+		<p class="text-m">
+			{kit.sizes.m} · text-m · The quick brown fox jumps over the lazy dog. 0123456789
 		</p>
-		<p class="text-xs text-mist">10px · text-xs · bets and tags on a phone’s table</p>
+		<p class="text-s text-mist">
+			{kit.sizes.s} · text-s · secondary text, hand log, tags{pixel ? ' (crisp on 2x screens)' : ''}
+		</p>
+		<p class="text-xs text-mist">{kit.sizes.xs} · text-xs · bets and tags on a phone’s table</p>
 	</section>
 
 	<section>
@@ -180,7 +219,7 @@
 				</div>
 			{/each}
 			<div class="suit flex flex-wrap gap-3">
-				{#each CARD_BACKS as back (back)}
+				{#each pixel ? CARD_BACKS : CLEAN_CARD_BACKS as back (back)}
 					<figure class="back grid w-60 justify-items-center gap-2 text-s text-mist">
 						<PlayingCard card={null} {back} />
 						<figcaption>{back}</figcaption>

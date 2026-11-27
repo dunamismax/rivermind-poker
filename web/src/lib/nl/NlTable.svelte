@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { tableCardUrls } from '../card-assets.ts';
+	import { look } from '../look.svelte.ts';
 	import ConnectionStatus from '../components/ConnectionStatus.svelte';
 	import PlayingCard from '../components/PlayingCard.svelte';
 	import type {
@@ -34,9 +35,9 @@
 			voice.diagnostics();
 	}
 
-	// Fetch the faces and the back once, so no card pops in mid-deal.
-	onMount(() => {
-		for (const src of tableCardUrls()) new Image().src = src;
+	// Fetch the look's faces and back, so no card pops in mid-deal; again when the look changes.
+	$effect(() => {
+		for (const src of tableCardUrls(undefined, look.current)) new Image().src = src;
 	});
 
 	// The turn clocks tick on the local clock, shifted to the server's.

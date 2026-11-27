@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="71" height="95" viewBox="0 0 71 95">
+<title>9 of hearts</title>
+<rect x="0.75" y="0.75" width="69.5" height="93.5" rx="6" fill="#fffdf7" stroke="#bdb7a6" stroke-width="1.5"/>
+<g class="rank" fill="none" stroke="#b4231b" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(8.2 8.2)"><path transform="rotate(180 6.5 11)" d="M11.6 2.2C10.3 0.8 8.6 0 6.6 0C2.6 0 0 4.4 0 11.4C0 18.4 2.6 22 6.5 22C10.4 22 13 19.2 13 15.3C13 11.4 10.4 8.7 6.7 8.7C3.6 8.7 1.2 10.4 0.2 13.2"/></g></g>
+<g class="pip" fill="#b4231b" transform="translate(6 38) scale(0.15)"><path d="M50 94C24 72 5 55 5 33C5 17 17 6 31 6C40 6 46 11 50 19C54 11 60 6 69 6C83 6 95 17 95 33C95 55 76 72 50 94Z"/></g>
+<g class="pip" fill="#b4231b" transform="translate(31 53) scale(0.34)"><path d="M50 94C24 72 5 55 5 33C5 17 17 6 31 6C40 6 46 11 50 19C54 11 60 6 69 6C83 6 95 17 95 33C95 55 76 72 50 94Z"/></g>
+</svg>

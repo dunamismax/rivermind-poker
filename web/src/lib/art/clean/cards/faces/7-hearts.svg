@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="71" height="95" viewBox="0 0 71 95">
+<title>7 of hearts</title>
+<rect x="0.75" y="0.75" width="69.5" height="93.5" rx="6" fill="#fffdf7" stroke="#bdb7a6" stroke-width="1.5"/>
+<g class="rank" fill="none" stroke="#b4231b" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(8.2 8.2)"><path d="M0 0H13L4.6 22"/></g></g>
+<g class="pip" fill="#b4231b" transform="translate(6 38) scale(0.15)"><path d="M50 94C24 72 5 55 5 33C5 17 17 6 31 6C40 6 46 11 50 19C54 11 60 6 69 6C83 6 95 17 95 33C95 55 76 72 50 94Z"/></g>
+<g class="pip" fill="#b4231b" transform="translate(31 53) scale(0.34)"><path d="M50 94C24 72 5 55 5 33C5 17 17 6 31 6C40 6 46 11 50 19C54 11 60 6 69 6C83 6 95 17 95 33C95 55 76 72 50 94Z"/></g>
+</svg>

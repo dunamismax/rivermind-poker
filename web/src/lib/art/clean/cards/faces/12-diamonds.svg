@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="71" height="95" viewBox="0 0 71 95">
+<title>Queen of diamonds</title>
+<rect x="0.75" y="0.75" width="69.5" height="93.5" rx="6" fill="#fffdf7" stroke="#bdb7a6" stroke-width="1.5"/>
+<g class="rank" fill="none" stroke="#1a58ad" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(8.2 8.2)"><ellipse cx="6.5" cy="11" rx="6.5" ry="11"/><path d="M8.6 16.4L13.4 22.6"/></g></g>
+<g class="pip" fill="#1a58ad" transform="translate(6 38) scale(0.15)"><path d="M50 3C60 20 74 36 90 50C74 64 60 80 50 97C40 80 26 64 10 50C26 36 40 20 50 3Z"/></g>
+<g class="pip" fill="#1a58ad" transform="translate(31 53) scale(0.34)"><path d="M50 3C60 20 74 36 90 50C74 64 60 80 50 97C40 80 26 64 10 50C26 36 40 20 50 3Z"/></g>
+</svg>
