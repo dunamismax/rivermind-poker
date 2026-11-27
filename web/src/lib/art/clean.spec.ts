@@ -26,9 +26,13 @@ type Deck = {
 const deck = (await import(
 	/* @vite-ignore */ new URL('../../../scripts/clean-art/deck.js', import.meta.url).href
 )) as Deck;
+const ui = (await import(
+	/* @vite-ignore */ new URL('../../../scripts/clean-art/ui.js', import.meta.url).href
+)) as { renderUi: () => Map<string, string>; DIR: string };
 
 const WEB = new URL('../../../', import.meta.url);
 const files = deck.renderDeck();
+const sprites = ui.renderUi();
 const palette = deck.cleanPalette();
 const suits: Suit[] = ['spades', 'hearts', 'diamonds', 'clubs'];
 const read = (path: string) => readFileSync(new URL(path, WEB), 'utf8');
@@ -66,20 +70,24 @@ function checkXml(text: string): string[] {
 	return names;
 }
 
-test('the committed clean deck matches its generator, and holds nothing else', () => {
+test('the committed clean art matches its generators, and holds nothing else', () => {
 	expect(files.size).toBe(52 + deck.BACKS.length + 1);
-	for (const [path, svg] of files) expect(read(path), path).toBe(svg);
-	const dir = new URL(`${deck.DIR}/`, WEB);
-	const committed = readdirSync(dir, { recursive: true, withFileTypes: true })
-		.filter((entry) => entry.isFile())
-		.map((entry) => relative(WEB.pathname, `${entry.parentPath}/${entry.name}`));
-	expect(committed.sort()).toEqual([...files.keys()].sort());
+	for (const [dir, made] of [
+		[deck.DIR, files],
+		[ui.DIR, sprites]
+	] as const) {
+		for (const [path, svg] of made) expect(read(path), path).toBe(svg);
+		const committed = readdirSync(new URL(`${dir}/`, WEB), { recursive: true, withFileTypes: true })
+			.filter((entry) => entry.isFile())
+			.map((entry) => relative(WEB.pathname, `${entry.parentPath}/${entry.name}`));
+		expect(committed.sort()).toEqual([...made.keys()].sort());
+	}
 });
 
 test('every file is well-formed SVG of drawing alone, on the clean palette', () => {
 	const allowed = new Set(['svg', 'title', 'g', 'path', 'rect', 'circle', 'ellipse']);
 	const colours = new Set(palette.values());
-	for (const [path, svg] of files) {
+	for (const [path, svg] of [...files, ...sprites]) {
 		const names = checkXml(svg);
 		expect(names[0], path).toBe('svg');
 		for (const name of names) expect(allowed.has(name), `${path}: <${name}>`).toBe(true);
@@ -89,10 +97,40 @@ test('every file is well-formed SVG of drawing alone, on the clean palette', () 
 		expect(svg.match(/https?:\/\/[^"]*/g), path).toEqual(['http://www.w3.org/2000/svg']);
 		for (const hex of svg.match(/#[0-9a-fA-F]{3,8}\b/g) ?? [])
 			expect(colours.has(hex), `${path}: ${hex} is off the clean palette`).toBe(true);
-		expect(svg, path).toContain(
-			`width="${CARD_SIZE.width}" height="${CARD_SIZE.height}" viewBox="0 0 ${CARD_SIZE.width} ${CARD_SIZE.height}"`
-		);
+		if (files.has(path))
+			expect(svg, path).toContain(
+				`width="${CARD_SIZE.width}" height="${CARD_SIZE.height}" viewBox="0 0 ${CARD_SIZE.width} ${CARD_SIZE.height}"`
+			);
 	}
+});
+
+test('there is a clean sprite for every pixel sprite, drawn at the size the shared kit gives it', () => {
+	const pixel = readdirSync(new URL('src/lib/art/ui/', WEB))
+		.filter((name) => name.endsWith('.png'))
+		.map((name) => name.replace('.png', ''))
+		// What the clean look draws in CSS instead: the frames, buttons, the caret, the
+		// table and the wallpaper (P5C.2).
+		.filter((name) => !/^(frame|button)-|^(caret|table|wallpaper)$/.test(name));
+	const clean = [...sprites.keys()].map((path) => path.split('/').pop()!.replace('.svg', ''));
+	expect(clean.sort()).toEqual(pixel.sort());
+	// kit.css: 11 × 11 art pixels for a chip, the dealer button and a voice glyph, and so on, at 2px each.
+	const size = (name: string) =>
+		name.startsWith('avatar-')
+			? [32, 32]
+			: name === 'pot'
+				? [58, 32]
+				: name === 'emblem'
+					? [30, 34]
+					: name === 'mini-cards'
+						? [28, 26]
+						: [22, 22];
+	for (const [path, svg] of sprites) {
+		const [w, h] = size(path.split('/').pop()!.replace('.svg', ''));
+		expect(svg, path).toContain(`width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"`);
+	}
+	// And the clean stylesheet puts each one behind its class.
+	const css = read('src/styles/clean-sprites.css');
+	for (const name of clean) expect(css, name).toContain(`url('../lib/art/clean/ui/${name}.svg')`);
 });
 
 test('every face shows its own rank and suit', () => {

@@ -7,6 +7,7 @@
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { renderDeck } from './clean-art/deck.js';
+import { renderUi } from './clean-art/ui.js';
 import { Canvas, PALETTE } from './pixel-art/canvas.js';
 import { BACKS, CARD_H, CARD_W, RANKS, SUITS, slot } from './pixel-art/cards.js';
 import { decodePng, encodePng } from './pixel-art/png.js';
@@ -14,7 +15,8 @@ import { loadFont, renderAll, renderImages } from './pixel-art/render.js';
 
 const WEB = resolve(import.meta.dirname, '..');
 const deck = renderDeck();
-const files = new Map([...renderAll(), ...deck]);
+const cleanUi = renderUi();
+const files = new Map([...renderAll(), ...deck, ...cleanUi]);
 for (const [path, bytes] of files) {
 	const target = resolve(WEB, path);
 	mkdirSync(dirname(target), { recursive: true });
@@ -22,7 +24,8 @@ for (const [path, bytes] of files) {
 }
 console.log(`Wrote ${files.size} files.`);
 
-// The site bundles every card file under each deck's directory, so nothing else may stay there.
+// The site bundles every card file under each deck's directory, and the clean look's sprites
+// are named by its stylesheet, so nothing else may stay there.
 for (const cardsDir of ['src/lib/art/cards', 'src/lib/art/clean/cards'].map((d) =>
 	resolve(WEB, d)
 )) {
@@ -133,9 +136,20 @@ if (at > 0) {
 				`<h2>--k: ${k}</h2><div>${names.map((n) => `<img src="clean/${n}" width="${71 * k}" height="${95 * k}" alt="${n}">`).join('')}</div>`
 		)
 		.join('');
+	const sprites = [...cleanUi.keys()]
+		.map((path) => {
+			const name = `ui-${path.split('/').pop()}`;
+			const svg = cleanUi.get(path);
+			writeFileSync(resolve(cleanDir, name), svg);
+			const [, w, h] = svg.match(/width="(\d+)" height="(\d+)"/);
+			return [1, 2]
+				.map((k) => `<img src="clean/${name}" width="${w * k}" height="${h * k}" alt="${name}">`)
+				.join('');
+		})
+		.join('');
 	writeFileSync(
 		resolve(dir, 'clean.html'),
-		`<!doctype html><meta charset="utf-8"><title>Clean deck</title><style>body{margin:8px;background:#174237;color:#eceff4;font:13px system-ui}div{display:flex;flex-wrap:wrap;gap:6px}h2{font-size:13px}.night{background:#11141b;padding:8px}</style><body>${sections}<section class="night">${sections}</section>`
+		`<!doctype html><meta charset="utf-8"><title>Clean deck</title><style>body{margin:8px;background:#174237;color:#eceff4;font:13px system-ui}div{display:flex;flex-wrap:wrap;gap:6px}h2{font-size:13px}.night{background:#11141b;padding:8px}</style><body><h2>Sprites</h2><div>${sprites}</div>${sections}<section class="night"><div>${sprites}</div>${sections}</section>`
 	);
 	console.log(`Previews in ${dir}`);
 }

@@ -14,6 +14,7 @@
 @import './styles/kit.css' layer(components);
 @import './styles/pixel.css' layer(components);
 @import './styles/clean.css' layer(components);
+@import './styles/clean-sprites.css' layer(components);
 
 /*
  * Only the pages and their components carry utilities: the server code and the
