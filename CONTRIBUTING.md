@@ -463,6 +463,27 @@ node voice/prototype/bundle.ts /tmp/voice-selftest
 MEDIASOUP_WORKER_BIN=/tmp/voice-selftest/mediasoup-worker node /tmp/voice-selftest/sfu-selftest.js
 ```
 
+## The iPhone app
+
+The native iPhone app (Phase 5D, D-19) is in [`ios/`](ios/), and [docs/ios.md](docs/ios.md) is its design. It needs a Mac with Xcode (27.2 here; CI uses 26.6, whose Swift 6.2 the package must also build with) and the iOS Simulator. It has no dependencies of its own yet, so there is nothing to install beyond Xcode.
+
+All of the app's logic is in the Swift package [`ios/RiverMindKit`](ios/RiverMindKit/), which runs on a Mac without a simulator:
+
+```sh
+cd ios/RiverMindKit
+swift test -Xswiftc -warnings-as-errors
+```
+
+The app and its UI tests are in `ios/RiverMind.xcodeproj`. Open it in Xcode, choose the RiverMind scheme and an iPhone simulator, and run. A debug build talks to the server named by the `RIVERMIND_SERVER` environment variable (set it in the scheme's Run options, or with `SIMCTL_CHILD_RIVERMIND_SERVER` for `xcrun simctl launch`), and otherwise to https://rivermindpoker.com. Start a local server from `web/` for it:
+
+```sh
+PORT=4380 ORIGIN=http://127.0.0.1:4380 RIVERMIND_API=1 pnpm start
+```
+
+`ios/test.sh` is what CI's `ios` job runs: it starts that server from `web/build` (so run `pnpm build` in `web/` first), runs the package's tests against it, makes or reuses a simulator called “RiverMind Test” (an iPhone 17 on the newest iOS runtime installed, apart from the simulators other sessions use), and runs the UI tests there. `ios/test.sh package` and `ios/test.sh app` run one half. Results and logs are kept under `ios/DerivedData/`, which Git ignores.
+
+Add a Swift file by putting it in its folder: the app's folders are synchronized groups, so the project file does not change.
+
 ## Deploy rivermindpoker.com
 
 The site runs on the owner’s ubuntu-vm under the host's web platform contract (`/home/sawyer/github/ubuntu-vm-backup/docs/web-platform.md`). Caddy terminates HTTPS and proxies everything to `rivermind-poker-web.service`, the Node server running the current release from `/srv/rivermindpoker.com/current` on `127.0.0.1:4320` on Node 26 (`/opt/node-26/bin/node`): pages and assets, `/api/*` and the tables' `/ws`. Its tables are saved to PostgreSQL after every change and restored at start-up, so a restart or a deploy keeps every game, hands in progress included. After pushing `main`, update the live site with the following command.

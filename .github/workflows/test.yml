@@ -102,3 +102,39 @@ jobs:
             web/test-results-pixel/
             web/test-results-voice-check/
           retention-days: 7
+
+  # The iPhone app (Phase 5D, docs/ios.md): RiverMindKit's tests with swift test,
+  # then the app's UI tests in a simulator, both against the Node server built
+  # from web/ with no database, as ios/test.sh runs them on a Mac. Warnings fail
+  # the build. GitHub's newest stable runner has Xcode 26.6 and iOS 26.5, not the
+  # Xcode 27.2 this Mac has; 26.6 is pinned, which also proves the app builds with
+  # Swift 6.2 for its oldest iOS, 26.
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.node-version
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: xcodebuild -version && swift --version
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm build
+        working-directory: web
+      - run: ios/test.sh
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-results
+          path: |
+            ios/DerivedData/results/
+            ios/DerivedData/logs/
+          retention-days: 7

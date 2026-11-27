@@ -15,13 +15,13 @@ RiverMind is also a poker AI project. Its bots are trained offline with Monte Ca
 
 ## Status
 
-**Phase 5C, two looks. Pre-1.0, live and playable.**
+**Phase 5D, the iPhone app. Pre-1.0, live and playable.**
 
 The live site has no-limit hold’em at 2 to 9 seats against labelled bots: random, calling station, RiverMind Easy, a tight-aggressive rule-based player, and the trained RiverMind Medium and RiverMind Hard, each with a [published evaluation](https://rivermindpoker.com/bots). Hard plays a heads-up champion at two seats, a six-seat champion at three to six and a nine-seat model built on it at seven to nine. Guests keep a play-chip wallet and find each other in a lobby with quick seat, waitlists and private tables with invite links. They can react with presets, mute, block and report, and step through any hand they played, from “Your hands” or from the table without leaving their seat. A guest at any balance can start a practice hand in one click. People seated together can talk over table voice, end-to-end encrypted so that the site relays sound it cannot hear. Tables, mid-hand included, are stored in PostgreSQL and survive restarts.
 
-**Now:** the site gets a second look (decision D-18 in [BUILD.md](BUILD.md#settled-decisions)): a clean, professional look drawn in CSS and SVG beside the pixel-art one, on the same pages and with the same behaviour, switched from the header at any time. The clean look is finished and becomes the default with its next deploy; a player who prefers the pixel art keeps it.
+**Now:** RiverMind Poker comes to the iPhone as a native app (decision D-19 in [BUILD.md](BUILD.md#settled-decisions)), written in Swift and SwiftUI and sharing every table, invite and voice room with people in browsers. Its design is in [docs/ios.md](docs/ios.md), and its skeleton is built. The site has two looks since Phase 5C: a clean one, the default, and the pixel-art one a click away in the header.
 
-**Next:** the full-featured site (Phase 6): replay sharing, friend invites, stats, leaderboards, sit-and-go tournaments, settings, accessibility, content pages and installability, each built in both looks. Then hardening and the 1.0 release (Phase 7).
+**Next:** after the app, the full-featured site (Phase 6): replay sharing, friend invites, stats, leaderboards, sit-and-go tournaments, settings, accessibility, content pages and installability, each built in both looks. Then hardening and the 1.0 release (Phase 7).
 
 ## What RiverMind is
 
@@ -54,7 +54,8 @@ The live site has no-limit hold’em at 2 to 9 seats against labelled bots: rand
 | 4C | Table voice, end-to-end encrypted with SFrame under MLS keys | Done |
 | 5A | One-click practice, an evaluated heads-up opponent, replay from the table | Done |
 | 5B | 6-max and 9-max bots, difficulty levels | Done |
-| 5C | Two looks, clean and pixel, with clean the default | In progress |
+| 5C | Two looks, clean and pixel, with clean the default | Done |
+| 5D | A native iPhone app on the App Store, with cross-play | In progress |
 | 6 | Full-featured site: replay sharing, stats, leaderboards, sit-and-go tournaments, accessibility | |
 | 7 | Hardening and the 1.0 release: monitoring, backups, load tests, a security review | |
 
@@ -123,6 +124,7 @@ rivermind-poker/
 │   ├── engine/             The reference no-limit engine, fuzzing and benchmarks
 │   ├── bots/               Simple bots, card tables, blueprint training, evaluation, serving bundles
 │   └── server/             The Python table model, the reference for `pnpm table:parity`
+├── ios/                    The iPhone app: SwiftUI screens and the RiverMindKit package
 ├── poker_ai/               The short-deck prototype and the terminal client (legacy)
 ├── test/                   pytest: engine, table model, unit and functional tests
 ├── deploy/                 systemd units, the Caddy site, database setup and the update script

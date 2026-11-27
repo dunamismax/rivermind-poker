@@ -110,6 +110,7 @@ The stack is SvelteKit 3 · Svelte 5 · TypeScript · Tailwind CSS 4 · PostgreS
 - Write new site, API, table, engine-serving and database code in TypeScript in `web/`, with server-only code under `web/src/lib/server/`.
 - Python stays for offline work: `rivermind/engine` is the reference engine, `rivermind/bots` builds card tables, trains, evaluates and exports serving bundles, and `rivermind/server` keeps only the table model (`table.py`, `snapshot.py`) that the table parity check compares the TypeScript table with, and the short-deck protocol's TypeScript generator.
 - `poker_ai/` is the short-deck prototype and the terminal client: fixed but not extended until P7.6.
+- The iPhone app's logic goes in the `RiverMindKit` package (`ios/RiverMindKit/`), and only its screens in the app target (`ios/RiverMind/`). The app is a client of the same server: never give it a rule, table or wallet of its own (D-19).
 - Keep protocol v2, session cookies, table snapshots and hand histories readable by the next release, so open tables, stored hands and guests survive every deploy. A format change gets a version bump and a reader for the old version.
 
 **Layout.**
@@ -170,11 +171,16 @@ rivermind/bots/                  simple bots, cards/ (card tables), blueprint/ (
                                  match.py (evaluation), differential.py (bot parity reference)
 rivermind/server/                the Python table model (table.py, snapshot.py), the table parity reference;
                                  typescript.py writes the short-deck protocol.ts
+ios/                             the iPhone app (Phase 5D, docs/ios.md): RiverMind.xcodeproj with
+                                 folder-synchronized groups; RiverMind/ (the screens, SwiftUI),
+                                 RiverMindUITests/ (XCUITest), RiverMindKit/ (a Swift package with
+                                 everything that is not a screen, and its Swift Testing tests),
+                                 Config/Debug-Info.plist, and test.sh, the app's checks
 poker_ai/                        short-deck prototype, terminal client, legacy serve (until P7.6)
 test/                            engine/, server/ (table model and parity fixture), unit/, functional/, fixtures/
 deploy/                          systemd units (web, voice), Caddy site, setup-database.sh, update.sh
                                  (fix-forward deploy with release candidates), smoke.sh (the site's smoke check)
-docs/                            rules, bots, design, roadmap, evaluations/, build-history
+docs/                            rules, bots, design, roadmap, ios, voice, evaluations/, build-history
 artifacts/                       ignored: tables/, blueprints/, bundles/, fuzz/, rm06/
 ```
 
@@ -266,6 +272,18 @@ The journey tests (`journey.e2e.ts`) share one database-backed server and empty 
 `pnpm voice:proto` runs the voice prototype's checks (P4C.1) against a mediasoup service it starts itself; it is not part of `pnpm e2e` or CI, has its own `test-results-voice`, and is for changes under `web/voice/` ([CONTRIBUTING.md](CONTRIBUTING.md#table-voice)).
 
 `pnpm format` is the quickest way to satisfy the Prettier half of `pnpm lint`. Pass `--project chromium` to `pnpm e2e` for a quick run.
+
+### The iPhone app
+
+From the repository root, on a Mac with Xcode 27.2 (CI uses 26.6) and a built `web/` (`pnpm build`), since the checks start the Node server from `web/build`. [docs/ios.md](docs/ios.md) is the design and [CONTRIBUTING.md](CONTRIBUTING.md#the-iphone-app) has more.
+
+```sh
+ios/test.sh            # RiverMindKit's tests, then the app's UI tests, against a server it starts on 127.0.0.1:4380
+ios/test.sh package    # swift test alone, warnings as errors
+ios/test.sh app        # xcodebuild test alone, in the simulator "RiverMind Test" (made if missing)
+```
+
+`RIVERMIND_SERVER` points the checks at a server already running, and `RIVERMIND_TEST_PORT` moves the one the script starts. To look at the app, build it, then launch it in the script's simulator with `SIMCTL_CHILD_RIVERMIND_SERVER=http://127.0.0.1:4380 xcrun simctl launch <udid> com.rivermindpoker.app`. Run `ios/test.sh` before committing a change under `ios/`, and after a change to `web/` that the app reads (the API, protocol v2, voice signalling or a ported file).
 
 ### Database, art and protocol
 
@@ -436,6 +454,20 @@ The site’s art is pixel art drawn as text: the palette, sprites and font are i
 - The clean look has no pixel art (Phase 5C). Its tokens and kit are CSS in `web/src/styles/clean.css`, whose contrast `clean.spec.ts` measures; the kit's shared sizes are in `kit.css`. Its deck, sprites and the site's icons are drawn by `web/scripts/clean-art/` (`deck.js`, `ui.js`, `icons.js`), which `pnpm art` writes into `src/lib/art/clean/` and `static/`: never edit those files by hand, and draw only with clean palette colours. The icons' PNGs come from `icons.js`'s own rasteriser, not a browser, so they are the same on every machine.
 - The cards are the exception: the owner’s PNG sprites in `web/art/cards/` (`fronts/<rank>-<suit>.png`, `backs/<name>.png`) are the only card art, are not on the palette, and are shrunk by `pnpm art` to 71 × 95. Size cards with `--k`; they snap to whole device pixels per art pixel, so check them at DPR 1, 2 and 3.
 
+### The iPhone app
+
+[docs/ios.md](docs/ios.md) is the design (Phase 5D, D-19).
+
+- **One server, one game.** The app speaks protocol v2 on `/ws`, the HTTP API and voice signalling v1 on `/voice`, as a page does, and decides nothing about cards, turns or chips (D-2). Every settled decision holds in it: no purchase and no ads (D-1), bots labelled with their evaluations (D-7), guests (D-12), voice end-to-end encrypted with no unencrypted path (D-15), no free text (Q-4), no third-party SDK (Q-6).
+- **A newer server must never break an older build.** Decode every server message so that unknown fields are ignored and an unknown kind or code decodes as itself (`Reaction` in `Config.swift`), never as a closed `enum` that fails.
+- **Logic in the package.** Anything a test needs goes in `RiverMindKit`; the app target holds SwiftUI views. The package must build with Swift 6.2 (CI's Xcode 26.6) as well as this Mac's: its `swift-tools-version` stays 6.2 until CI's Xcode moves.
+- **Warnings fail.** Both targets and `ios/test.sh` treat warnings as errors; the script also fails on a `@preconcurrency` warning the compiler will not promote. Mark an `XCTestCase` `@MainActor`.
+- **Files, not project churn.** The app's folders are synchronized groups: add a file to the folder, never to `project.pbxproj`. A new target or build setting is an edit Xcode makes; keep the project free of absolute paths and of a development team until Q-13.
+- **Which server.** A release build talks to the live site alone. Only a debug build reads `RIVERMIND_SERVER` and allows plain HTTP to a local address (`Config/Debug-Info.plist`); never add that exception to a release build.
+- **Ported code is held to its source.** What the app computes only to show (hand names, bet sizes, replay steps, wording) is ported from the page with fixtures the TypeScript writes, and a change to either side lands in both in the same commit, as the engines do. Until P5D.2 generates them, the hand-written `Config.swift` types follow `protocol-v2.ts` by hand.
+- **The session lives in the Keychain**, not a cookie store: `APIClient`'s URL session keeps no cookies, and the client sends and stores `rm_session` itself (from P5D.2).
+- **XCUITest reads a row as one element.** SwiftUI folds a `LabeledContent`'s label and value into one label (`RiverMind Easy, 2 to 9 seats`): find a row by its accessibility identifier and compare its label. A test run that hangs after “Restarting after unexpected exit” is stuck in xcodebuild's retry: stop it and read the log.
+
 ### Legacy code
 
 Keep the `poker_ai` Python namespace and the legacy `poker_ai` command. Existing scripts import it, and serialized objects can refer to its module paths.
@@ -529,6 +561,8 @@ Every version is exact: `web/package.json` pins each dependency (at the host's b
 | Drizzle ORM, drizzle-kit, pg | 0.45.4, 0.31.11, 8.23.1 | |
 | mediasoup, mediasoup-client, ts-mls | 3.32.2, 3.26.0, 1.6.4 | table voice (Phase 4C); mediasoup's worker binary comes with its install script |
 | PostgreSQL | 18 | the host cluster on ubuntu-vm, and the `postgres:18` service in CI |
+| Xcode, Swift | 27.2 with Swift 6.4 on this Mac; 26.6 with Swift 6.2 in CI | the app (Phase 5D); `DEVELOPER_DIR` in the CI workflow, `swift-tools-version: 6.2` in `ios/RiverMindKit/Package.swift` |
+| iOS | 26.0 and later (`IPHONEOS_DEPLOYMENT_TARGET`); simulators on iOS 27.2 here and 26.5 in CI | [docs/ios.md](docs/ios.md#the-oldest-ios-26) says why 26 |
 
 These tools change quickly. Look up current documentation rather than relying on memory ([section 15](#15-context7-documentation-lookup)).
 
