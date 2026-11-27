@@ -15,6 +15,10 @@ BUILD.md tracks whatever is still open. Commit hashes refer to `main`.
 
 <!-- newest entries go directly below this line -->
 
+## Moved from BUILD.md on 2026-11-27: a handoff entry
+
+**2026-11-27 · P5C.5 complete: the look switch in every header, and the clean pages finished.** The owner asked for as much of the build as could be done. **Built** (`2465531`): `LookSwitch.svelte` at the far end of the site header, Clean and Pixel, at once and kept, at fixed sizes so switching moves nothing beside it; “Poker” leaves a phone's header below 460px to keep the player's name; `/style`'s own switch is gone. The clean pages lost their last pixel touches (square lamp and seat markers, underlined link buttons, crossed slot edges on the replay's board), through new `clean:` and `pixel:` variants where a utility sets the property. **Found:** a group named by `aria-labelledby` in the header crashed Firefox's page at a nine-seat table under Playwright, every time; `aria-label` does not. **Checked:** `look.e2e.ts` in all six projects; the pixel look's captures against a copy of `828a4a4` differ only in the header band, and on `/style`; the clean pages reviewed at full resolution at the four sizes; pytest 477, Vitest 1,298 with the database, Playwright 217 passed and 17 skipped in six projects with the journey, and Chromium in the clean look. **Not pushed** (owner gate). **Next:** P5C.6, the clean table, starting with why Chromium's clean phone capture stalls at the heads-up table (recorded on P5C.5).
+
 ## Moved from BUILD.md on 2026-11-27: Phases 0 to 5C, finished Phase 6 steps and older handoffs
 
 When BUILD.md was cut down to the work that is left, this is what left it, word for word.
