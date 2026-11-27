@@ -43,13 +43,13 @@ When choosing between two ways of doing something, prefer the one that is measur
 
 ## 2. Session workflow
 
-[BUILD.md](BUILD.md#how-to-work-this-file)’s **How to work this file** is the full procedure. The essentials:
+[BUILD.md](BUILD.md#how-to-keep-this-file)’s **How to keep this file** is the full procedure. The essentials:
 
 1. **Orient.** Read **Now** in BUILD.md, then run `git status --short --branch` and `git log -5 --oneline --decorate`. Preserve unrelated work in the tree. Check whether a training run or another session is using the machine ([section 5](#5-parallel-sessions-and-background-runs)).
 2. **Choose.** The owner’s current request comes first. Otherwise take **Next step**, or the first unchecked step in the current phase whose dependencies are checked. Claim it under **In progress** before you start.
 3. **Build and verify.** Write tests with the code. Verify every criterion of the step through the real entry point (the CLI, the browser, the server or the live site) as well as with tests. For engine changes, exercise a reproducible hand or action sequence. For training changes, record the rules, seat count, settings and artifacts used. Run the full suites before committing ([section 7](#7-commands)).
 4. **Record.** Tick verified criteria and add an `Evidence:` line with the commit and the checks you ran. For partial work, add a `Remaining:` line instead of ticking the step. Update **Now**.
-5. **Hand off.** Prepend a dated entry to the handoff log (keep eight; move older ones to [docs/build-history.md](docs/build-history.md)). Review the final working tree and diff, including new files. Report what was done, what is next and what waits on the owner.
+5. **Hand off.** Prepend a dated entry to the handoff log (keep three; move older ones to [docs/build-history.md](docs/build-history.md) at its marker line). Move each finished step whose record is complete out of BUILD.md the same way, so BUILD.md holds only what is left. Review the final working tree and diff, including new files. Report what was done, what is next and what waits on the owner.
 
 Build on the settled decisions (`D-n`). Use an open question’s default (`Q-n`) rather than waiting for an answer.
 
@@ -500,7 +500,7 @@ The site runs on the owner’s ubuntu-vm under the web platform contract (`/home
 | File | What belongs there |
 | --- | --- |
 | [BUILD.md](BUILD.md) | The plan, step status, evidence, decisions, open questions and the handoff log |
-| [docs/build-history.md](docs/build-history.md) | Archived evidence and older handoffs, preserved as written |
+| [docs/build-history.md](docs/build-history.md) | Finished steps and phases, their evidence and older handoffs, moved out of BUILD.md word for word. **Do not read it** unless the owner asks about the history or a link points into it, and then search it rather than reading it through. Paste into it at its marker line, newest first |
 | [docs/roadmap.md](docs/roadmap.md) | Where 1.0 is going and why; changes only when the plan does |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to develop, run and deploy each part; each Phase 4B step updates it as it lands |
 | [docs/rules.md](docs/rules.md) | The no-limit rules, with worked examples |
