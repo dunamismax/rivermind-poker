@@ -6,8 +6,8 @@
 // descenders in rows 8 and 9. One font pixel is 100 units and the em is 10
 // pixels, so the font is pixel-exact at 10px multiples (20px is 2x).
 //
-// Adapted from the owner's Lorehallow font compiler (web/src/lib/pixelfont.ts
-// there), which was checked byte for byte against an earlier Go compiler.
+// Adapted from the owner's earlier pixel-font compiler, which was checked byte
+// for byte against an earlier Go compiler.
 
 export const CAP_ROWS = 7;
 export const DESCENT_ROWS = 2;

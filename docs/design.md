@@ -6,7 +6,7 @@ The interface art and the font are original and licensed with the rest of the pr
 
 ## How the art is made
 
-The interface art is drawn by hand as text, after the approach of the owner’s Lorehallow project: every pixel is a character in a grid, every color is named from one palette, and a generator renders the grids into PNG files. Text sources diff cleanly, can be recolored and composed by code, and can never leave the palette.
+The interface art is drawn by hand as text, after the approach of an earlier pixel-art project of the owner’s: every pixel is a character in a grid, every color is named from one palette, and a generator renders the grids into PNG files. Text sources diff cleanly, can be recolored and composed by code, and can never leave the palette.
 
 | Source in `web/art/` | What it holds |
 | --- | --- |

@@ -2,7 +2,7 @@
 //
 // Every pixel is a palette color name (or null for transparent), so art can
 // never leave the palette. Sources are text grids in web/art/*.pxl, after the
-// pixel grids of the owner's Lorehallow art tools:
+// pixel grids of the owner's earlier pixel-art tools:
 //
 //   legend
 //   K ink            one character per color, by palette name

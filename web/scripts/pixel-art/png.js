@@ -1,7 +1,7 @@
 // A minimal PNG writer and reader for the pixel art: 8-bit RGBA, no
 // interlacing, filter 0 on every row. It never resamples. Only node:zlib.
 //
-// Adapted from the owner's Lorehallow art tools (web/src/lib/png.ts there).
+// Adapted from the owner's earlier pixel-art tools.
 import { deflateSync, inflateSync } from 'node:zlib';
 
 const SIGNATURE = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);

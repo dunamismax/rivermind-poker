@@ -1,7 +1,7 @@
 // Wraps a TrueType font in the WOFF 1.0 container: the same tables, each
 // compressed with zlib. Every browser reads it.
 //
-// Adapted from the owner's Lorehallow art tools (web/src/lib/woff.ts there).
+// Adapted from the owner's earlier pixel-art tools.
 import { deflateSync, inflateSync } from 'node:zlib';
 
 /**
