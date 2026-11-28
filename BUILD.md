@@ -4,7 +4,7 @@ What is left to do before and after 1.0, and where it stands. Start with **Now**
 
 **Finished work is not kept here.** Once a step or phase is done and recorded, it moves word for word to [docs/build-history.md](docs/build-history.md), with older handoffs. Agents do not read that file: what still applies is here, in AGENTS.md and in the other docs (see [How to keep this file](#how-to-keep-this-file)).
 
-**Jump to:** [Now](#now) · [How to keep this file](#how-to-keep-this-file) · [Settled decisions](#settled-decisions) · [Open questions](#open-questions) · [Phase overview](#phase-overview) · [Phase 5D](#phase-5d--native-ios-app) · [Phase 6](#phase-6--full-featured-site) · [Phase 7](#phase-7--hardening-and-10-release) · [Release checklist](#10-release-checklist) · [Phase 8](#phase-8--after-10-not-gating) · [Phase 9](#phase-9--train-feltprep-becomes-part-of-rivermind) · [Handoff log](#handoff-log)
+**Jump to:** [Now](#now) · [How to keep this file](#how-to-keep-this-file) · [Settled decisions](#settled-decisions) · [Open questions](#open-questions) · [Phase overview](#phase-overview) · [Phase 5D](#phase-5d--native-ios-app) · [Phase 6](#phase-6--full-featured-site) · [Phase 7](#phase-7--hardening-and-10-release) · [Release checklist](#10-release-checklist) · [Phase 8](#phase-8--after-10-not-gating) · [Handoff log](#handoff-log)
 
 ## Now
 
@@ -26,8 +26,6 @@ RiverMind Poker 1.0 is a free, self-hosted, full-featured poker website at river
 The first release after Phase 4 lets a guest practice at any balance, choose a heads-up opponent with a published evaluation, then revisit a decision from the table and play another hand. Table voice (Phase 4C) lands alongside that release. Later work gives people ways to find the game through a rules page or a friend’s link (P6.7, P6.7a). A small playtest and aggregate usage counts (P7.1a) will show where players get stuck and which paths bring them back.
 
 The [release checklist](#10-release-checklist) at the end defines "done" precisely.
-
-After 1.0, the owner's FeltPrep trainer joins as the site's Train section, where a player learns, studies, drills and reviews the decisions they play, and RiverMind becomes the one project and the one domain (D-20, [Phase 9](#phase-9--train-feltprep-becomes-part-of-rivermind)).
 
 ## How to keep this file
 
@@ -77,7 +75,6 @@ These were decided with the owner. Build on them; change one only with the owner
 | D-17 | **Six seats go live with the run's final champion, and the web unit's memory may grow** (owner, 2026-11-22). Serving a six-seat bot is deployed only after the six-seat run `6max-s1-s0` has finished and its final checkpoint has been through the gate; six-seat serving is not deployed with `6max-s1-s0-100m`, though it is built and tested against it. The web service's memory limits on ubuntu-vm (`MemoryHigh` and `MemoryMax` in `deploy/rivermind-poker-web.service`) may be raised or removed as needed: the host has 16 GB with plenty free. P5.7 raised them from 2 GB and 3 GB to 3 GB and 4 GB, on a measured peak of 1.5 GB with both champions loaded. |
 | D-18 | **One look, clean and professional** (owner, 2026-11-27; changed by the owner the same day). The site has a clean, professional look with no pixel art, drawn in CSS and hand-drawn SVG, and it is the only one: the pixel-art look, built first and kept beside the clean one through Phase 5C with a switch between them, was removed entirely, its code, art, card sprites, font, tests and docs alike. The deck is the code-drawn cards from the owner's FeltPrep project, which the owner contributes to RiverMind under GPL-3.0-or-later. This was Phase 5C, which went ahead of Phase 6. |
 | D-19 | **A native iOS app, with cross-play** (owner, 2026-11-27). RiverMind Poker comes to the App Store as a native iPhone app, beautiful and native rather than a web page in a frame, and people in the app play and talk with people in any browser at the same tables. It is Phase 5D, the next phase, ahead of the rest of Phase 6. The app is written in Swift with SwiftUI. It is one more client of the same server: protocol v2 on `/ws`, the HTTP API and voice signalling v1 on `/voice`, with the same guests, wallets, lobby, tables, invites and table voice, and no table, wallet or rule of its own. Every settled decision holds in the app: no purchase of any kind and no ads (D-1), bots always labelled with their evaluations (D-7), the server authoritative (D-2), guests without sign-in (D-12), table voice end-to-end encrypted with no unencrypted path (D-15), no free-text chat (Q-4) and no third-party SDKs or tracking (Q-6). A native Android app is not part of this decision: Android players keep the site, and an app for them is a Phase 8 idea. |
-| D-20 | **One brand, one site: FeltPrep becomes Train** (owner, 2026-11-27). After 1.0, the owner's FeltPrep project (a trainer the owner built for their own use, in `~/github/feltprep`, served at `feltprep.com`, used by nobody else) moves into RiverMind as its Train section, on rivermindpoker.com and in the iOS app, and is then eliminated. This is Phase 9, which starts once 1.0 is released (P7.7). Until then FeltPrep keeps being built in its own repository, and nothing here waits on it. The owner's answers the same day: (1) FeltPrep's code, license and repository may be changed in any way the move needs; its code and its lesson text come in under this repository's GPL-3.0-or-later, and Q-14's App Store permission covers them. (2) Nothing of FeltPrep's carries over beyond its code, lessons and solutions: no data, no redirects, no URL map. (3) No grade, study view or solver answer reaches a player during a hand at a table with another person in it; review grades the hand once it is over, and a practice table with only bots may grade each decision as it is made. (4) Train is in the iOS app as well as on the site before Phase 9 is done. (5) Once Train is live, an agent may remove FeltPrep from ubuntu-vm without asking, dropping its database with no dump kept. (6) The owner deals with FeltPrep's repository on GitHub and Codeberg, its domains and its Cloudflare records themself. Every settled decision here holds in Train: play money only (D-1), bots labelled and never a source of right answers (D-7), guests without sign-in (D-12), the site's look (D-18) and the app (D-19). Train brings FeltPrep's own rule with it: a decision is graded only against a reference that passed its grading gate, and is otherwise shown as not graded. |
 
 ## Open questions
 
@@ -101,8 +98,6 @@ Use each default until the owner decides otherwise. **Needed by** names the step
 | Q-14 | The App Store's terms add restrictions that GPL-3.0 does not allow on other people's GPL code. How is the app licensed? | The app holds only code the owner wrote (by hand or through agents working for the owner) and permissively licensed libraries; nothing from the original Poker AI project or any other GPL author goes into it. The app's source stays GPL-3.0-or-later with an additional permission from the owner, under section 7, to distribute it through the App Store. Each library's license is recorded in `licenses/`. The owner confirms the permission's wording. | P5D.1, P5D.15 |
 | Q-15 | Can a guest carry their wallet and history from a browser into the app, or from the app to a browser? | No for 1.0 (D-12): the app is a new guest with its own wallet, as a second browser is. A one-time transfer code, or sign-in, can follow in Phase 8. The app says so where a player would look for it. | P5D.6 |
 | Q-16 | Does table voice keep going when the app goes to the background? | Yes while the person is in voice: the app keeps voice and its table connected in the background, as a call app does (the `audio` background mode, the system's microphone indicator showing). Out of voice, the app lets go when it is suspended and rejoins the table when it comes back. | P5D.10 |
-| Q-17 | FeltPrep's own code is AGPL-3.0-or-later and its lessons CC BY-SA 4.0, and this repository is GPL-3.0-or-later. Under which license does Train come in? | **Decided** (D-20): GPL-3.0-or-later, code and lessons alike. | — |
-| Q-18 | May Train show a grade or a reference answer during a hand at a table with other people? | **Decided** (D-20): no; review grades the hand after it is over. | — |
 
 ## Phase overview
 
@@ -120,7 +115,6 @@ Use each default until the owner decides otherwise. **Needed by** names the step
 - [ ] **Phase 6 · Full-featured site.** After Phase 5B, finish replay sharing, friend invites, stats, leaderboards, sit-and-go tournaments, settings, accessibility, content pages and installability.
 - [ ] **Phase 7 · Hardening and 1.0.** Monitoring, backups, load tests, fast restarts, a security review, cleanup and the release.
 - Phase 8 · After 1.0. Voluntary mucking at private tables and other work that does not gate the release.
-- [ ] **Phase 9 · Train: FeltPrep becomes part of RiverMind.** After 1.0, the owner's FeltPrep trainer (lessons, solved spots, graded drills, practice and review) becomes the Train section of the site and the iOS app, and FeltPrep is eliminated: nothing of it is kept running on the host (D-20).
 
 ---
 
@@ -337,94 +331,12 @@ Complete since 2026-11-24: heads-up, six and nine seats each have a promoted cha
 
 ---
 
-## Phase 9 · Train: FeltPrep becomes part of RiverMind
-
-**Starts after 1.0** (D-20): P7.7 is ticked and `v1.0.0` is released. This phase is planned and ordered, not one of Phase 8's ideas.
-
-**Goal:** one project and one domain. The site and the iOS app get a **Train** section that does everything the owner's FeltPrep project does by then: short lessons, solved spots to study, graded drills, practice hands against labelled bots, and review that grades a finished hand and sends each mistake to a drill of that decision. Then FeltPrep is gone: nothing of it runs on ubuntu-vm, and the owner deals with its repository and domains themself. Each step is sized for one or two sessions.
-
-**What FeltPrep is, on 2026-11-27.** The owner's own trainer, used by nobody else: a SvelteKit app on the same stack (D-14), in `~/github/feltprep`, served at `feltprep.com` as an unshared preview (`noindex`). It has a verified copy of this repository's engine, exact pre-flop equities, a CFR+ solver with its own exact best-response check, the solved jam-or-fold game at 2 to 15 big blinds, a lesson, the study view, graded drills, short-stack practice and review on a phone, and a post-flop solver under way. It keeps being built in its own repository until 1.0, and nothing here waits on it. Its BUILD.md and AGENTS.md are the record of what it has when this phase starts.
-
-**What comes in, and what does not.**
-
-- **Comes in:** the solver and its benchmarks, the spot contract, the solutions with their manifests and registry, grading and its plain-English explanations, the lesson reader and the lessons, the study view, the drill, review and the path from a mistake to its drill, and FeltPrep's documents on grading, the solver and the benchmarks.
-- **Already here, so not imported:** the engine (on 2026-11-27 FeltPrep's copy was this one's code, differing only in its import headers, import paths, a few type annotations its lint asks for and the split of `random.ts`), the rules document, the evaluator, the hand-history format, the clean deck (D-18) and the trained champions.
-- **Left behind:** FeltPrep's look, theme, layout, name and artwork; its own practice table and its copy of the heuristic bot (Train practises at this site's practice tables, P9.5); its deploy scripts and units; its data. Nothing needs a redirect or a migration, since nobody else uses it.
-
-**How Train is built.** These hold for every step, beside AGENTS.md:
-
-- **One reference answer per spot.** The lesson, the study view, the drill and the review of a spot all read the same solution, so they never disagree.
-- **Graded only against a qualified reference.** A decision is graded only against a solution that passed FeltPrep's grading gate: a stated game, no card bucketing, exploitability under the threshold measured by the project's own best-response code, a passing benchmark suite and a reproducible artifact. Everything else says “not graded” and why. The champions are opponents and never a reference: their cards are bucketed and their distance from equilibrium is not measured (D-7). Every claim about Train's accuracy names a row in the benchmark table.
-- **Never during play with people** (D-20). No grade, study view or solver answer reaches a player during a hand at a table with another person in it. Review grades the hand once it is over. At a practice table with only bots, a decision may be graded as soon as it is made.
-- **The site and the app.** Train is built on this site's components and tokens (D-18), dark only (Q-12), and in the iOS app (D-19, P9.6), like every Phase 6 feature. Phase 9 is done only when Train works in both.
-- **Guests, not accounts.** Train's progress belongs to the RiverMind guest and is kept in PostgreSQL. A browser and the app each have their own guest (Q-15), and deleting a guest deletes its progress (P5D.11).
-- **The tables come first on the host.** Solving and grading never run on the table server's event loop, and P7.3's latency budget holds with Train in use (P9.7).
-- **One license.** FeltPrep's code and lesson text come in under this repository's GPL-3.0-or-later, and Q-14's App Store permission covers them (D-20). Files FeltPrep took from elsewhere keep their terms: this repository's engine is GPL already, and the evaluator's Deuces notice is MIT.
-- **Imports are recorded.** Files come from a scratch export of FeltPrep at one pinned commit, and `docs/train.md` records the commit and where each piece went. FeltPrep's Git history is not merged: this repository keeps its own (AGENTS.md section 12). FeltPrep itself may be changed in any way that makes the move easier.
-
-**Exit criteria**
-- [ ] Every step below is ticked.
-- [ ] On the live site, and in the App Store app, a guest reads a lesson, studies its spot, drills it with graded feedback, plays practice hands against a labelled bot, goes from a graded mistake straight into a drill of that decision, and reviews a finished hand. Checked at phone and desktop sizes in Chromium, Firefox and WebKit, and in the app on a real iPhone.
-- [ ] Every benchmark FeltPrep's grading gate needs passes in this repository's CI, and every solution that grades has a manifest that names a RiverMind commit.
-- [ ] Nothing of FeltPrep runs on ubuntu-vm.
-- [ ] The README, CONTRIBUTING.md, AGENTS.md, docs/roadmap.md and docs/ios.md describe RiverMind with Train. No page, document or app screen names FeltPrep except `docs/train.md` and `licenses/`.
-
-- [ ] **P9.1 · One browser-safe engine** · Depends on: P7.7
-  - [ ] FeltPrep's commit to import is pinned and `docs/train.md` is started: what comes from where, and what is left behind. FeltPrep's owner decisions that still apply come here as settled decisions, citing their FeltPrep IDs: the grading thresholds, the range assumptions for post-flop spots, and the path after a mistake as the product's spine.
-  - [ ] The engine moves from `web/src/lib/server/engine/` to `web/src/lib/engine/`, beside the evaluator, so drills can deal and judge in a page or the app without a round trip. The server injects the secure shuffle, and live tables still deal with `crypto.randomInt` (D-8). A guard test fails if an engine file imports a Node module.
-  - [ ] FeltPrep's engine is compared with this one at the pinned commit first. A difference is settled by a fixture worked out by hand, never by picking a side. FeltPrep's additions come with it: its hand-worked fixtures, the trace that gives every rule in `docs/rules.md` a fixture, the property test that applies every action offered, and the engine's browser test.
-  - [ ] `pnpm engine:parity`, pytest, the long fuzz and the full suites pass, and on the deployed site a live table deals and settles as before.
-
-- [ ] **P9.2 · The solver, the solutions and the benchmarks** · Depends on: P9.1
-  - [ ] FeltPrep's solver, its spot contract and `solutions/` (registry and manifests) are imported, with their build scripts and commands (equities, jam-or-fold, the solver benchmarks and whatever post-flop commands it has by then). They stay plain TypeScript that runs in a page, in Vitest and under `node`.
-  - [ ] Rebuilt here, every solution's data files have the same SHA-256 as FeltPrep's, and only the manifests change, to name a RiverMind commit. Each build's `--check` runs in CI.
-  - [ ] FeltPrep's documents on grading, the solver and the benchmarks become `docs/grading.md`, `docs/solver.md` and `docs/benchmarks.md`. The benchmark suite runs in CI and fails the build if a benchmark fails. AGENTS.md takes FeltPrep's rules for feedback and solver claims, and its section 7 lists the new commands.
-  - [ ] Large solutions, such as a post-flop spot library, stay out of Git under `artifacts/` and on the host under `/srv/rivermind-poker/solutions/`, as the champions do. Each is checked against the registry's hashes before it is served, and a solution that fails the check is not served.
-
-- [ ] **P9.3 · Lessons and the study view** · Depends on: P9.2
-  - [ ] The lesson reader (its strict Markdown subset and the checks on each lesson's header) and every lesson move to `content/lessons/`, under GPL-3.0-or-later like the rest (D-20). The lessons are prerendered, and lesson text that names FeltPrep is rewritten.
-  - [ ] `/train` lists the lessons and spots in their recommended order. `/train/learn/<lesson>` shows a lesson, and `/train/study/<spot>` shows the strategy grid with the spot's assumptions: stacks, positions, bet sizes and ranges. The site header gets Train.
-  - [ ] Built from this site's components. Playwright covers it in all six projects, at P6.0c's phone sizes and on the desktop, and axe reports no serious or critical issue (P6.6).
-
-- [ ] **P9.4 · Drills** · Depends on: P9.3
-  - [ ] `/train/drill/<spot>` deals seeded hands and judges each answer against the spot's reference in the page. A wrong answer shows what it cost and a plain-English reason drawn from the reference's own numbers. The verdict bands are FeltPrep's: an action the reference plays some of the time, or one that costs less than the tolerance, is acceptable, never a mistake.
-  - [ ] Progress is stored against the guest in PostgreSQL, through a Drizzle migration under AGENTS.md's rules. It is shown per spot and is still there in a new browser session for the same guest.
-  - [ ] Drills are left out of stats and leaderboards (P6.2, P6.3), as practice hands are. A test with drills added gives the same stats and boards.
-
-- [ ] **P9.5 · Practice and review at this site's tables** · Depends on: P9.4
-  - [ ] Train's practice uses this site's practice tables: server-authoritative, with labelled bots (D-7), at the spot's effective stack (a practice-table option, such as 2 to 15 big blinds for jam-or-fold). FeltPrep's own practice page and its copy of the heuristic bot are not imported.
-  - [ ] Review grades a finished hand from its stored history wherever a decision lies inside a reference's game. Elsewhere it says “not graded” and why: more than two players in the hand, a stack or bet outside the spot, or a hand outside its ranges. It works from “Your hands” for any hand the guest played, including hands with people at the table once they are over.
-  - [ ] From a graded mistake, one tap starts a drill whose first deal is that same decision. The path is measured in taps and seconds on a phone, as FeltPrep's mobile gate measures it.
-  - [ ] D-20's rule holds: a test at a table with a person shows that no grade or reference answer reaches a player during the hand, on the wire or on the page.
-
-- [ ] **P9.6 · Train in the iOS app** · Depends on: P9.5, P5D.17
-  - [ ] Native SwiftUI screens for the lessons, study, drills, practice and review, in the site's look. Lessons are drawn natively from the reader's element tree, which the API serves.
-  - [ ] Judging and the explanations are ported to Swift in `RiverMindKit` and held to the TypeScript by fixtures from `pnpm ios:fixtures`, as P5D.4 does. The app fetches a spot's solution from the server and checks its hash before using it.
-  - [ ] XCUITest takes the whole journey against a local server: lesson, study, drill, practice, a mistake into its drill, and review.
-  - [ ] It ships as an app update through TestFlight and the App Store, with each upload, submission and release an owner gate, as in P5D.16 and P5D.17.
-
-- [ ] **P9.7 · The host, load and security with Train** · Depends on: P9.5
-  - [ ] Measured on ubuntu-vm: the web unit's memory with the solutions loaded beside the champions, against D-17's limits. If Train solves spots on demand, the solves run in their own worker process at low priority, with a time limit, a queue and a cache keyed by the spot's hash.
-  - [ ] P7.3's load test runs again with drills and solves added, and action round-trips stay under 250 ms at the 95th percentile.
-  - [ ] P7.5's review is extended to Train's endpoints: rate limits, size limits on any solve request, and no grade or review that reveals another player's hidden cards. P7.2's backups cover Train's tables and the solutions on the host, checked by a restore.
-
-- [ ] **P9.8 · Train live** · Depends on: P9.3, P9.4, P9.5, P9.7 · **Owner gate:** each push and deploy
-  - [ ] Train is deployed to rivermindpoker.com. `pnpm e2e:live` covers it, and the owner takes the journey on their iPhone in Safari.
-  - [ ] The home page, the content pages (P6.7) and the bots page link Train. The sitemap lists the lessons and the study pages, and the README describes Train.
-
-- [ ] **P9.9 · FeltPrep off the host** · Depends on: P9.8
-  - [ ] An agent removes FeltPrep from ubuntu-vm without asking (D-20): `feltprep.service`, `feltprep-autodeploy.service` and its timer are stopped, disabled and removed; its database, roles and account are dropped, with no dump kept; its releases and working directories are deleted; and its Caddy site is removed, with Caddy reloaded. The host's web platform contract (`docs/web-platform.md` in `ubuntu-vm-backup`) says where each piece lives. A change that repository needs, and FeltPrep's DNS records and domains in Cloudflare, are left to the owner, and the step says what they are.
-  - [ ] Afterwards the host's other sites still answer, and RiverMind's `/healthz` and `pnpm e2e:live` pass.
-  - [ ] Phase 9's exit criteria are checked, and docs/roadmap.md says Train is built.
-
----
-
 ## Handoff log
 
 Newest first. Keep three entries and move older ones to [docs/build-history.md](docs/build-history.md), at its marker line. Each entry gives the date, the step IDs, what changed, the checks actually run and the next concrete action.
 
+**2026-11-28 · Phase 9 withdrawn: no FeltPrep, no training section.** The owner changed their mind: FeltPrep will not be built or brought into RiverMind, and RiverMind stays focused on the best and most fun play-money poker with bots or friends and table voice, not learning, drills or solver study. **Removed:** D-20, Q-17 and Q-18, Phase 9 (P9.1 to P9.9) with its line in the phase overview, its jump link and its paragraph under **The 1.0 product**, and item 10 of [docs/roadmap.md](docs/roadmap.md). Kept: the clean deck's provenance from FeltPrep's code-drawn cards (D-18, `licenses/FeltPrep-cards.txt`), since the site still uses that deck. **Checked:** only the files themselves; no code changed. Moved the oldest entry to [docs/build-history.md](docs/build-history.md). **Next:** unchanged.
+
 **2026-11-28 · P5D.7: the app's native table (and P5D.5, P5D.6 closed).** The owner asked for as much of the build as could be done, then to finish up, commit and push. **Closed:** CI run 46151065701 on `f4d7b96` passed, so P5D.5 and P5D.6 moved to the history. **Built** (`f7955b7`): the native table at 2 to 9 seats with the action panel, seat tools, reactions, rebuy and refill, the hand log and the seat menu; `table.ts` and its Swift port; `TableLayout`; `TableModel`; the table's UI tests and the app's own seeded site in `ios/test.sh`; debug launch options for a new table or a given one; `ios/crossplay.sh`. **Found:** an accessibility identifier on a `Group` overwrote every control's own (AGENTS.md); a spacer's stack spacing made the panel taller than its zone and moved the main row. **Plan notes:** Fold, Call and Raise keep three fixed places, an empty one where Fold is not offered, which the site does not; “Review last hand” waits for P5D.8. **Checked:** as in P5D.7's evidence. **Pushed** with the owner's approval. **Next:** run `ios/crossplay.sh` to finish P5D.7, then P5D.8, with P5D.9 beside it.
 
 **2026-11-28 · P5D.6: the app's native lobby.** The owner asked for as much of the build as could be done. **Built** (`845858a`): the lobby in SwiftUI from a grown `LobbyModel` (practice per bot with its result, the wallet, the table list with quick seat and filters, sitting down, holds, the waitlist, the new-table form, private tables through the share sheet, invites from a link or pasted), and a stand-in table screen until P5D.7; the lobby's words moved into `web/src/lib/nl/lobby.ts` with a Swift port held by the display fixture. **Found:** P5D.5's CI run failed on iOS 26.5, where a gallery opened while the lobby loaded was popped when the toolbar's link was replaced; fixed in the same commit. **Plan notes:** build 1 is unreleased, so the new requests need no new `AppBuild.number`; the app rejoins the table it last followed at launch, so UI tests leave their tables (AGENTS.md). **Checked:** as in P5D.6's evidence. **Pushed** to GitHub and Codeberg through `f4d7b96` with the owner's approval; its CI run has not been checked. **Next:** P5D.7, with P5D.9 beside it.
-
-**2026-11-28 · P5D.5: the site's look in the iPhone app.** The owner asked for as much of the build as could be done. **Built** (`3736f93`): `pnpm art` writes the app's tokens (from `theme.css` and `kit.css`), every card and sprite as shapes the app draws natively, and its asset catalog (the icon in three styles, the launch colour, the accent); RiverMindKit's kit (cards, buttons, frames, field, felt) and the debug gallery with 29 snapshot-tested items; parity with Chromium's drawing of the site's SVG at @2x and @3x. **Plan notes:** the kit's views live in the package, not the app, so the tests reach them; snapshots are compared only on the macOS they were recorded on (CI's runner is macOS 26 and only checks that each item draws); the drawing tests run one at a time, since together they starved the table connection tests' two-second waits until those crashed. **Checked:** as in P5D.5's evidence; CI run 46108457274 on `8685d8c` passed. **Pushed** to GitHub and Codeberg through `f09c8e7` with the owner's approval; its CI run has not been checked. **Next:** P5D.6, with P5D.9 beside it.

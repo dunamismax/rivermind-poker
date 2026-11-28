@@ -15,6 +15,10 @@ BUILD.md tracks whatever is still open. Commit hashes refer to `main`.
 
 <!-- newest entries go directly below this line -->
 
+## Moved from BUILD.md on 2026-11-28: a handoff entry
+
+**2026-11-28 · P5D.5: the site's look in the iPhone app.** The owner asked for as much of the build as could be done. **Built** (`3736f93`): `pnpm art` writes the app's tokens (from `theme.css` and `kit.css`), every card and sprite as shapes the app draws natively, and its asset catalog (the icon in three styles, the launch colour, the accent); RiverMindKit's kit (cards, buttons, frames, field, felt) and the debug gallery with 29 snapshot-tested items; parity with Chromium's drawing of the site's SVG at @2x and @3x. **Plan notes:** the kit's views live in the package, not the app, so the tests reach them; snapshots are compared only on the macOS they were recorded on (CI's runner is macOS 26 and only checks that each item draws); the drawing tests run one at a time, since together they starved the table connection tests' two-second waits until those crashed. **Checked:** as in P5D.5's evidence; CI run 46108457274 on `8685d8c` passed. **Pushed** to GitHub and Codeberg through `f09c8e7` with the owner's approval; its CI run has not been checked. **Next:** P5D.6, with P5D.9 beside it.
+
 ## Moved from BUILD.md on 2026-11-28: P5D.5, P5D.6 and a handoff entry
 
 - [x] **P5D.5 · The site's look in SwiftUI** · Depends on: P5D.1
