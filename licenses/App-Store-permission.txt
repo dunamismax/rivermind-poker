@@ -1,0 +1,34 @@
+DRAFT, for the owner to read and confirm before the app is first uploaded (P5D.15).
+This is a plain-language draft, not legal advice; the owner may wish to have it
+reviewed.
+
+Additional permission for the RiverMind Poker iPhone app (decision D-20)
+
+The iPhone app in ios/ (the RiverMind app target, its UI tests and the
+RiverMindKit package, including the files in it that are generated from or
+ported from code elsewhere in this repository) is licensed under the GNU
+General Public License, version 3 or later (see LICENSE), with the following
+additional permission under section 7 of that license.
+
+  As a special exception, the copyright holder of RiverMind Poker gives you
+  permission to convey the app in object code form through Apple's App Store,
+  TestFlight or any other distribution service operated by Apple, subject to
+  the terms of service and usage rules that Apple applies to apps it
+  distributes, even where those terms or rules impose restrictions on the
+  recipients' exercise of the rights granted by this license that would
+  otherwise be "further restrictions" under section 10. This permission does
+  not relieve you of any other obligation under this license: in particular,
+  the Corresponding Source of the app must remain available to every
+  recipient under this license, without those restrictions.
+
+  You may extend this exception to your modified versions of the app, but you
+  are not obliged to do so. If you do not wish to do so, delete this
+  exception from your version.
+
+Scope. The copyright holder can grant this permission only for code they own.
+The app therefore holds only code written by the owner (directly or by agents
+working for the owner) and libraries under permissive licenses, each recorded
+in licenses/. It holds no code from the original Poker AI project or any other
+GPL-licensed author (see Poker-AI-additional-terms.txt), and the hand evaluator
+it ports derives from Deuces, which is MIT-licensed (see Deuces.txt). A change
+that would bring another author's GPL code into ios/ must not be made.

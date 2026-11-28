@@ -17,6 +17,20 @@ BUILD.md tracks whatever is still open. Commit hashes refer to `main`.
 
 ## Moved from BUILD.md on 2026-11-28: a handoff entry
 
+**2026-11-28 · P5D.7: the app's native table (and P5D.5, P5D.6 closed).** The owner asked for as much of the build as could be done, then to finish up, commit and push. **Closed:** CI run 46151065701 on `f4d7b96` passed, so P5D.5 and P5D.6 moved to the history. **Built** (`f7955b7`): the native table at 2 to 9 seats with the action panel, seat tools, reactions, rebuy and refill, the hand log and the seat menu; `table.ts` and its Swift port; `TableLayout`; `TableModel`; the table's UI tests and the app's own seeded site in `ios/test.sh`; debug launch options for a new table or a given one; `ios/crossplay.sh`. **Found:** an accessibility identifier on a `Group` overwrote every control's own (AGENTS.md); a spacer's stack spacing made the panel taller than its zone and moved the main row. **Plan notes:** Fold, Call and Raise keep three fixed places, an empty one where Fold is not offered, which the site does not; “Review last hand” waits for P5D.8. **Checked:** as in P5D.7's evidence. **Pushed** with the owner's approval. **Next:** run `ios/crossplay.sh` to finish P5D.7, then P5D.8, with P5D.9 beside it.
+
+
+## Moved from BUILD.md on 2026-11-28: Phase 5B's section, closed when its stretch step P5.8 moved to Phase 8
+
+### Phase 5B · Multi-seat bots and difficulty levels
+
+Complete since 2026-11-24: heads-up, six and nine seats each have a promoted champion with its published evaluation, and RiverMind Easy, Medium and Hard are served at 2 to 9 seats (the steps and their evidence are in [docs/build-history.md](docs/build-history.md)).
+
+Its stretch step, P5.8 (real-time search), moved to Phase 8 on 2026-11-28 (owner).
+
+
+## Moved from BUILD.md on 2026-11-28: a handoff entry
+
 **2026-11-28 · P5D.6: the app's native lobby.** The owner asked for as much of the build as could be done. **Built** (`845858a`): the lobby in SwiftUI from a grown `LobbyModel` (practice per bot with its result, the wallet, the table list with quick seat and filters, sitting down, holds, the waitlist, the new-table form, private tables through the share sheet, invites from a link or pasted), and a stand-in table screen until P5D.7; the lobby's words moved into `web/src/lib/nl/lobby.ts` with a Swift port held by the display fixture. **Found:** P5D.5's CI run failed on iOS 26.5, where a gallery opened while the lobby loaded was popped when the toolbar's link was replaced; fixed in the same commit. **Plan notes:** build 1 is unreleased, so the new requests need no new `AppBuild.number`; the app rejoins the table it last followed at launch, so UI tests leave their tables (AGENTS.md). **Checked:** as in P5D.6's evidence. **Pushed** to GitHub and Codeberg through `f4d7b96` with the owner's approval; its CI run has not been checked. **Next:** P5D.7, with P5D.9 beside it.
 
 

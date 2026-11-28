@@ -57,24 +57,24 @@ Build on the settled decisions (`D-n`). Use an open question’s default (`Q-n`)
 
 **Decide it yourself.** Libraries, code structure, algorithms, file layout, test strategy and tuning are yours to choose. So is splitting a step, adding one you find is needed, or rewording a criterion that turned out to be wrong; say why in the handoff entry. Record anything a later session would wonder about in BUILD.md or the relevant doc.
 
+**Push and deploy without asking** (D-21, owner, 2026-11-28). At the end of each session's work, once the full suites pass, commit and push `main`, and when what is deployed changed (anything the release builds from `web/`, `deploy/` or the champions), deploy it ([section 10](#10-the-live-server)), run the live checks and record them in BUILD.md. A deploy that fails is fixed forward by a new commit, as always.
+
 **Owner gates.** Get the owner’s explicit approval, in the current conversation, for each separate action of:
 
-- pushing to a remote;
-- deploying to the live domain;
-- tagging a release or publishing anything;
+- tagging a release or publishing anything (an App Store upload or release, release notes);
 - a step marked **Owner gate**, or anything touching money or real identity;
 - changing a settled decision, deleting an unfinished step, lowering acceptance criteria or reordering phases (raise these as an open question instead).
 
-Approval for one push or deploy does not carry over to the next.
+Approval for one of these does not carry over to the next.
 
-**Server setup is pre-authorized** (D-10). You may SSH into ubuntu-vm as root and install packages, set up databases, roles, services, files and configuration without asking. Keep the host’s other sites working, follow its conventions (see `deploy/setup-database.sh`) and record what changed in BUILD.md. This does not cover deploying to the live domain.
+**Server setup is pre-authorized** (D-10). You may SSH into ubuntu-vm as root and install packages, set up databases, roles, services, files and configuration without asking. Keep the host’s other sites working, follow its conventions (see `deploy/setup-database.sh`) and record what changed in BUILD.md. Deploying to the live domain is covered by D-21 above.
 
 **When blocked,** work on a ready prerequisite within the current phase, or record exactly what is needed to proceed, and stop only at an owner gate.
 
 ## 4. Git
 
 - **`main` only.** Never create branches, worktrees or pull requests, and never force-push.
-- **Commit** verified work to `main` when a step or a coherent part of one is done, or when the owner asks. **Push** only with the owner’s approval, with `git push origin main`. `origin` has two push URLs, so one push updates both GitHub and Codeberg.
+- **Commit** verified work to `main` when a step or a coherent part of one is done, or when the owner asks. **Push** at the end of each session's work (D-21), with `git push origin main`. `origin` has two push URLs, so one push updates both GitHub and Codeberg.
 - **Before committing:** run the full Python suite with the database tests and, for any change under `web/`, the full web suite ([section 7](#7-commands)). Check `git status` for stray files, make sure every intended change is staged (including files edited after a rename), and never commit anything `.gitignore` excludes.
 - **Messages:** a short imperative summary line, then a brief body saying what changed and why, naming the BUILD.md step (`P4B.5a`) where there is one.
 - **Shared checkout:** stage explicit paths. Commit only your own files (`git commit -- <paths>`, or a temporary index when a file mixes your hunks with another session’s).
@@ -511,7 +511,7 @@ Keep the `poker_ai` Python namespace and the legacy `poker_ai` command. Existing
 
 The site runs on the owner’s ubuntu-vm under the web platform contract (`/home/sawyer/github/ubuntu-vm-backup/docs/web-platform.md`, which wins over this file where they differ). [CONTRIBUTING.md](CONTRIBUTING.md#deploy-rivermindpokercom) has the full description; the facts later steps rely on are in Phase 0 of BUILD.md.
 
-- **Deploy** (an owner gate): after the approved push, run `ssh root@ubuntu-vm 'bash /home/sawyer/github/rivermind-poker/deploy/update.sh'`. It deploys `origin/main`, fix-forward: it builds `git archive` of the commit in `/home/sawyer/web-work/` as sawyer and runs the Python suite, the champion check and the web suite (check, lint, Vitest on the test database, the three parity checks, the build). Then, inside one `with-deploy-lock` process, it stages a release under `/srv/rivermindpoker.com/` with `REVISION`, dumps and migrates the database, starts the release as a candidate on a port in 4400-4499 and checks it, switches `current`, restarts the Node server (which restores the open tables, hands in progress included), checks that `/healthz` and `web-live` report the commit on Node 26, applies the Caddy fragment through `caddy-apply` if it changed, and smokes the public site. A failure before the switch leaves the old release serving; a failure after it is fixed by a new commit, never by pointing `current` back.
+- **Deploy** (standing approval, D-21): after the push, run `ssh root@ubuntu-vm 'bash /home/sawyer/github/rivermind-poker/deploy/update.sh'`. It deploys `origin/main`, fix-forward: it builds `git archive` of the commit in `/home/sawyer/web-work/` as sawyer and runs the Python suite, the champion check and the web suite (check, lint, Vitest on the test database, the three parity checks, the build). Then, inside one `with-deploy-lock` process, it stages a release under `/srv/rivermindpoker.com/` with `REVISION`, dumps and migrates the database, starts the release as a candidate on a port in 4400-4499 and checks it, switches `current`, restarts the Node server (which restores the open tables, hands in progress included), checks that `/healthz` and `web-live` report the commit on Node 26, applies the Caddy fragment through `caddy-apply` if it changed, and smokes the public site. A failure before the switch leaves the old release serving; a failure after it is fixed by a new commit, never by pointing `current` back.
 - **Check it live** with `bash deploy/smoke.sh https://rivermindpoker.com` on the host, and `pnpm e2e:live` from `web/`, which also puts guests in table voice through the site's `/voice` and the public media port (`voice.live.ts`). With `LIVE_RESTART_COMMAND="ssh root@ubuntu-vm systemctl restart rivermind-poker-web"` the latter also restarts the server mid-hand. What is live is what `/healthz` and `sudo /home/sawyer/github/ubuntu-vm-backup/bin/web-live rivermind-poker-web.service` report, never the checkout. Record the revision, the release and the results in BUILD.md.
 - **Models:** `/srv/rivermind-poker/models/champions/<name>/{checkpoint,bundle}` and `/srv/rivermind-poker/models/tables/hu-m1`, root-owned and world-readable. The web unit reads the champions through `RIVERMIND_MODELS`, and `update.sh` verifies them against the registry before the site changes. Copy a newly promoted champion there before deploying ([docs/bots.md](docs/bots.md#where-models-are-kept)).
 - **Services:** `rivermind-poker-web` (Node 26 from `/opt/node-26`, 127.0.0.1:4320, a dynamic user) behind [the Caddy site](deploy/rivermindpoker.com.caddy). There is no other table server. `rivermind-poker-voice` ([its unit](deploy/rivermind-poker-voice.service): 127.0.0.1:4323, media on UDP and TCP 3478, another dynamic user bound to those ports alone) runs beside it since P4C.4, and Caddy routes `/voice` to it since P4C.9; its key is `/var/lib/rivermind-poker/voice-key`, which `update.sh` derives from the session secret, `ufw` allows 3478, and the table `inet rivermind_voice` caps TCP connections to it at 32 an address. `update.sh voice-candidate RELEASE`, inside `with-deploy-lock`, checks a staged release's voice service alone. Port 4322 is fieldcadence.app's.
