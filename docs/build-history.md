@@ -15,6 +15,10 @@ BUILD.md tracks whatever is still open. Commit hashes refer to `main`.
 
 <!-- newest entries go directly below this line -->
 
+## Moved from BUILD.md on 2026-11-28: a handoff entry
+
+**2026-11-27 · P5D.4: the page's display logic in Swift, with a fixture (and P5D.2 closed).** The owner asked for as much of the build as could be done. **Closed P5D.2:** CI run 46085279025 on `1d2915d` passed its `test`, `web` and `ios` jobs, so P5D.2 moved to the history. **Built** (`970b673`): Swift ports of hand names and the evaluator, bet sizes and labels, the hand log's and the pots' lines, seat words, faces, replay steps, card names and the safety wording, and `display.json`, written by `pnpm ios:fixtures` from the TypeScript and matched exactly by `DisplayParityTests.swift`. **Plan change:** wording three components wrote inline (the pots' lines, a seat's status word and its spoken label) moved into `bet.ts` and `faces.ts`, so the page and the app read one source; P5D.4's criterion named `wording.ts`, whose table half is the short-deck client's, so only its card names were ported. **Checked:** as in P5D.4's evidence. **Not pushed** (owner gate). **Next:** P5D.3, claimed.
+
 ## Moved from BUILD.md on 2026-11-27: P5D.3 and P5D.4, and a handoff entry
 
 - [x] **P5D.3 · The table connection** · Depends on: P5D.2
