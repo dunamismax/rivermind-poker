@@ -71,6 +71,8 @@ export const GONE = 'That table no longer exists.';
 export const PRACTICE_BOT = 'heuristic';
 /** A practice table nobody follows closes after this long without a change. */
 export const PRACTICE_IDLE_SECONDS = 3600;
+/** What a deleted guest's open sockets and practice table are told (P5D.11). */
+export const GUEST_DELETED = 'This guest has been deleted. Reload to start again as a new guest.';
 export const PRACTICE_REFUSED =
 	'Practice chips are not from your wallet: start practice from the lobby.';
 
@@ -175,6 +177,13 @@ export class Tables {
 	/** Guest id -> the last request to start practice, which the next one waits for. */
 	private readonly practiceStarts = new Map<string, Promise<unknown>>();
 	private signalled = new Set<string>();
+	/**
+	 * Guests marked deleted whose chips may still be at a table (P5D.11), and the
+	 * erasure under way for each, which waits until no table seats them.
+	 */
+	private readonly deleting = new Map<string, Promise<boolean> | null>();
+	/** Deleted guests still being taken out of their tables, not to be erased till that is done. */
+	private readonly sweeping = new Set<string>();
 	private readonly inviteCodes: () => string;
 	private readonly onTable: ((runner: TableRunner) => void) | null;
 	readonly voice: Voice | null;
@@ -205,6 +214,104 @@ export class Tables {
 		if (this.started) return;
 		this.started = true;
 		if (this.store !== null) await this.restore(this.store);
+		// Guests who asked to be deleted before a restart: finish what was left.
+		for (const playerId of await this.site.players.pendingDeletions()) {
+			await this.deleteGuest(playerId);
+		}
+	}
+
+	/**
+	 * Delete a guest and their data (P5D.11). At once: no session opens as them, their
+	 * sockets close, their practice table closes, they give up held seats and waitlist
+	 * places, and they leave every seat. A seat in a hand under way is given up when the
+	 * hand ends, as any leaving player's is (they check or fold till then), and its chips
+	 * go back to their wallet as always. Once no table seats them, their data is erased
+	 * (`Site.erase`). Resolves true when that is done, false while a hand still holds
+	 * them; repeated after a restart from `start`.
+	 */
+	async deleteGuest(playerId: string): Promise<boolean> {
+		await this.site.markDeleted(playerId);
+		if (!this.deleting.has(playerId)) this.deleting.set(playerId, null);
+		this.sweeping.add(playerId);
+		try {
+			await this.sweep(playerId);
+		} finally {
+			this.sweeping.delete(playerId);
+		}
+		await this.settled();
+		return this.eraseIfFree(playerId);
+	}
+
+	/** Close a deleted guest's sockets and practice table, and take them out of every table. */
+	private async sweep(playerId: string): Promise<void> {
+		for (const connection of [...this.connections]) {
+			if (connection.playerId !== playerId) continue;
+			connection.send({
+				type: 'error',
+				code: 'unauthorized',
+				message: GUEST_DELETED,
+				table_id: null
+			});
+			connection.end();
+		}
+		await this.practiceStarts.get(playerId)?.catch(() => {});
+		const practice = this.practice.get(playerId);
+		if (practice !== undefined) await this.close(practice, GUEST_DELETED);
+		for (const runner of [...this.manager.tables.values()]) {
+			if (runner.closed || this.closing.has(runner.tableId)) continue;
+			try {
+				if (runner.table.waitlistPosition(playerId) !== null) {
+					await runner.leaveWaitlist(playerId);
+				}
+				if (runner.table.reservationOf(playerId) !== null) {
+					await runner.cancelReservation(playerId);
+				}
+				if (runner.table.seatOf(playerId) !== null) await runner.leave(playerId);
+			} catch (error) {
+				// The table closed while this waited its turn: closing paid them back.
+				if (!(error instanceof TableError)) throw error;
+			}
+		}
+	}
+
+	/** Whether some table still seats the guest, as a player or one leaving at the hand's end. */
+	private seatsGuest(playerId: string): boolean {
+		for (const runner of this.manager.tables.values()) {
+			if (!runner.closed && runner.table.seatOf(playerId) !== null) return true;
+		}
+		return false;
+	}
+
+	/** Erase a guest marked deleted once no table seats them. True once erased. */
+	private eraseIfFree(playerId: string): Promise<boolean> {
+		if (!this.deleting.has(playerId)) return Promise.resolve(true);
+		const running = this.deleting.get(playerId);
+		if (running) return running;
+		if (this.sweeping.has(playerId) || this.seatsGuest(playerId)) return Promise.resolve(false);
+		const erasing = this.site
+			.erase(playerId)
+			.then(() => {
+				this.deleting.delete(playerId);
+				this.log.info(`Erased a deleted guest's data`);
+				return true;
+			})
+			.catch((error: unknown) => {
+				this.deleting.set(playerId, null);
+				this.log.error(`Could not erase deleted guest ${playerId}`, error);
+				return false;
+			});
+		this.deleting.set(playerId, erasing);
+		return erasing;
+	}
+
+	/** Erase every guest marked deleted whom no table seats any more. */
+	private eraseFreed(): void {
+		for (const playerId of [...this.deleting.keys()]) void this.eraseIfFree(playerId);
+	}
+
+	/** Resolves once every erasure under way has finished (for tests). */
+	async erased(): Promise<void> {
+		await Promise.allSettled([...this.deleting.values()]);
 	}
 
 	/** Stop every table. A change being saved or published finishes first. */
@@ -800,6 +907,9 @@ export class Tables {
 	/** Check who sat down, and close a table once no person is seated or has a seat held. */
 	private async watchTable(runner: TableRunner, events: readonly TableEvent[]): Promise<void> {
 		await this.checkAddresses(runner, events);
+		// A departing seat's chips are saved and paid before listeners hear of it, so a
+		// deleted guest who has now left their last table can go (P5D.11).
+		if (this.deleting.size && events.some((e) => e.kind === 'left')) this.eraseFreed();
 		if (
 			events.some((e) => e.kind === 'left' || e.kind === 'reservation_ended') &&
 			!runner.hasPeople()
@@ -861,6 +971,8 @@ export class Tables {
 			if (this.practice.get(runner.practice) === tableId) this.practice.delete(runner.practice);
 		}
 		this.signalled = new Set([...this.signalled].filter((key) => !key.startsWith(prefix)));
+		// Closing paid everyone back, a deleted guest included.
+		if (this.deleting.size) this.eraseFreed();
 	}
 
 	// Sockets

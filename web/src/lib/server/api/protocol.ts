@@ -34,6 +34,8 @@ export const SessionRequest = object({
 	legacy_token: optional(nullable(str({ maxLength: 200 })), null)
 });
 
+export const DeleteGuestRequest = object({ confirm: bool() });
+
 export const NewTableRequest = object({
 	seats: optional(int({ ge: 2, le: 9 }), 6),
 	bots: optional(nullable(str()), 'heuristic' as string | null),
@@ -106,6 +108,7 @@ type Check<T extends true> = T;
 
 export type Checks = [
 	Check<Same<Infer<typeof SessionRequest>, Filled<p.SessionRequest>>>,
+	Check<Same<Infer<typeof DeleteGuestRequest>, Filled<p.DeleteGuestRequest>>>,
 	Check<Same<Infer<typeof NewTableRequest>, Filled<p.NewTableRequest>>>,
 	Check<Same<Infer<typeof PracticeRequest>, Filled<p.PracticeRequest>>>,
 	Check<Same<Infer<typeof SeatRequest>, Filled<p.SeatRequest>>>,

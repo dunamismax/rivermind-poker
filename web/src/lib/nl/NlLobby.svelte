@@ -271,6 +271,7 @@
 			<a class="ui-btn small" href={resolve('/hands')}>Your hands</a>
 			<a class="ui-btn small" href={resolve('/fairness')}>Rules and fair dealing</a>
 			<a class="ui-btn small" href={resolve('/bots')}>The bots</a>
+			<a class="ui-btn small" href={resolve('/guest')}>Your guest</a>
 		</nav>
 		{#if message}<p class="closed ui-panel px-5 py-3 text-mist" role="status">{message}</p>{/if}
 	</section>

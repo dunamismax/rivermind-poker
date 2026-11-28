@@ -33,6 +33,34 @@ struct LobbyView: View {
             .accessibilityIdentifier("lobby.failed")
         case let .ready(config, guest):
             offer(config, guest: guest)
+        case .updateNeeded:
+            // P5D.11: a build the server no longer serves asks to be updated instead of failing.
+            ContentUnavailableView {
+                Label("Update RiverMind Poker", systemImage: "arrow.down.app")
+            } description: {
+                Text("This version of the app is too old for the tables. Update it from the App Store to keep playing.")
+            } actions: {
+                if let store = AppStoreLink.url {
+                    Link("Open the App Store", destination: store)
+                        .buttonStyle(.borderedProminent)
+                }
+                Button("Try again") { Task { await model.load() } }
+            }
+            .accessibilityIdentifier("lobby.update")
+        case let .deleted(erased):
+            ContentUnavailableView {
+                Label("Your guest has been deleted", systemImage: "person.crop.circle.badge.xmark")
+            } description: {
+                Text(
+                    erased
+                        ? "Its chips, its hands and everything else it had are gone."
+                        : "It was in a hand still being played. It checks or folds until the hand ends, and then its chips and everything else it had are gone."
+                )
+            } actions: {
+                Button("Play as a new guest") { Task { await model.load() } }
+                    .buttonStyle(.borderedProminent)
+            }
+            .accessibilityIdentifier("lobby.deleted")
         }
     }
 
@@ -80,6 +108,7 @@ struct LobbyView: View {
             } footer: {
                 Text("Protocol \(config.protocolVersion)")
             }
+            DeleteGuestSection(model: model, table: table)
         }
         .refreshable { await model.load() }
         .accessibilityIdentifier("lobby.ready")
@@ -92,6 +121,44 @@ struct LobbyView: View {
             ? "\(first) to \(last) seats"
             : counts.map(String.init).joined(separator: ", ") + " seats"
     }
+}
+
+/// Deleting the guest and their data (P5D.11, App Review's guideline 5.1.1(v)), asked
+/// twice: the button, then a dialog that says what goes.
+struct DeleteGuestSection: View {
+    let model: LobbyModel
+    let table: TableConnection
+    @State private var asking = false
+    @State private var deleting = false
+
+    var body: some View {
+        Section {
+            Button("Delete this guest", role: .destructive) { asking = true }
+                .disabled(deleting)
+                .accessibilityIdentifier("lobby.delete")
+        } footer: {
+            Text("Removes its name, chips, hands, mutes, blocks and reports for good. In other players’ hands its seat shows as “Former guest”.")
+        }
+        .confirmationDialog("Delete this guest for good?", isPresented: $asking, titleVisibility: .visible) {
+            Button("Delete for good", role: .destructive) {
+                deleting = true
+                Task {
+                    await model.deleteGuest(leaving: table)
+                    deleting = false
+                }
+            }
+            .accessibilityIdentifier("lobby.delete.confirm")
+            Button("Keep my guest", role: .cancel) {}
+        } message: {
+            Text("Its chips and hands go with it, and the app starts again as a new guest. If it is in a hand, it checks or folds until the hand ends.")
+        }
+    }
+}
+
+/// The app's App Store page, once Q-13 gives the app its id; until then the update
+/// screen has no link.
+enum AppStoreLink {
+    static let url: URL? = nil
 }
 
 #if DEBUG

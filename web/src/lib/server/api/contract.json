@@ -561,7 +561,7 @@
 				"headers": {
 					"content-type": "application/json"
 				},
-				"body": "{\"protocol\":2,\"bots\":[{\"kind\":\"random\",\"label\":\"Random bot\"},{\"kind\":\"calling_station\",\"label\":\"Calling bot\"},{\"kind\":\"heuristic\",\"label\":\"RiverMind Easy\"}],\"seat_counts\":[2,3,4,5,6,7,8,9],\"stakes\":[{\"small_blind\":25,\"big_blind\":50},{\"small_blind\":50,\"big_blind\":100},{\"small_blind\":100,\"big_blind\":200},{\"small_blind\":500,\"big_blind\":1000}],\"reactions\":[{\"kind\":\"hello\",\"text\":\"Hi!\"},{\"kind\":\"nice_hand\",\"text\":\"Nice hand\"},{\"kind\":\"well_played\",\"text\":\"Well played\"},{\"kind\":\"good_game\",\"text\":\"Good game\"},{\"kind\":\"unlucky\",\"text\":\"Unlucky\"},{\"kind\":\"thanks\",\"text\":\"Thanks\"},{\"kind\":\"wow\",\"text\":\"Wow\"},{\"kind\":\"thinking\",\"text\":\"Thinking…\"}],\"practice_stack\":10000}"
+				"body": "{\"protocol\":2,\"bots\":[{\"kind\":\"random\",\"label\":\"Random bot\"},{\"kind\":\"calling_station\",\"label\":\"Calling bot\"},{\"kind\":\"heuristic\",\"label\":\"RiverMind Easy\"}],\"seat_counts\":[2,3,4,5,6,7,8,9],\"stakes\":[{\"small_blind\":25,\"big_blind\":50},{\"small_blind\":50,\"big_blind\":100},{\"small_blind\":100,\"big_blind\":200},{\"small_blind\":500,\"big_blind\":1000}],\"reactions\":[{\"kind\":\"hello\",\"text\":\"Hi!\"},{\"kind\":\"nice_hand\",\"text\":\"Nice hand\"},{\"kind\":\"well_played\",\"text\":\"Well played\"},{\"kind\":\"good_game\",\"text\":\"Good game\"},{\"kind\":\"unlucky\",\"text\":\"Unlucky\"},{\"kind\":\"thanks\",\"text\":\"Thanks\"},{\"kind\":\"wow\",\"text\":\"Wow\"},{\"kind\":\"thinking\",\"text\":\"Thinking…\"}],\"practice_stack\":10000,\"oldest_app_build\":1}"
 			}
 		},
 		{

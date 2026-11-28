@@ -56,6 +56,14 @@ class FixedPlayers implements PlayerStore {
 		if (!record) throw new Error(`unknown player ${playerId}`);
 		return record;
 	}
+
+	async markDeleted(): Promise<void> {}
+
+	async pendingDeletions(): Promise<string[]> {
+		return [];
+	}
+
+	async erase(): Promise<void> {}
 }
 
 const port = Number(process.env.PORT ?? 8950);

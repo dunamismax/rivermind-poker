@@ -64,6 +64,7 @@ export interface SocketServer {
 			cookie: string | undefined;
 			peer: string | undefined;
 			forwardedFor: string | undefined;
+			client?: string | undefined;
 		}
 	): SocketSession;
 }
@@ -200,7 +201,8 @@ export function createApp({
 				{
 					cookie: req.headers.cookie,
 					peer: req.socket.remoteAddress,
-					forwardedFor: Array.isArray(forwardedFor) ? forwardedFor.join(', ') : forwardedFor
+					forwardedFor: Array.isArray(forwardedFor) ? forwardedFor.join(', ') : forwardedFor,
+					client: [req.headers['rivermind-client']].flat()[0]
 				}
 			);
 			ws.on('message', (data, isBinary) => {

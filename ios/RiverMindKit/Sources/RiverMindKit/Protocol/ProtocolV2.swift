@@ -454,6 +454,9 @@ public struct ConfigResponse: Codable, Sendable, Hashable {
     public var reactions: [ReactionOption]
     /// The chips `POST /api/practice` gives, and gives again whenever the guest runs out.
     public var practiceStack: Int?
+    /// The oldest build of the iPhone app (its `CFBundleVersion`) this server still
+    /// serves (P5D.11). An older build asks to be updated instead of playing. Pages ignore it.
+    public var oldestAppBuild: Int?
 
     public init(
         protocolVersion: Int,
@@ -461,7 +464,8 @@ public struct ConfigResponse: Codable, Sendable, Hashable {
         seatCounts: [Int],
         stakes: [Stakes],
         reactions: [ReactionOption],
-        practiceStack: Int? = nil
+        practiceStack: Int? = nil,
+        oldestAppBuild: Int? = nil
     ) {
         self.protocolVersion = protocolVersion
         self.bots = bots
@@ -469,6 +473,7 @@ public struct ConfigResponse: Codable, Sendable, Hashable {
         self.stakes = stakes
         self.reactions = reactions
         self.practiceStack = practiceStack
+        self.oldestAppBuild = oldestAppBuild
     }
 
     enum CodingKeys: String, CodingKey {
@@ -478,6 +483,7 @@ public struct ConfigResponse: Codable, Sendable, Hashable {
         case stakes
         case reactions
         case practiceStack = "practice_stack"
+        case oldestAppBuild = "oldest_app_build"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -488,6 +494,7 @@ public struct ConfigResponse: Codable, Sendable, Hashable {
         stakes = try container.decode([Stakes].self, forKey: .stakes)
         reactions = try container.decode([ReactionOption].self, forKey: .reactions)
         practiceStack = try container.decodeIfPresent(Int.self, forKey: .practiceStack)
+        oldestAppBuild = try container.decodeIfPresent(Int.self, forKey: .oldestAppBuild)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -498,6 +505,7 @@ public struct ConfigResponse: Codable, Sendable, Hashable {
         try container.encode(stakes, forKey: .stakes)
         try container.encode(reactions, forKey: .reactions)
         try container.encodeIfPresent(practiceStack, forKey: .practiceStack)
+        try container.encodeIfPresent(oldestAppBuild, forKey: .oldestAppBuild)
     }
 }
 
@@ -2662,6 +2670,60 @@ public struct SessionRequest: Codable, Sendable, Hashable {
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         if let legacyToken { try container.encode(legacyToken, forKey: .legacyToken) } else if nulls.contains(.legacyToken) { try container.encodeNil(forKey: .legacyToken) }
+    }
+}
+
+/// `DELETE /api/guest`: delete this guest and their data (P5D.11).
+public struct DeleteGuestRequest: Codable, Sendable, Hashable {
+    /// Must be true: a body that says so, so that nothing deletes a guest by accident.
+    public var confirm: Bool
+
+    public init(
+        confirm: Bool
+    ) {
+        self.confirm = confirm
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case confirm
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        confirm = try container.decode(Bool.self, forKey: .confirm)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(confirm, forKey: .confirm)
+    }
+}
+
+/// `DELETE /api/guest`: the guest is deleted, and the session cookie is cleared. No session
+/// opens as them again. Their data is gone at once, or, when a hand under way still holds
+/// their seat, as soon as that hand ends and their chips are back.
+public struct DeleteGuestResponse: Codable, Sendable, Hashable {
+    /// True when every trace is already gone; false while a hand under way still holds their seat.
+    public var erased: Bool
+
+    public init(
+        erased: Bool
+    ) {
+        self.erased = erased
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case erased
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        erased = try container.decode(Bool.self, forKey: .erased)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(erased, forKey: .erased)
     }
 }
 

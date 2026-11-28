@@ -192,6 +192,12 @@ public final class TableConnection {
         stop()
     }
 
+    /// Forgets the table without a word to the server, as after the guest was deleted
+    /// (P5D.11), whose seats the server gives up itself.
+    public func forgetTable() {
+        stop()
+    }
+
     /// Closes the socket without leaving, as a page unload does.
     public func disconnect() {
         closeSocket()

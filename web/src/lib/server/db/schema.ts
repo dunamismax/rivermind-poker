@@ -68,7 +68,12 @@ export const players = pgTable(
 			.default(sql`'0'`)
 			.notNull(),
 		/** When the starting grant or the last daily top-up was paid. */
-		grantedAt: stamp('granted_at')
+		grantedAt: stamp('granted_at'),
+		/**
+		 * When the guest asked to be deleted (P5D.11). From then no session opens as
+		 * them, and the row and its data go once their chips are back from every table.
+		 */
+		deletedAt: stamp('deleted_at')
 	},
 	(t) => [
 		primaryKey({ name: 'pk_players', columns: [t.id] }),

@@ -122,6 +122,11 @@ export interface Wallet {
 	): Promise<number>;
 	/** The newest entries first. */
 	entries(playerId: string, limit?: number): Promise<Entry[]>;
+	/**
+	 * Forget a deleted guest's wallet and its entries together (P5D.11). In the
+	 * database they go with the guest's row, by ON DELETE CASCADE.
+	 */
+	erase(playerId: string): Promise<void>;
 }
 
 /** Wallets for a server without a database: they last as long as the process. */
@@ -182,6 +187,12 @@ export class MemoryWallet implements Wallet {
 
 	async entries(playerId: string, limit = 50): Promise<Entry[]> {
 		return [...(this.kept.get(playerId) ?? [])].reverse().slice(0, limit);
+	}
+
+	async erase(playerId: string): Promise<void> {
+		this.balances.delete(playerId);
+		this.granted.delete(playerId);
+		this.kept.delete(playerId);
 	}
 }
 
@@ -285,4 +296,7 @@ export class DatabaseWallet implements Wallet {
 			.orderBy(desc(ledgerEntries.id))
 			.limit(limit);
 	}
+
+	/** Nothing to do here: the entries go with the guest's row (`PlayerStore.erase`). */
+	async erase(): Promise<void> {}
 }

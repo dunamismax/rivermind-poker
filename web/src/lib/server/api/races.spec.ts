@@ -63,6 +63,10 @@ class SlowWallet implements Wallet {
 	entries(playerId: string, limit?: number) {
 		return this.inner.entries(playerId, limit);
 	}
+
+	erase(playerId: string) {
+		return this.inner.erase(playerId);
+	}
 }
 
 const servers: TestServer[] = [];

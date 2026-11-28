@@ -26,9 +26,11 @@ import {
 	SESSION_SECONDS,
 	verify
 } from './auth.ts';
+import { CLIENT_HEADER, clientKind } from './clients.ts';
 import { HttpError } from './errors.ts';
 import { seatOf } from './hands.ts';
 import {
+	DeleteGuestRequest,
 	NewTableRequest,
 	PROTOCOL_VERSION,
 	PracticeRequest,
@@ -40,7 +42,7 @@ import {
 	WaitlistRequest
 } from './protocol.ts';
 import { addressTag, clientAddress, REACTIONS, suspendIfDue } from './safety.ts';
-import { STAKES, type Site } from './site.ts';
+import { OLDEST_APP_BUILD, STAKES, type Site } from './site.ts';
 import { parseCookies } from './socket.ts';
 import type { Tables } from './tables.ts';
 import { VOICE_PATH, type VoiceOffer, type VoiceTokenResponse } from '../../voice/signalling.ts';
@@ -92,6 +94,11 @@ function errorResponse(error: HttpError): Response {
 /** The cookies of a request, as Starlette reads them. */
 export function cookies(request: Request): Map<string, string> {
 	return parseCookies(request.headers.get('cookie'));
+}
+
+/** The `Set-Cookie` that clears the session cookie, as a deleted guest's answer carries (P5D.11). */
+export function clearedSessionCookie(secure: boolean): string {
+	return `${COOKIE_NAME}=; Max-Age=0; Path=/; SameSite=lax; HttpOnly${secure ? '; Secure' : ''}`;
 }
 
 /** Secure everywhere except plain HTTP on this machine, where browsers would drop it. */
@@ -222,7 +229,8 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 				kind: kind as p.Reaction,
 				text
 			})),
-			practice_stack: site.practiceStack
+			practice_stack: site.practiceStack,
+			oldest_app_build: site.oldestAppBuild ?? OLDEST_APP_BUILD
 		};
 		return json(response);
 	};
@@ -251,6 +259,9 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 			);
 		}
 		site.noteAddress(record.playerId, address(request, info));
+		const client = clientKind(request.headers.get(CLIENT_HEADER));
+		site.counts.add('session', client);
+		if (created) site.counts.add('guest_made', client);
 		await site.players.seen(record.playerId);
 		const balance = await site.wallet.visit(record.playerId, now);
 		const response: p.SessionResponse = {
@@ -307,6 +318,32 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 		return json(handDetail(played, seat));
 	};
 
+	/**
+	 * Delete this guest and their data (P5D.11, App Review's guideline 5.1.1(v)). The
+	 * session ends at once; the rest goes when no hand under way holds their seat.
+	 */
+	const deleteGuest: Route = async (request) => {
+		const asked = await body(request, DeleteGuestRequest);
+		if (!asked.confirm) {
+			throw new HttpError(400, 'Say {"confirm": true} to delete this guest and their data.');
+		}
+		const player = await playerOf(request);
+		const erased = tables
+			? await tables.deleteGuest(player.playerId)
+			: await site.markDeleted(player.playerId).then(async () => {
+					await site.erase(player.playerId);
+					return true;
+				});
+		site.counts.add('guest_deleted', clientKind(request.headers.get(CLIENT_HEADER)));
+		console.log(erased ? 'A guest was deleted' : 'A guest was deleted; a hand still holds a seat');
+		const secure = cookieIsSecure(new URL(request.url), request.headers.get('host'));
+		const response: p.DeleteGuestResponse = { erased };
+		return json(response, 200, {
+			'set-cookie': clearedSessionCookie(secure),
+			'cache-control': 'no-store'
+		});
+	};
+
 	const relations: Route = async (request) => {
 		const player = await playerOf(request);
 		return relationsResponse(player.playerId);
@@ -326,6 +363,7 @@ export function createApi(site: Site, options: ApiOptions = {}): ApiHandler {
 	const routes: Entry[] = [
 		{ pattern: /^\/api\/config$/, methods: { GET: config } },
 		{ pattern: /^\/api\/session$/, methods: { POST: session } },
+		{ pattern: /^\/api\/guest$/, methods: { DELETE: deleteGuest } },
 		{ pattern: /^\/api\/wallet$/, methods: { GET: wallet } },
 		{ pattern: /^\/api\/hands$/, methods: { GET: handList } },
 		{ pattern: /^\/api\/hands\/([^/]+)$/, methods: { GET: hand } },

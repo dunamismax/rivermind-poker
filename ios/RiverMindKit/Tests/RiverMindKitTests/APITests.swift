@@ -318,7 +318,77 @@ extension String {
         }
         #expect(config.seatCounts == Array(2...9))
         #expect(guest.name == "Guest 1234")
-        #expect(server.requests.map { $0.url!.path() } == ["/api/session", "/api/config"])
+        // The config first, so an old build asks to be updated before it makes a guest.
+        #expect(server.requests.map { $0.url!.path() } == ["/api/config", "/api/session"])
+    }
+
+    /// P5D.11: a build older than the server's oldest asks to be updated and makes no guest.
+    @Test func anOldBuildAsksToBeUpdated() async throws {
+        let raised = config.replacingOccurrences(of: #""practice_stack":10000"#, with: #""practice_stack":10000,"oldest_app_build":3"#)
+        let server = FakeServer(["GET /api/config": (200, raised), "POST /api/session": (200, guest)])
+        let old = LobbyModel(client: APIClient(server: local, transport: server.transport), build: 2)
+        await old.load()
+        #expect(old.state == .updateNeeded(oldest: 3))
+        #expect(server.requests.map { $0.url!.path() } == ["/api/config"])
+        let current = LobbyModel(client: APIClient(server: local, transport: server.transport), build: 3)
+        await current.load()
+        guard case .ready = current.state else {
+            Issue.record("expected the lobby, got \(current.state)")
+            return
+        }
+    }
+
+    /// P5D.11: deleting the guest forgets the session and the table, and says whether
+    /// everything is gone yet.
+    @Test func deletesTheGuest() async throws {
+        let server = FakeServer([
+            "DELETE /api/guest": [
+                FakeServer.Reply(
+                    headers: ["Set-Cookie": "rm_session=; Max-Age=0; Path=/; SameSite=lax; HttpOnly"],
+                    body: Data(#"{"erased":false}"#.utf8))
+            ]
+        ])
+        let store = MemorySessionStore("abc.123")
+        let client = APIClient(server: local, session: store, transport: server.transport)
+        let memory = MemoryTableMemory("t1")
+        let table = TableConnection(client: client, makeSocket: { _ in ClosedSocket() }, memory: memory)
+        let model = LobbyModel(client: client)
+        await model.deleteGuest(leaving: table)
+        #expect(model.state == .deleted(erased: false))
+        #expect(store.load() == nil)
+        #expect(memory.load() == nil && table.tableID == nil)
+        let sent = try #require(server.requests.first)
+        #expect(sent.httpMethod == "DELETE" && sent.body == #"{"confirm":true}"#)
+        #expect(sent.value(forHTTPHeaderField: "Cookie") == "rm_session=abc.123")
+    }
+}
+
+/// A socket that never opens, for a connection that is not meant to connect.
+final class ClosedSocket: TableSocket, @unchecked Sendable {
+    func open() async throws { throw URLError(.cannotConnectToHost) }
+    func send(_ text: String) async throws { throw URLError(.notConnectedToInternet) }
+    func receive() async throws -> String { throw URLError(.notConnectedToInternet) }
+    func close() {}
+}
+
+@Suite @MainActor struct AppBuildTests {
+    /// Every request and the socket's handshake name the app and its build, and nothing else.
+    @Test func everyRequestNamesTheAppAndItsBuild() async throws {
+        let server = FakeServer(["GET /api/config": (200, config)])
+        let client = APIClient(server: local, transport: server.transport)
+        _ = try await client.config()
+        #expect(server.requests.first?.value(forHTTPHeaderField: "RiverMind-Client") == "ios/\(AppBuild.number)")
+        #expect(client.webSocketRequest("/ws").value(forHTTPHeaderField: "RiverMind-Client") == "ios/\(AppBuild.number)")
+    }
+
+    @Test func aBuildIsServedUnlessTheServerNamesANewerOldest() throws {
+        let decoded = try JSONDecoder().decode(ConfigResponse.self, from: Data(config.utf8))
+        #expect(decoded.oldestAppBuild == nil && AppBuild.isSupported(by: decoded, build: 1))
+        var raised = decoded
+        raised.oldestAppBuild = 2
+        #expect(!AppBuild.isSupported(by: raised, build: 1))
+        #expect(AppBuild.isSupported(by: raised, build: 2))
+        #expect(AppBuild.isSupported(by: raised, build: 3))
     }
 
     @Test func saysWhyItFailed() async throws {
@@ -365,6 +435,7 @@ struct LocalServerTests {
         let counted = Counted(server: server)
         let client = APIClient(server: server, session: MemorySessionStore(), transport: counted.transport)
         let guest = try await client.startSession()
+        let session = try #require(client.session.load())
         #expect(guest.balance > 0)
         let config = try await client.config()
         let wallet = try await client.wallet()
@@ -420,6 +491,18 @@ struct LocalServerTests {
         await #expect(throws: APIError.status(503, detail: "Voice is not available here.")) {
             try await client.voiceToken(table: made.tableID)
         }
+
+        // Deleting the guest (P5D.11) ends its session: the next request is a new guest. It
+        // may still be in a hand at the table it made, so it may not be erased yet.
+        _ = try await client.deleteGuest()
+        #expect(client.session.load() == nil)
+        // The old cookie opens nothing (the client would make a new guest on a 401, so ask bare).
+        var request = URLRequest(url: server.url("/api/wallet"))
+        request.setValue("\(SessionCookie.name)=\(session)", forHTTPHeaderField: "Cookie")
+        let (_, answer) = try await URLSession(configuration: .ephemeral).data(for: request)
+        #expect((answer as? HTTPURLResponse)?.statusCode == 401)
+        let fresh = try await client.startSession()
+        #expect(fresh.created && fresh.playerID != guest.playerID)
 
         #expect(counted.limited == 0)
         #expect(counted.count < 30)

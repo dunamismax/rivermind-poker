@@ -12,6 +12,7 @@
 import type * as p from '../../protocol-v2.ts';
 import { TableError } from '../table/table.ts';
 import { COOKIE_NAME, originAllowed } from './auth.ts';
+import { clientKind } from './clients.ts';
 import { RequestError } from './errors.ts';
 import { ClientMessage, HelloMessage } from './protocol.ts';
 import { clientAddress } from './safety.ts';
@@ -38,6 +39,8 @@ export interface Handshake {
 	/** The socket's remote address, before any `X-Forwarded-For`. */
 	peer: string | null | undefined;
 	forwardedFor: string | null | undefined;
+	/** The `RiverMind-Client` header, which the iPhone app sends and a page does not (P5D.11). */
+	client?: string | null;
 }
 
 /** One open socket, as the Node server feeds it. */
@@ -162,6 +165,7 @@ export function createSocketServer(tables: Tables, options: SocketOptions = {}):
 			}
 			const player = session.player;
 			site.noteAddress(player.playerId, clientAddress(handshake.peer, handshake.forwardedFor));
+			site.counts.add('socket', clientKind(handshake.client));
 			await site.relationsOf(player.playerId);
 			if (over) return;
 			connection = tables.connect(transport, player);

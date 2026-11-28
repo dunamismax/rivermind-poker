@@ -88,6 +88,11 @@ export interface ConfigResponse {
 	reactions: ReactionOption[];
 	/** The chips `POST /api/practice` gives, and gives again whenever the guest runs out. */
 	practice_stack?: number;
+	/**
+	 * The oldest build of the iPhone app (its `CFBundleVersion`) this server still
+	 * serves (P5D.11). An older build asks to be updated instead of playing. Pages ignore it.
+	 */
+	oldest_app_build?: number;
 }
 
 /** Stable codes clients branch on. */
@@ -463,6 +468,22 @@ export type ServerMessage = WelcomeMessage | TableMessage | LeftTableMessage | T
 export interface SessionRequest {
 	/** The bearer token a Phase 3 client kept, to move that player onto a session cookie. */
 	legacy_token?: string | null;
+}
+
+/** `DELETE /api/guest`: delete this guest and their data (P5D.11). */
+export interface DeleteGuestRequest {
+	/** Must be true: a body that says so, so that nothing deletes a guest by accident. */
+	confirm: boolean;
+}
+
+/**
+ * `DELETE /api/guest`: the guest is deleted, and the session cookie is cleared. No session
+ * opens as them again. Their data is gone at once, or, when a hand under way still holds
+ * their seat, as soon as that hand ends and their chips are back.
+ */
+export interface DeleteGuestResponse {
+	/** True when every trace is already gone; false while a hand under way still holds their seat. */
+	erased: boolean;
 }
 
 /** `POST /api/session`: the player this browser is. The session itself is in an `HttpOnly` cookie. */

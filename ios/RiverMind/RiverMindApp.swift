@@ -3,7 +3,7 @@ import SwiftUI
 
 @main
 struct RiverMindApp: App {
-    @State private var lobby = LobbyModel(client: .app(server: RiverMindApp.server))
+    @State private var lobby = LobbyModel(client: .app(server: RiverMindApp.server), build: RiverMindApp.build)
     /// The guest's table, followed across launches (P5D.3).
     @State private var table = TableConnection(
         client: .app(server: RiverMindApp.server), memory: DefaultsTableMemory(server: RiverMindApp.server))
@@ -26,6 +26,17 @@ struct RiverMindApp: App {
             default: table.phase(.inactive)
             }
         }
+    }
+
+    /// This build's number, or in a debug build the older one `RIVERMIND_PRETEND_BUILD`
+    /// names, for the UI test of the update screen (P5D.11).
+    static var build: Int {
+        #if DEBUG
+            if let pretend = ProcessInfo.processInfo.environment["RIVERMIND_PRETEND_BUILD"].flatMap(Int.init) {
+                return pretend
+            }
+        #endif
+        return AppBuild.number
     }
 
     /// The live site, or in a debug build the server `RIVERMIND_SERVER` names

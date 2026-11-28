@@ -45,6 +45,14 @@ export interface PlayedHand {
 	practice: boolean;
 }
 
+/**
+ * Who a deleted guest becomes in the hands they played (P5D.11). Every deleted guest
+ * becomes the same one, so their hands cannot be tied to each other. No session can
+ * be this player: session ids start `p_`.
+ */
+export const DELETED_PLAYER = 'deleted';
+export const DELETED_NAME = 'Former guest';
+
 export function seatOf(hand: PlayedHand, playerId: string): number | null {
 	return hand.seats.find((s) => s.playerId === playerId)?.seat ?? null;
 }
@@ -84,6 +92,12 @@ export interface HandArchive {
 	/** The player's hands, newest first, older than `before` if given. */
 	played(playerId: string, limit: number, before?: string | null): Promise<PlayedHand[]>;
 	get(handId: string): Promise<PlayedHand | null>;
+	/**
+	 * Make a deleted guest anonymous in every hand they played (P5D.11): their seat
+	 * becomes {@link DELETED_PLAYER} with the name {@link DELETED_NAME}. The hands
+	 * themselves stay whole, so the others dealt into them can still replay them.
+	 */
+	anonymize(playerId: string): Promise<void>;
 }
 
 /** A hand id as a number, or null if it is not one. */
@@ -153,6 +167,20 @@ export class MemoryHands implements HandArchive {
 	async get(handId: string): Promise<PlayedHand | null> {
 		const n = number(handId);
 		return n === null ? null : (this.kept.get(n) ?? null);
+	}
+
+	async anonymize(playerId: string): Promise<void> {
+		for (const id of this.byPlayer.get(playerId) ?? []) {
+			const hand = this.kept.get(id);
+			if (!hand) continue;
+			const seats = hand.seats.map((seat) =>
+				seat.playerId === playerId
+					? { ...seat, playerId: DELETED_PLAYER, name: DELETED_NAME }
+					: seat
+			);
+			this.kept.set(id, { ...hand, seats });
+		}
+		this.byPlayer.delete(playerId);
 	}
 }
 
@@ -231,5 +259,12 @@ export class DatabaseHands implements HandArchive {
 		if (n === null) return null;
 		const [found] = await this.load([n]);
 		return found ?? null;
+	}
+
+	async anonymize(playerId: string): Promise<void> {
+		await this.db
+			.update(handPlayers)
+			.set({ playerId: DELETED_PLAYER, displayName: DELETED_NAME })
+			.where(eq(handPlayers.playerId, playerId));
 	}
 }

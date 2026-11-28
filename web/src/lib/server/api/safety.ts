@@ -416,6 +416,11 @@ export interface SafetyStore {
 	suspensions(at: number): Promise<{ playerId: string; until: number }[]>;
 	/** End `playerId`'s speaking suspension now (a moderator's call). False if there was none. */
 	liftSuspension(playerId: string): Promise<boolean>;
+	/**
+	 * Forget a deleted guest (P5D.11): the signals that name them, and, in memory, their
+	 * reports, mutes, blocks and suspension, which the database drops with their row.
+	 */
+	erase(playerId: string): Promise<void>;
 }
 
 /**
@@ -530,6 +535,18 @@ export class MemorySafety implements SafetyStore {
 
 	async liftSuspension(playerId: string): Promise<boolean> {
 		return this.suspended.delete(playerId);
+	}
+
+	async erase(playerId: string): Promise<void> {
+		const keep = <T>(list: T[], stays: (item: T) => boolean) => {
+			const kept = list.filter(stays);
+			list.splice(0, list.length, ...kept);
+		};
+		keep(this.kept, (r) => r.reporterId !== playerId && r.targetId !== playerId);
+		keep(this.raised, (s) => !s.playerIds.includes(playerId));
+		this.related.delete(playerId);
+		for (const mine of this.related.values()) mine.delete(playerId);
+		this.suspended.delete(playerId);
 	}
 }
 
@@ -723,6 +740,14 @@ export class DatabaseSafety implements SafetyStore {
 			.where(eq(voiceSuspensions.playerId, playerId))
 			.returning({ playerId: voiceSuspensions.playerId });
 		return gone.length > 0;
+	}
+
+	async erase(playerId: string): Promise<void> {
+		// A signal names the people it is about in a JSON list, which no foreign key
+		// follows; one about a guest who is gone can no longer be acted on.
+		await this.db
+			.delete(safetySignals)
+			.where(sql`${safetySignals.playerIds} @> ${JSON.stringify([playerId])}::jsonb`);
 	}
 }
 

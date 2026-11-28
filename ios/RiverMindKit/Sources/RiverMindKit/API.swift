@@ -79,6 +79,16 @@ public struct APIClient: Sendable {
         try await send("POST", "/api/session", body: Optional<SessionRequest>.none, renew: false)
     }
 
+    /// `DELETE /api/guest`: deletes this guest and their data (P5D.11). The server clears
+    /// the session cookie, and the client forgets it too; the next `startSession` makes a
+    /// new guest. Not retried as a new guest on a 401: there is nobody left to delete.
+    public func deleteGuest() async throws -> DeleteGuestResponse {
+        let answer: DeleteGuestResponse = try await send(
+            "DELETE", "/api/guest", body: DeleteGuestRequest(confirm: true), renew: false)
+        session.save(nil)
+        return answer
+    }
+
     /// `GET /api/wallet`: the play-chip balance and the newest entries.
     public func wallet() async throws -> WalletResponse {
         try await send("GET", "/api/wallet")
@@ -185,6 +195,7 @@ public struct APIClient: Sendable {
         var components = URLComponents(url: server.url(path), resolvingAgainstBaseURL: false)!
         components.scheme = server.origin.scheme == "https" ? "wss" : "ws"
         var request = URLRequest(url: components.url!)
+        request.setValue(AppBuild.clientHeader, forHTTPHeaderField: AppBuild.clientHeaderName)
         if let cookie = session.load(), !cookie.isEmpty {
             request.setValue("\(SessionCookie.name)=\(cookie)", forHTTPHeaderField: "Cookie")
         }
@@ -205,6 +216,7 @@ public struct APIClient: Sendable {
         var request = URLRequest(url: components.url!)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(AppBuild.clientHeader, forHTTPHeaderField: AppBuild.clientHeaderName)
         if let body {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")

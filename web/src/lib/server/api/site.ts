@@ -11,6 +11,7 @@ import type { Database } from '../db/index.ts';
 import type * as p from '../../protocol-v2.ts';
 import { BOT_LABELS } from '../table/runner.ts';
 import { publicRef, readSession, type Secret } from './auth.ts';
+import { ClientCounts } from './clients.ts';
 import { DatabaseHands, MemoryHands, type HandArchive } from './hands.ts';
 import { DatabasePlayers, MemoryPlayers, type PlayerRecord, type PlayerStore } from './players.ts';
 import {
@@ -56,6 +57,12 @@ export const STAKES: readonly (readonly [small: number, big: number])[] = [
 /** 100 big blinds of the practice blinds, given again whenever the guest runs out. */
 export const PRACTICE_STACK = 10_000;
 export const PRACTICE_BLINDS = [50, 100] as const;
+/**
+ * The oldest build of the iPhone app (`CFBundleVersion`) this server serves, sent in
+ * `GET /api/config` (P5D.11). Raise it only when a change has to break older builds,
+ * and drop their recorded sessions in `app-sessions/` with it.
+ */
+export const OLDEST_APP_BUILD = 1;
 
 export interface SiteOptions {
 	/** Signs session cookies. Keep it private and stable: changing it signs everyone out. */
@@ -73,6 +80,8 @@ export interface SiteOptions {
 	/** The trained bots among them, by kind. */
 	trained?: Readonly<Record<string, TrainedBot>>;
 	practiceStack?: number;
+	/** The oldest app build served; {@link OLDEST_APP_BUILD} unless a test says otherwise. */
+	oldestAppBuild?: number;
 	/** The wall clock in seconds since the epoch. */
 	clock?: () => number;
 }
@@ -89,7 +98,10 @@ export class Site {
 	readonly bots: readonly string[];
 	readonly trained: Readonly<Record<string, TrainedBot>>;
 	readonly practiceStack: number;
+	readonly oldestAppBuild: number | null;
 	readonly clock: () => number;
+	/** What sites and apps did, by kind of client and nothing else (P5D.11, for P7.1). */
+	readonly counts = new ClientCounts();
 	/** Player id -> a keyed hash of the address they last came from (P4.5). */
 	readonly addresses = new Map<string, string>();
 	/** Player id -> the people they muted or blocked, by id, loaded on first use. */
@@ -121,6 +133,7 @@ export class Site {
 		this.trained = options.trained ?? {};
 		this.bots = options.bots ?? [...SIMPLE_BOTS, ...Object.keys(this.trained)];
 		this.practiceStack = practiceStack;
+		this.oldestAppBuild = options.oldestAppBuild ?? null;
 		this.clock = clock;
 	}
 
@@ -161,6 +174,32 @@ export class Site {
 		if (!session) return null;
 		const player = await this.player(session.playerId);
 		return player ? { player, issued: session.issued } : null;
+	}
+
+	/**
+	 * Mark a guest as deleted (P5D.11): from now on no session or socket opens as them.
+	 * Their data stays until {@link erase}, once their chips are back from every table.
+	 */
+	async markDeleted(playerId: string): Promise<void> {
+		await this.players.markDeleted(playerId);
+		this.known.delete(playerId);
+	}
+
+	/**
+	 * Remove a deleted guest and their data (P5D.11), in an order that can be repeated
+	 * from the start after a crash part-way: their seats in stored hands become
+	 * the anonymous `DELETED_PLAYER`, then the signals that name them go, and last their row,
+	 * with their wallet and ledger, reports, mutes, blocks and suspension.
+	 */
+	async erase(playerId: string): Promise<void> {
+		await this.hands.anonymize(playerId);
+		await this.safety.erase(playerId);
+		await this.wallet.erase(playerId);
+		await this.players.erase(playerId);
+		this.known.delete(playerId);
+		this.addresses.delete(playerId);
+		this.related.delete(playerId);
+		for (const mine of this.related.values()) mine.delete(playerId);
 	}
 
 	/** Remember a keyed hash of the address a player came from, for collusion signals. */

@@ -4,6 +4,8 @@
 
 import type {
 	ConfigResponse,
+	DeleteGuestRequest,
+	DeleteGuestResponse,
 	HandDetail,
 	HandListResponse,
 	HttpError,
@@ -84,6 +86,26 @@ export async function startSession(
 		throw new ApiError('Unexpected /api/session response', 200);
 	}
 	return value as unknown as SessionResponse;
+}
+
+/**
+ * Delete this browser's guest and their data (P5D.11). The server clears the session
+ * cookie; the next request makes a new guest.
+ */
+export async function deleteGuest(fetcher: typeof fetch = fetch): Promise<DeleteGuestResponse> {
+	const request: DeleteGuestRequest = { confirm: true };
+	const value = await body(
+		await fetcher('/api/guest', {
+			method: 'DELETE',
+			credentials: 'same-origin',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(request)
+		})
+	);
+	if (!isRecord(value) || typeof value.erased !== 'boolean') {
+		throw new ApiError('Unexpected /api/guest response', 200);
+	}
+	return value as unknown as DeleteGuestResponse;
 }
 
 /** Start a table with bots; the session's player takes seat 0. */

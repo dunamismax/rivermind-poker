@@ -34,3 +34,6 @@ bun.lockb
 
 # The BIP-39 English word list, as python-mnemonic publishes it (licenses/python-mnemonic.txt)
 /src/lib/voice/voice-words.json
+
+# The iPhone app's recorded sessions (AppSessionRecordingTests.swift, P5D.11)
+/src/lib/server/api/app-sessions/

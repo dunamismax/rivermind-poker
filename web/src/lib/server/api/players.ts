@@ -7,7 +7,7 @@
  * {@link DatabasePlayers} stores them in the `players` table.
  */
 import { randomInt } from 'node:crypto';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { Database } from '../db/index.ts';
 import { players } from '../db/schema.ts';
 import { guestName, newPlayerId } from './auth.ts';
@@ -54,12 +54,26 @@ export interface PlayerStore {
 	seen(playerId: string): Promise<void>;
 	/** Give a player a new random handle, as moderation does for a reported one (P4.5). */
 	rename(playerId: string): Promise<PlayerRecord>;
+	/**
+	 * Mark a guest as asking to be deleted (P5D.11): from now on `get` does not find
+	 * them, so no session opens as them, until `erase` removes them.
+	 */
+	markDeleted(playerId: string): Promise<void>;
+	/** The guests marked deleted and not yet erased, as at start-up after a restart. */
+	pendingDeletions(): Promise<string[]>;
+	/**
+	 * Remove a guest marked deleted. Their ledger goes with them, so every wallet left
+	 * still adds up; their mutes, blocks, reports and suspension go too. Does nothing
+	 * for a guest already erased.
+	 */
+	erase(playerId: string): Promise<void>;
 }
 
 /** Players for a server without a database: they last as long as the process. */
 export class MemoryPlayers implements PlayerStore {
 	private readonly byId = new Map<string, PlayerRecord>();
 	private readonly handles = new Set<string>();
+	private readonly deleted = new Set<string>();
 
 	private add(playerId: string, handle: string): PlayerRecord | null {
 		if (this.handles.has(handle)) return null;
@@ -78,6 +92,8 @@ export class MemoryPlayers implements PlayerStore {
 	}
 
 	async claim(playerId: string): Promise<PlayerRecord> {
+		// A legacy guest who has since deleted themself starts again as someone new.
+		if (this.deleted.has(playerId)) return this.create();
 		const existing = this.byId.get(playerId);
 		if (existing) return existing;
 		let handle = guestName(playerId);
@@ -88,12 +104,27 @@ export class MemoryPlayers implements PlayerStore {
 	}
 
 	async get(playerId: string): Promise<PlayerRecord | null> {
-		return this.byId.get(playerId) ?? null;
+		return this.deleted.has(playerId) ? null : (this.byId.get(playerId) ?? null);
 	}
 
 	/** The handle of a known player, without waiting: for {@link MemorySafety}. */
 	handleOf(playerId: string): string | null {
 		return this.byId.get(playerId)?.handle ?? null;
+	}
+
+	async markDeleted(playerId: string): Promise<void> {
+		if (this.byId.has(playerId)) this.deleted.add(playerId);
+	}
+
+	async pendingDeletions(): Promise<string[]> {
+		return [...this.deleted].filter((id) => this.byId.has(id));
+	}
+
+	async erase(playerId: string): Promise<void> {
+		const record = this.byId.get(playerId);
+		if (!record || !this.deleted.has(playerId)) return;
+		this.byId.delete(playerId);
+		this.handles.delete(record.handle);
 	}
 
 	async seen(): Promise<void> {}
@@ -143,6 +174,12 @@ export class DatabasePlayers implements PlayerStore {
 	async claim(playerId: string): Promise<PlayerRecord> {
 		const existing = await this.get(playerId);
 		if (existing) return existing;
+		// A legacy guest who has since deleted themself starts again as someone new.
+		const gone = await this.db
+			.select({ id: players.id })
+			.from(players)
+			.where(and(eq(players.id, playerId), isNotNull(players.deletedAt)));
+		if (gone.length) return this.create();
 		const handle = guestName(playerId);
 		if (!(await this.insert(playerId, handle))) {
 			await this.insert(playerId, `${handle} ${playerId.slice(2, 6)}`);
@@ -156,8 +193,32 @@ export class DatabasePlayers implements PlayerStore {
 		const rows = await this.db
 			.select({ handle: players.handle })
 			.from(players)
-			.where(eq(players.id, playerId));
+			.where(and(eq(players.id, playerId), isNull(players.deletedAt)));
 		return rows.length ? { playerId, handle: rows[0].handle } : null;
+	}
+
+	async markDeleted(playerId: string): Promise<void> {
+		await this.db
+			.update(players)
+			.set({ deletedAt: sql`now()` })
+			.where(and(eq(players.id, playerId), isNull(players.deletedAt)));
+	}
+
+	async pendingDeletions(): Promise<string[]> {
+		const rows = await this.db
+			.select({ id: players.id })
+			.from(players)
+			.where(isNotNull(players.deletedAt))
+			.orderBy(players.deletedAt);
+		return rows.map((r) => r.id);
+	}
+
+	async erase(playerId: string): Promise<void> {
+		// ON DELETE CASCADE takes the ledger, reports, mutes, blocks and suspension in the
+		// same statement, so a wallet and its entries go together.
+		await this.db
+			.delete(players)
+			.where(and(eq(players.id, playerId), isNotNull(players.deletedAt)));
 	}
 
 	async seen(playerId: string): Promise<void> {

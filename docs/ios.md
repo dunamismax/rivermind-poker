@@ -2,7 +2,7 @@
 
 RiverMind Poker as a native iPhone app (D-19, Phase 5D in [BUILD.md](../BUILD.md#phase-5d--native-ios-app)). It is one more client of the same server: people in the app and in any browser share tables, invites and end-to-end encrypted table voice. This file is the design (P5D.1), kept as the app is built. CONTRIBUTING.md says how to build and test it, and AGENTS.md holds its conventions.
 
-**Where it stands** (2026-11-27): the skeleton (P5D.1) and the protocol (P5D.2). The app builds, launches in the iOS Simulator, makes or renews its guest with `POST /api/session`, keeps the session in the Keychain, and shows a placeholder lobby with the guest and what `GET /api/config` offers. RiverMindKit has every protocol v2 and voice signalling type, generated from the TypeScript, an API client for every route below, and the page's display logic (P5D.4): hand names and the evaluator, bet sizes and labels, the hand log's and the pots' lines, seat words, faces, replay steps and card names, each matching the page on a fixture the TypeScript writes, and the table connection (P5D.3), which follows a table, acts on its views and rejoins by itself after a drop, a restart of the server, a move between networks and a return from the background. The lobby (P5D.6) and the look (P5D.5) are next; a debug build launched with `-practice` joins a practice table and shows how its connection stands until the table screen (P5D.7).
+**Where it stands** (2026-11-27): the skeleton (P5D.1), the protocol (P5D.2) and the server's part (P5D.11: old builds, deleting the guest, counts by client). The app builds, launches in the iOS Simulator, makes or renews its guest with `POST /api/session`, keeps the session in the Keychain, and shows a placeholder lobby with the guest and what `GET /api/config` offers. RiverMindKit has every protocol v2 and voice signalling type, generated from the TypeScript, an API client for every route below, and the page's display logic (P5D.4): hand names and the evaluator, bet sizes and labels, the hand log's and the pots' lines, seat words, faces, replay steps and card names, each matching the page on a fixture the TypeScript writes, and the table connection (P5D.3), which follows a table, acts on its views and rejoins by itself after a drop, a restart of the server, a move between networks and a return from the background. The lobby (P5D.6) and the look (P5D.5) are next; a debug build launched with `-practice` joins a practice table and shows how its connection stands until the table screen (P5D.7).
 
 ## What the app is made of
 
@@ -46,8 +46,9 @@ The app speaks exactly what a page speaks. Nothing on the server is for the app 
 
 | Route | Used for | Step |
 | --- | --- | --- |
-| `GET /api/config` | protocol version, bots with their evaluations, seat counts, stakes, reactions, the practice stack | P5D.1 |
+| `GET /api/config` | protocol version, bots with their evaluations, seat counts, stakes, reactions, the practice stack, the oldest app build served | P5D.1, P5D.11 |
 | `POST /api/session` | make or renew the guest, and its `rm_session` cookie | P5D.2 |
+| `DELETE /api/guest` | delete the guest and their data | P5D.11 |
 | `GET /api/wallet` | the play-chip balance and top-up rules | P5D.6 |
 | `GET /api/tables`, `POST /api/tables` | the open tables, and a new one | P5D.6 |
 | `POST`, `DELETE /api/tables/{id}/seat`, `/waitlist` | sitting down and waiting, and giving either up | P5D.6 |
@@ -73,7 +74,11 @@ Requests stay within the API's and Caddy's rate limits; P5D.2 checks each route 
 
 `ios/RiverMindKit/Fixtures/protocol.json`, written by `pnpm ios:fixtures`, holds every socket message and HTTP body of the two sessions recorded from the retired `serve-nl` (the table session's messages come from replaying it, checked against the recording's digests). The Swift tests decode each as its type and encode it back to the same JSON, compared parsed. Vitest fails while the Swift or the fixture is stale.
 
-**Reading a newer server.** An app build stays on phones for weeks, so it must read what a newer server sends: unknown fields are ignored, and an unknown event kind, error code, reaction or bot kind decodes as itself and is shown generically (`Reaction` in `Config.swift` is the pattern). P5D.11 adds the oldest supported build to `GET /api/config`.
+**Reading a newer server.** An app build stays on phones for weeks, so it must read what a newer server sends: unknown fields are ignored, and an unknown event kind, error code, reaction or bot kind decodes as itself and is shown generically (`Reaction` in `Config.swift` is the pattern).
+
+**Old builds** (P5D.11). The server names the oldest build it serves in `GET /api/config` (`oldest_app_build`, from `OLDEST_APP_BUILD` in `site.ts`; pages ignore it). The app reads the config before it makes a guest, and a build older than that shows “Update RiverMind Poker” instead of the lobby (`LobbyModel.State.updateNeeded`; the App Store link comes with Q-13). The other half is the server's: every build still served has its session recorded in `web/src/lib/server/api/app-sessions/build-<n>.json` by `AppSessionRecordingTests.swift`, through the app's own client and connection, and `app-sessions.spec.ts` replays each against the server in Vitest, which the deploy runs. Each request must get the status the build got, and every answer and socket message must still hold each field the build always saw, with a JSON type it saw it take; new fields and new kinds of message are free. Planted changes, a config field renamed and a view's `time_bank` renamed, failed it. A build that changes what it sends gets a new `AppBuild.number` (its `CFBundleVersion`) and a recording of its own; raising `OLDEST_APP_BUILD` retires the recordings below it.
+
+**Which client.** The app sends `RiverMind-Client: ios/<build>` with every request and on the `/ws` handshake, and the server counts new guests, sessions, sockets and deletions by kind of client (`clients.ts`), for the aggregate counts of P7.1 and P7.1a. The value is the same for every copy of a build, so it identifies nobody (Q-6).
 
 ## The guest's session
 
@@ -83,7 +88,17 @@ The site's guest is a signed `rm_session` cookie (`HttpOnly`, `SameSite=Lax`, 18
 - The item is a generic password for the service `com.rivermindpoker.app` and the server's origin as its account, so a debug build's local guests never mix with the live one. It is `kSecAttrAccessibleAfterFirstUnlock`, so a table and voice in the background (Q-16) can reconnect with the screen locked, and not synchronizable, so it stays on this phone.
 - It survives a relaunch and an update (a UI test relaunches the app and finds the same guest). Keychain items have also survived deleting and reinstalling an app, which keeps the guest's chips; that is iOS's behaviour, not a promise. In the iOS 27.2 Simulator on 2026-11-27 it did: after `simctl uninstall` and `install`, the app was the same guest with the same chips.
 - A 401 means the session ended (it expired, or the server's secret changed): the client makes the guest again with `POST /api/session` and asks once more, as a page's reload does. A 429 is reported with its `Retry-After` and never retried. The client asks once for each thing a person does, as a page does, so it stays within the API's limit (a burst of 60 requests, then 2 a second, per guest) and Caddy's (30 new guests, tables and practice tables, and 60 seatings, a minute per address); a test walks every route against a local server in under 30 requests.
-- The app's guest is not the browser's (Q-15): the app says so where a player would look for their chips. Deleting the guest and their data, from the app and the site, is P5D.11.
+- The app's guest is not the browser's (Q-15): the app says so where a player would look for their chips.
+
+## Deleting the guest
+
+App Review's guideline 5.1.1(v) asks for a way to delete one's data, and the site offers the same (P5D.11): “Delete this guest” in the app's lobby and the “Your guest” page (`/guest`) on the site, each asking twice, call `DELETE /api/guest` with `{"confirm": true}`. The rule, in `Tables.deleteGuest` and `Site.erase`:
+
+- **At once,** the guest is marked deleted (`players.deleted_at`), so no session or socket opens as them; the answer clears the cookie, and the app forgets its Keychain item and its table. Their open sockets are told `unauthorized` and closed, their practice table closes, they give up held seats and waitlist places, and they leave every seat.
+- **A hand under way** keeps their seat until it ends, as any leaving player's does: they check or fold till then. Its chips come back to their wallet as every departure's do, so every ledger adds up throughout. The answer says `erased: false` then.
+- **Once no table seats them,** their data goes: in the hands they played their seat becomes the player `deleted` named “Former guest”, the same for every deleted guest so their hands cannot be tied together, and the hands stay whole for the others dealt into them; the safety signals that name them go; and their row goes, taking by `ON DELETE CASCADE` their wallet and ledger together, their reports (made and received), mutes, blocks and voice suspension. Each part can be done again, so a restart part-way finishes the job (`Tables.start` reads the guests still marked).
+
+`deletion.testing.ts` checks it in memory and on PostgreSQL, a guest in a hand under way included.
 
 ## The table connection
 

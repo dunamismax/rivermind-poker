@@ -29,6 +29,15 @@ mkdir -p "$logs"
 
 case "$what" in all | package | app) ;; *) echo "usage: ios/test.sh [all|package|app]" >&2; exit 2 ;; esac
 
+# The build the app names to the server (AppBuild.number, P5D.11) is its CFBundleVersion.
+build=$(sed -n 's/.*public static let number = \([0-9][0-9]*\).*/\1/p' "$here/RiverMindKit/Sources/RiverMindKit/AppBuild.swift")
+for version in $(sed -n 's/.*CURRENT_PROJECT_VERSION = \([^;]*\);.*/\1/p' "$here/RiverMind.xcodeproj/project.pbxproj"); do
+	if [ "$version" != "$build" ]; then
+		echo "CURRENT_PROJECT_VERSION is $version but AppBuild.number is $build: make them agree" >&2
+		exit 1
+	fi
+done
+
 server_pid=
 seeded_pid=
 restart_pid=

@@ -164,7 +164,7 @@ set -a; . /etc/web-apps/rivermind_poker/web.env; set +a
 
 ### The TypeScript API (P4B.5a)
 
-[`web/src/lib/server/api/`](web/src/lib/server/api/) ports the parts of `serve-nl` that need no running table to TypeScript (D-14): session cookies and legacy tokens (`auth.ts`, the same format, signed message and secret, so guests stay signed in across the cutover), players and handles (`players.ts`), wallets and the ledger (`wallet.ts`), rate limits, the handle filter, reports, mutes, blocks and signals (`safety.ts`), hand histories (`hands.ts`, `views.ts`), runtime checks of every request body and socket message with Pydantic's rules and wording (`protocol.ts` on `validate.ts`, each schema type-checked against the generated `protocol-v2.ts`), and the routes `GET /api/config`, `POST /api/session`, `GET /api/wallet`, `GET /api/hands`, `GET /api/hands/{id}`, `GET /api/relations` and `DELETE /api/relations/{ref}` (`api.ts`). Each store has a memory and a Drizzle version. The lobby, seating, practice, reports and new mutes and blocks act on a running table and are part of [the table server](#the-typescript-table-server-p4b5b).
+[`web/src/lib/server/api/`](web/src/lib/server/api/) ports the parts of `serve-nl` that need no running table to TypeScript (D-14): session cookies and legacy tokens (`auth.ts`, the same format, signed message and secret, so guests stay signed in across the cutover), players and handles (`players.ts`), wallets and the ledger (`wallet.ts`), rate limits, the handle filter, reports, mutes, blocks and signals (`safety.ts`), hand histories (`hands.ts`, `views.ts`), runtime checks of every request body and socket message with Pydantic's rules and wording (`protocol.ts` on `validate.ts`, each schema type-checked against the generated `protocol-v2.ts`), and the routes `GET /api/config`, `POST /api/session`, `DELETE /api/guest` (P5D.11), `GET /api/wallet`, `GET /api/hands`, `GET /api/hands/{id}`, `GET /api/relations` and `DELETE /api/relations/{ref}` (`api.ts`). Each store has a memory and a Drizzle version. The lobby, seating, practice, reports and new mutes and blocks act on a running table and are part of [the table server](#the-typescript-table-server-p4b5b).
 
 With `RIVERMIND_API=1`, the Node server answers `/api/*` with it ahead of SvelteKit ([`web/server/api.ts`](web/server/api.ts)), and `/ws` with the table server, as the live unit does. It runs ahead of SvelteKit because SvelteKit 3's CSRF check, which cannot be turned off, refuses unsafe requests with no body type whose `Origin` is not the site's own, which the API allows from loopback dev pages and non-browser clients, as `serve-nl` did; it makes its own origin checks. It reads `RIVERMIND_SECRET` or `RIVERMIND_SECRET_FILE`, `DATABASE_URL`, `RIVERMIND_ALLOWED_ORIGINS` (comma-separated), `RIVERMIND_PRACTICE_STACK`, `RIVERMIND_HAND_PAUSE`, `RIVERMIND_BOT_DELAY` and `RIVERMIND_MAX_TABLES`, as listed in [`runtime.ts`](web/src/lib/server/api/runtime.ts). From `web/`, after `pnpm build` and `pnpm db:migrate`:
 
@@ -494,6 +494,14 @@ cd web
 pnpm protocol:swift
 pnpm ios:fixtures
 ```
+
+**Old builds (P5D.11).** An app build stays on phones for weeks, so the server must keep serving every build from the oldest it names (`OLDEST_APP_BUILD` in `web/src/lib/server/api/site.ts`, sent in `GET /api/config` as `oldest_app_build`; an older build shows “Update RiverMind Poker”). Each build's session is recorded in `web/src/lib/server/api/app-sessions/build-<n>.json`: `AppSessionRecordingTests.swift` plays a fixed script through the app's own API client and table connection (every route it uses, a practice table played to two hands, a reaction, sitting out and in, a refill, its hands, a private table and its invite, and deleting the guest) and records each request with its answer and each socket frame, ids put by name. `app-sessions.spec.ts` replays every supported build's recording against the server in Vitest, so a server change that would break one fails before a deploy; normally the Swift test checks that the committed recording still matches what the build sends. A build that changes what it sends gets a new number (`AppBuild.number`, which `ios/test.sh` holds equal to `CURRENT_PROJECT_VERSION`) and its own recording:
+
+```sh
+RIVERMIND_RECORD_APP_SESSION=1 ios/test.sh package
+```
+
+The app names itself to the server in a `RiverMind-Client: ios/<build>` header on every request and on the `/ws` handshake, and the server counts sessions, new guests, sockets and deletions by kind of client (`web/src/lib/server/api/clients.ts`) for P7.1. The header identifies nobody: every copy of a build sends the same value.
 
 ## Deploy rivermindpoker.com
 
