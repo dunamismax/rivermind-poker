@@ -33,6 +33,24 @@ import {
 	winRate
 } from '../../nl/faces.ts';
 import { HAND_CLASSES, nameHand } from '../../nl/hand-name.ts';
+import {
+	affordableBuyIns,
+	botNote,
+	botsFor,
+	BUY_INS,
+	buyInLabel,
+	hasRoom,
+	inviteLine,
+	inviteLink,
+	pips,
+	practiceBots,
+	practiceNote,
+	seatsText,
+	tableChoice,
+	tableDetail,
+	trainedNote,
+	WALLET_HINT
+} from '../../nl/lobby.ts';
 import { buildReplay, describeAction, shortCard, stageOf, stepForKey } from '../../nl/replay.ts';
 import { REACTIONS, REPORT_REASONS, VOICE_REPORT_NOTE, relationText } from '../../nl/safety.ts';
 import type * as p from '../../protocol-v2.ts';
@@ -582,6 +600,98 @@ function faceCases(rng: Random) {
 	};
 }
 
+// ---- The lobby (P5D.6): bot notes, the practice and wallet notes, listed tables.
+
+function lobbyCases(rng: Random) {
+	const bots: p.BotOption[] = [
+		{ kind: 'random', label: 'Random bot' },
+		{ kind: 'calling_station', label: 'Calling bot' },
+		{ kind: 'heuristic', label: 'RiverMind Easy' },
+		{
+			kind: 'medium',
+			label: 'RiverMind Medium',
+			seats: [2, 3, 4, 5, 6, 7, 8, 9],
+			champion: CHAMPION
+		},
+		{ kind: 'hard', label: 'RiverMind Hard', seats: [2, 3, 4, 5, 6], champion: CHAMPION },
+		{ kind: 'six_only', label: 'Six', seats: [3, 4, 5, 6], champion: CHAMPION },
+		{ kind: 'new_kind', label: 'New', seats: [9] }
+	];
+	const balances = [null, 0, 1, 3999, 4000, 6999, 7000, 9999, 10_000, 20_000, 1_000_000];
+	const tables: p.TableSummary[] = [];
+	const names = ['Ann’s table', 'Table 12', 'Zoë’s table', '李雷 table'];
+	for (let i = 0; i < 80; i++) {
+		const seatCount = 2 + rng.below(8);
+		const people = rng.below(seatCount + 1);
+		const bots = rng.below(seatCount - people + 1);
+		const free = rng.below(seatCount - people - bots + 1);
+		const big = choice(rng, [2, 20, 100, 1000, 5000]);
+		const position = rng.below(4) === 0 ? 1 + rng.below(5) : null;
+		const holdKind = rng.below(6);
+		tables.push({
+			table_id: `t${i}`,
+			name: names[i % names.length],
+			seat_count: seatCount,
+			small_blind: big / 2,
+			big_blind: big,
+			min_buy_in: big * 40,
+			max_buy_in: big * 100,
+			private: rng.below(5) === 0,
+			people,
+			bots,
+			free_seats: free,
+			bot_seats: rng.below(bots + 1),
+			holds: seatCount - people - bots - free,
+			waitlist: rng.below(3) === 0 ? rng.below(6) : 0,
+			hand_no: rng.below(500),
+			seated: rng.below(8) === 0,
+			hold:
+				holdKind === 0
+					? { seat: 1, name: 'Ann', ready: true, until: 1_800_000_000.5 }
+					: holdKind === 1
+						? { seat: 0, name: 'Ann', ready: false, until: null }
+						: null,
+			waitlist_position: position,
+			blocked: rng.below(9) === 0
+		});
+	}
+	return {
+		bots: bots.map((bot) => ({ bot, note: botNote(bot), trained: trainedNote(bot.kind) })),
+		practiceBots: practiceBots(bots).map((b) => b.kind),
+		botsFor: [2, 3, 4, 5, 6, 7, 8, 9].map((seats) => ({
+			seats,
+			kinds: botsFor(bots, seats).map((b) => b.kind)
+		})),
+		practiceNotes: [null, 10_000, 300, 1_234_567, 0].map((stack) => ({
+			stack,
+			text: practiceNote(stack ?? undefined)
+		})),
+		walletHint: WALLET_HINT,
+		buyIns: [2, 20, 100, 1000, 5000].flatMap((big) =>
+			balances.map((balance) => ({
+				big,
+				balance,
+				affordable: affordableBuyIns(big, balance),
+				labels: BUY_INS.map((blinds) => buyInLabel(blinds, big))
+			}))
+		),
+		tables: tables.map((table) => ({
+			table,
+			seats: seatsText(table),
+			pips: pips(table),
+			detail: tableDetail(table),
+			room: hasRoom(table),
+			invite: inviteLine(table),
+			choices: balances.map((balance) => ({ balance, choice: tableChoice(table, balance) }))
+		})),
+		inviteLinks: [
+			['https://rivermindpoker.com', 'Ab3-x_9'],
+			['http://127.0.0.1:4380', 'a b/c?d=e&f#g'],
+			['https://rivermindpoker.com', 'Zoë~李.']
+		].map(([origin, code]) => ({ origin, code, link: inviteLink(origin, code) }))
+	};
+}
+
 // ---- The fixture.
 
 describe('the iPhone app display fixture', () => {
@@ -632,6 +742,7 @@ describe('the iPhone app display fixture', () => {
 			pots: potCases(views, kept),
 			seats: seatCases(views),
 			faces: faceCases(seededRandom(31)),
+			lobby: lobbyCases(seededRandom(41)),
 			replays,
 			actions,
 			stepKeys: keys.flatMap((key) =>

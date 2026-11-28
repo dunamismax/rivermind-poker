@@ -15,6 +15,7 @@
 	import { describeEvent, potLines } from './bet.ts';
 	import type { NlConnection } from './connection.svelte.ts';
 	import { chipFor } from './faces.ts';
+	import { inviteLink as inviteLinkFor } from './lobby.ts';
 	import HandReplay from './HandReplay.svelte';
 	import { betClass, clockLeft, placeClass, sideClass } from './layout.ts';
 	import NlSeat from './NlSeat.svelte';
@@ -261,9 +262,7 @@
 
 	let sharing = $state(false);
 	let copied = $state(false);
-	const inviteLink = $derived(
-		view.invite ? `${location.origin}/?invite=${encodeURIComponent(view.invite)}` : null
-	);
+	const inviteLink = $derived(view.invite ? inviteLinkFor(location.origin, view.invite) : null);
 	async function copyInvite() {
 		if (!inviteLink) return;
 		try {

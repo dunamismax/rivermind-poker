@@ -2,7 +2,7 @@
 
 RiverMind Poker as a native iPhone app (D-19, Phase 5D in [BUILD.md](../BUILD.md#phase-5d--native-ios-app)). It is one more client of the same server: people in the app and in any browser share tables, invites and end-to-end encrypted table voice. This file is the design (P5D.1), kept as the app is built. CONTRIBUTING.md says how to build and test it, and AGENTS.md holds its conventions.
 
-**Where it stands** (2026-11-28): the skeleton (P5D.1), the protocol (P5D.2), the server's part (P5D.11: old builds, deleting the guest, counts by client) and the look (P5D.5: the site's tokens, deck, sprites and icon, drawn natively from what `pnpm art` writes, and a debug gallery). The app builds, launches in the iOS Simulator, makes or renews its guest with `POST /api/session`, keeps the session in the Keychain, and shows a placeholder lobby with the guest and what `GET /api/config` offers. RiverMindKit has every protocol v2 and voice signalling type, generated from the TypeScript, an API client for every route below, and the page's display logic (P5D.4): hand names and the evaluator, bet sizes and labels, the hand log's and the pots' lines, seat words, faces, replay steps and card names, each matching the page on a fixture the TypeScript writes, and the table connection (P5D.3), which follows a table, acts on its views and rejoins by itself after a drop, a restart of the server, a move between networks and a return from the background. The lobby (P5D.6) is next; a debug build launched with `-practice` joins a practice table and shows how its connection stands until the table screen (P5D.7).
+**Where it stands** (2026-11-28): the skeleton (P5D.1), the protocol (P5D.2), the server's part (P5D.11: old builds, deleting the guest, counts by client), the look (P5D.5: the site's tokens, deck, sprites and icon, drawn natively from what `pnpm art` writes, and a debug gallery) and the lobby (P5D.6). The app builds, launches in the iOS Simulator, makes or renews its guest with `POST /api/session`, keeps the session in the Keychain, and opens to the native lobby: one-click practice against each labelled bot, the wallet, the open tables with quick seat and the filters, sitting down and the waitlist, a new table of the guest's own, private tables shared through the share sheet, and a friend's invite. RiverMindKit has every protocol v2 and voice signalling type, generated from the TypeScript, an API client for every route below, and the page's display logic (P5D.4): hand names and the evaluator, bet sizes and labels, the hand log's and the pots' lines, seat words, faces, replay steps and card names, each matching the page on a fixture the TypeScript writes, and the table connection (P5D.3), which follows a table, acts on its views and rejoins by itself after a drop, a restart of the server, a move between networks and a return from the background. The table (P5D.7) is next: until then a table the guest sits at or watches is a list of its seats, the guest's place there, its invite and how its connection stands, and a debug build launched with `-practice` sits at the practice table at once.
 
 ## What the app is made of
 
@@ -153,7 +153,7 @@ The app has the site's look (D-18), drawn natively from the site's own sources, 
 
 | Screen | What it holds | Step |
 | --- | --- | --- |
-| Lobby | open tables with seat and blind filters, quick seat, new table, private tables and invites through the share sheet, waitlists, the wallet, one-click practice with each bot labelled and its evaluation | P5D.6 (P5D.1's placeholder until then) |
+| Lobby | open tables with seat and blind filters, quick seat, new table, private tables and invites through the share sheet, waitlists, the wallet, one-click practice with each bot labelled and its evaluation | P5D.6 |
 | Table | 2 to 9 seats in portrait, the action panel, the hand log, reactions, the seat menu's mute, block and report | P5D.7 |
 | Voice | joining, the voice code, mute, deafen, push-to-talk, each player's volume, mute all, the quality lamp | P5D.10 |
 | Your hands and the replayer | the hands the guest played, replayed step by step, “Review last hand” from the table | P5D.8 |
@@ -162,6 +162,18 @@ The app has the site's look (D-18), drawn natively from the site's own sources, 
 | Settings | card backs, voice settings, haptics, sounds | P5D.13 |
 | How to play, privacy, terms, support | content pages, native or in an in-app Safari view | P5D.8, P5D.15 |
 | Gallery (debug builds only) | every component in its states, the app's `/style`, from the lobby's toolbar or `-gallery` | P5D.5 |
+
+## The lobby (P5D.6)
+
+The lobby is the site's (`NlLobby.svelte`, `LobbyTables.svelte`) as a native list, in the site's order: practice first, then the guest's chips, the tables, a new table and an invite. `LobbyModel` (RiverMindKit) holds what it shows and sends one request for each thing the guest does, as a page does; the screens are `LobbyView.swift`, `NewTableView.swift` and, until P5D.7, `TableScreen.swift`.
+
+- **Its words are the page's.** Bot notes, the practice and wallet notes, a listed table's seats, pips and stakes, what its row offers the guest, the buy-ins a wallet covers, the invite's line and its link are in `web/src/lib/nl/lobby.ts`, which the page's components import, and `LobbyWords.swift` ports them; `pnpm ios:fixtures` writes them into `display.json` and `DisplayParityTests` matches them.
+- **The table list** is read again every three seconds while the lobby shows, and an answer to filters that have changed since is dropped, as the page does. Quick seat uses the same filters.
+- **Sitting down.** A seat taken from the list, quick seat or an invite is followed at once (`TableConnection.arrive`); a seat held while a bot finishes its hand is taken as soon as it is ready, with as much of the maximum buy-in as the wallet holds. A full table offers its waitlist.
+- **The new-table form** keeps its choices to what is offered, as the page's effects do: a bot that does not play the chosen size gives way to RiverMind Easy, and a buy-in the wallet does not cover gives way to the largest it does. “No bots” is sent as `"bots": null`, since a missing `bots` is the server's default bot.
+- **Invites.** A private table's invite is shared through the share sheet as the site's link (`/?invite=`). A link the guest pastes into the lobby, or one that opens the app, shows the table it is for with “Take a seat”, or “Join the waitlist” when it is full; P5D.8 makes the site's links open the app.
+- **The guest's chips** are the app guest's own (Q-15), which the wallet's section says.
+- **The app rejoins its table.** Like a page's reload, a launch rejoins the table the guest last followed, so a UI test that ends at a table leaves the next launch there: the lobby's tests leave first.
 
 ## The App Store's requirements
 

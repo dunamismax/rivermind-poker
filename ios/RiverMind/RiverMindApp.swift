@@ -34,10 +34,10 @@ struct RiverMindApp: App {
             if ProcessInfo.processInfo.arguments.contains("-gallery") {
                 NavigationStack { GalleryView() }
             } else {
-                LobbyView(model: lobby, table: table)
+                RootView(model: lobby, table: table)
             }
         #else
-            LobbyView(model: lobby, table: table)
+            RootView(model: lobby, table: table)
         #endif
     }
 

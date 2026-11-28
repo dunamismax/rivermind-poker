@@ -2,10 +2,22 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import PlayingCard from '../components/PlayingCard.svelte';
-	import type { BotOption, ConfigResponse, TableSummary } from '../protocol-v2.ts';
+	import type { ConfigResponse, TableSummary } from '../protocol-v2.ts';
 	import { fetchConfig, fetchInvite } from './api.ts';
 	import type { NlConnection } from './connection.svelte.ts';
-	import { avatarClass, championLine, seatsNote } from './faces.ts';
+	import { avatarClass, championLine } from './faces.ts';
+	import {
+		affordableBuyIns,
+		botNote,
+		botsFor,
+		BUY_INS,
+		buyInLabel,
+		inviteLine,
+		practiceBots,
+		practiceNote,
+		trainedNote,
+		WALLET_HINT
+	} from './lobby.ts';
 	import LobbyTables from './LobbyTables.svelte';
 
 	let {
@@ -29,12 +41,8 @@
 	let bots = $state('heuristic');
 	let privateTable = $state(false);
 	let bigBlind = $state(100);
-	// Buy-ins run from 40 to 100 big blinds, the server's default range.
-	const BUY_INS = [40, 70, 100];
 	let buyInBlinds = $state(100);
-	const affordable = $derived(
-		BUY_INS.filter((blinds) => balance === null || blinds * bigBlind <= balance)
-	);
+	const affordable = $derived(affordableBuyIns(bigBlind, balance));
 	// Keep the choice within the wallet: the largest buy-in it covers.
 	$effect(() => {
 		if (affordable.length && !affordable.includes(buyInBlinds)) buyInBlinds = affordable.at(-1)!;
@@ -72,29 +80,10 @@
 	let inviteError = $state('');
 	let joining = $state(false);
 
-	const BOT_NOTES: Record<string, string> = {
-		heuristic: 'Plays its cards with a plan.',
-		medium: 'Half Hard, half Easy.',
-		hard: 'Trained by self-play.',
-		calling_station: 'Calls almost anything.',
-		random: 'Does whatever it likes.'
-	};
-	/** A bot's note, with the table sizes it plays when it does not play them all. */
-	function botNote(bot: BotOption): string {
-		const note = BOT_NOTES[bot.kind] ?? '';
-		return bot.seats ? `${note} ${seatsNote(bot.seats)}`.trim() : note;
-	}
 	/** The trained bots to practise against: those that play two seats, from the easiest up. */
-	const trained = $derived(
-		(config?.bots ?? []).filter((b) => b.champion && (!b.seats || b.seats.includes(2)))
-	);
-	/** What a trained bot is, before its published result (D-7). */
-	const TRAINED_NOTES: Record<string, string> = {
-		medium: 'plays half its hands as RiverMind Hard and half as RiverMind Easy.',
-		hard: 'is a trained bot.'
-	};
+	const trained = $derived(practiceBots(config?.bots ?? []));
 	/** The bots that play a table of the chosen size. */
-	const offered = $derived((config?.bots ?? []).filter((b) => !b.seats || b.seats.includes(seats)));
+	const offered = $derived(botsFor(config?.bots ?? [], seats));
 	// A bot that does not play the chosen size gives way to RiverMind Easy.
 	$effect(() => {
 		if (config && bots !== 'none' && !offered.some((b) => b.kind === bots)) {
@@ -188,10 +177,7 @@
 		{#if invited}
 			<section class="invite ui-gold grid gap-5 px-6 pt-5 pb-6" aria-labelledby="invite-title">
 				<h3 id="invite-title" class="text-l text-gold text-shadow-ink">You are invited</h3>
-				<p>
-					{invited.name}: blinds {invited.small_blind}/{invited.big_blind}, {invited.people}
-					{invited.people === 1 ? 'person' : 'people'} seated.
-				</p>
+				<p>{inviteLine(invited)}</p>
 				{#if invited.waitlist_position !== null}
 					<p>You are number {invited.waitlist_position} in line for a seat.</p>
 				{:else}
@@ -221,12 +207,7 @@
 			>
 				{practising ? 'Dealing…' : 'Practice vs bots'}
 			</button>
-			<p class="note text-s text-mist">
-				Heads-up against the RiverMind Easy bot with {(
-					config?.practice_stack ?? 10000
-				).toLocaleString('en-US')} practice chips. Your wallet is not touched, and you get a fresh stack
-				whenever you run out.
-			</p>
+			<p class="note text-s text-mist">{practiceNote(config?.practice_stack)}</p>
 			{#each trained as bot (bot.kind)}
 				<div class="trained ui-inset grid gap-4 px-5 py-4" role="group" aria-label={bot.label}>
 					<div class="flex items-start gap-5">
@@ -236,7 +217,7 @@
 						></span>
 						<p class="note text-s text-mist">
 							<strong class="text-gold text-shadow-ink">{bot.label}</strong>
-							{TRAINED_NOTES[bot.kind] ?? TRAINED_NOTES.hard}
+							{trainedNote(bot.kind)}
 							{bot.champion ? championLine(bot.champion) : ''}
 							<a class="text-gold-light" href={resolve('/bots')}>How it was measured</a>
 						</p>
@@ -262,9 +243,7 @@
 					<span class="sprite chip chip-gold" aria-hidden="true"></span>
 					<strong>{balance.toLocaleString('en-US')}</strong>
 				</span>
-				<span class="hint text-s text-haze">
-					New players start with 20,000; below 10,000, a visit tops you up once a day.
-				</span>
+				<span class="hint text-s text-haze">{WALLET_HINT}</span>
 			</p>
 		{/if}
 		<nav class="links flex flex-wrap gap-4" aria-label="More">
@@ -356,7 +335,7 @@
 						<select class="ui-field w-full" bind:value={buyInBlinds}>
 							{#each BUY_INS as blinds (blinds)}
 								<option value={blinds} disabled={!affordable.includes(blinds)}>
-									{blinds * bigBlind} ({blinds} big blinds)
+									{buyInLabel(blinds, bigBlind)}
 								</option>
 							{/each}
 						</select>

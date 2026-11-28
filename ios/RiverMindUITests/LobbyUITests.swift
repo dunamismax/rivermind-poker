@@ -22,10 +22,10 @@ final class LobbyUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.descendants(matching: .any)["lobby.ready"].waitForExistence(timeout: 20))
-        // A row reads as its label and its value together.
-        XCTAssertEqual(app.staticTexts["lobby.bot.heuristic"].label, "RiverMind Easy, 2 to 9 seats")
-        XCTAssertEqual(app.staticTexts["lobby.bot.random"].label, "Random bot, 2 to 9 seats")
-        XCTAssertEqual(app.staticTexts["lobby.seats"].label, "Seats, 2 to 9 seats")
+        XCTAssertTrue(app.buttons["lobby.practice"].exists)
+        // The local server serves no trained bot, so there is nothing to practise against but Easy.
+        XCTAssertFalse(app.buttons["lobby.practice.hard"].exists)
+        XCTAssertTrue(app.buttons["lobby.quickSeat"].waitForExistence(timeout: 10) || app.swipeUpUntil(app.buttons["lobby.quickSeat"]))
         let host = app.staticTexts["lobby.server"]
         for _ in 0..<5 where !host.exists { app.swipeUp() }
         XCTAssertEqual(host.label, "127.0.0.1")
@@ -90,12 +90,12 @@ final class LobbyUITests: XCTestCase {
         app.launchArguments = ["-practice"]
         app.launch()
 
-        let status = app.staticTexts["probe.status"]
-        let joins = app.staticTexts["probe.joins"]
+        let status = app.staticTexts["table.status"]
+        let joins = app.staticTexts["table.joins"]
         XCTAssertTrue(status.waitForExistence(timeout: 20))
         expect(status, "Connection, open")
         XCTAssertEqual(joins.label, "Joins, 1")
-        let hand = app.staticTexts["probe.hand"]
+        let hand = app.staticTexts["table.hand"]
         XCTAssertNotEqual(hand.label, "Hand, none")
 
         XCUIDevice.shared.press(.home)
@@ -104,6 +104,9 @@ final class LobbyUITests: XCTestCase {
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
         expect(joins, "Joins, 2")
         expect(status, "Connection, open")
+        // Leave the practice table, so the next test's launch starts in the lobby.
+        app.buttons["table.leave"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["lobby.ready"].waitForExistence(timeout: 20))
     }
 
     /// Waits for an element's label to read `label`.
@@ -121,5 +124,13 @@ final class LobbyUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["No connection"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.buttons["Try again"].exists)
+    }
+}
+
+extension XCUIApplication {
+    /// Swipes up until `element` exists, a few times at most.
+    func swipeUpUntil(_ element: XCUIElement) -> Bool {
+        for _ in 0..<6 where !element.exists { swipeUp() }
+        return element.exists
     }
 }

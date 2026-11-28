@@ -44,6 +44,9 @@ final class GalleryUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["RIVERMIND_SERVER"] = server
         app.launch()
+        // Open it once the lobby has loaded, as a person would (CI's iOS 26.5 dropped a
+        // gallery opened while the lobby was still loading, before the app kept it).
+        XCTAssertTrue(app.descendants(matching: .any)["lobby.ready"].waitForExistence(timeout: 20))
         let link = app.buttons["lobby.gallery"]
         XCTAssertTrue(link.waitForExistence(timeout: 20))
         link.tap()

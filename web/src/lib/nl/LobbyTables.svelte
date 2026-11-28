@@ -2,6 +2,7 @@
 	import type { ConfigResponse, TableSummary } from '../protocol-v2.ts';
 	import { listTables } from './api.ts';
 	import type { NlConnection } from './connection.svelte.ts';
+	import { pips, seatsText, tableChoice, tableDetail, type Pip } from './lobby.ts';
 
 	// The live table list (P4.3): public tables, and private ones the player
 	// is at, most people first, refreshed every few seconds. Quick seat uses
@@ -57,37 +58,15 @@
 		}
 	}
 
-	const canAfford = (t: TableSummary) => balance === null || balance >= t.min_buy_in;
-	const hasRoom = (t: TableSummary) => t.free_seats + t.bot_seats > 0;
-
 	const fieldLabel = 'field-label mb-3 block text-gold text-shadow-ink';
 	const seatState = 'state text-s text-green-light text-shadow-ink';
 	/** A pip's colour by who has the seat; each is a dot. */
-	const PIPS = {
+	const PIPS: Record<Pip, string> = {
 		person: 'person bg-gold',
 		bot: 'bot bg-blue-light',
 		held: 'held bg-amber opacity-60',
 		empty: 'empty bg-transparent [box-shadow:inset_0_0_0_2px_var(--color-haze)]'
 	};
-
-	/** One pip per seat: people, bots (a bot finishing its hand for a held seat included), held empty seats, empty seats. */
-	function pips(t: TableSummary): (keyof typeof PIPS)[] {
-		const held = Math.max(0, t.seat_count - t.people - t.bots - t.free_seats);
-		return [
-			...Array<'person'>(t.people).fill('person'),
-			...Array<'bot'>(t.bots).fill('bot'),
-			...Array<'held'>(held).fill('held'),
-			...Array<'empty'>(t.free_seats).fill('empty')
-		];
-	}
-
-	function seatsText(t: TableSummary): string {
-		const parts = [`${t.people} ${t.people === 1 ? 'person' : 'people'}`];
-		if (t.bots) parts.push(`${t.bots} ${t.bots === 1 ? 'bot' : 'bots'}`);
-		if (t.free_seats) parts.push(`${t.free_seats} empty`);
-		if (t.waitlist) parts.push(`${t.waitlist} waiting`);
-		return parts.join(' · ');
-	}
 </script>
 
 <section class="tables ui-panel grid gap-6 px-7 pt-6 pb-7" aria-labelledby="tables-title">
@@ -148,6 +127,7 @@
 	{:else}
 		<ul class="list grid max-h-[520px] gap-4 overflow-auto" aria-label="Open tables">
 			{#each tables as t (t.table_id)}
+				{@const choice = tableChoice(t, balance)}
 				<li
 					class="row ui-inset grid grid-cols-[minmax(0,1fr)_auto] items-center gap-5 px-5 py-4 lt-460:grid-cols-1"
 					data-table={t.table_id}
@@ -163,10 +143,7 @@
 									Blocked player
 								</span>{/if}
 						</span>
-						<span class="detail text-s text-mist">
-							Blinds {t.small_blind}/{t.big_blind} · buy-in {t.min_buy_in.toLocaleString('en-US')} to
-							{t.max_buy_in.toLocaleString('en-US')}
-						</span>
+						<span class="detail text-s text-mist">{tableDetail(t)}</span>
 						<span class="seats flex flex-wrap items-center gap-4 text-s text-mist">
 							<span class="pips flex gap-1" aria-hidden="true">
 								{#each pips(t) as pip, i (i)}<span class="pip size-5 rounded-full {PIPS[pip]}"
@@ -176,7 +153,7 @@
 						</span>
 					</div>
 					<div class="actions flex flex-wrap items-center justify-end gap-3 lt-460:justify-start">
-						{#if t.seated}
+						{#if choice.kind === 'seated'}
 							<button
 								type="button"
 								class="ui-btn small green"
@@ -184,8 +161,8 @@
 							>
 								Back to your seat
 							</button>
-						{:else if t.hold?.ready}
-							<span class={seatState}>Your seat is ready</span>
+						{:else if choice.kind === 'ready'}
+							<span class={seatState}>{choice.note}</span>
 							<button
 								type="button"
 								class="ui-btn small amber"
@@ -202,8 +179,8 @@
 							>
 								Give up
 							</button>
-						{:else if t.hold}
-							<span class={seatState}>Seat held: a bot is finishing its hand</span>
+						{:else if choice.kind === 'held'}
+							<span class={seatState}>{choice.note}</span>
 							<button
 								type="button"
 								class="ui-btn small"
@@ -211,8 +188,8 @@
 							>
 								Go to the table
 							</button>
-						{:else if t.waitlist_position !== null}
-							<span class={seatState}>Number {t.waitlist_position} in line</span>
+						{:else if choice.kind === 'waiting'}
+							<span class={seatState}>{choice.note}</span>
 							<button
 								type="button"
 								class="ui-btn small"
@@ -222,11 +199,11 @@
 								Leave the line
 							</button>
 						{:else}
-							{#if hasRoom(t)}
+							{#if choice.kind === 'sit'}
 								<button
 									type="button"
 									class="ui-btn small amber"
-									disabled={busy !== null || !canAfford(t)}
+									disabled={busy !== null || !choice.afford}
 									onclick={() => run(t.table_id, () => connection.takeSeat(t.table_id))}
 								>
 									{busy === t.table_id ? 'Seating…' : 'Sit down'}
@@ -235,7 +212,7 @@
 								<button
 									type="button"
 									class="ui-btn small amber"
-									disabled={busy !== null || !canAfford(t)}
+									disabled={busy !== null || (choice.kind === 'waitlist' && !choice.afford)}
 									onclick={() => run(t.table_id, () => connection.joinWaitlist(t.table_id))}
 								>
 									Join the waitlist

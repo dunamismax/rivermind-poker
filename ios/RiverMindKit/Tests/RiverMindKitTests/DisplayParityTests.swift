@@ -129,6 +129,71 @@ struct DisplayFixture: Decodable {
         let relations: [Relation]
     }
 
+    struct LobbyCases: Decodable {
+        struct Bot: Decodable {
+            let bot: BotOption
+            let note: String
+            let trained: String
+        }
+        struct ForSeats: Decodable {
+            let seats: Int
+            let kinds: [String]
+        }
+        struct PracticeNote: Decodable {
+            let stack: Int?
+            let text: String
+        }
+        struct BuyIns: Decodable {
+            let big: Int
+            let balance: Int?
+            let affordable: [Int]
+            let labels: [String]
+        }
+        /// `TableChoice` as the TypeScript writes it.
+        struct Choice: Decodable {
+            let kind: String
+            let note: String?
+            let afford: Bool?
+
+            var swift: LobbyWords.Choice? {
+                switch kind {
+                case "seated": .seated
+                case "ready": note.map { .ready(note: $0) }
+                case "held": note.map { .held(note: $0) }
+                case "waiting": note.map { .waiting(note: $0) }
+                case "sit": afford.map { .sit(afford: $0) }
+                case "waitlist": afford.map { .waitlist(afford: $0) }
+                default: nil
+                }
+            }
+        }
+        struct BalanceChoice: Decodable {
+            let balance: Int?
+            let choice: Choice
+        }
+        struct Table: Decodable {
+            let table: TableSummary
+            let seats: String
+            let pips: [LobbyWords.Pip]
+            let detail: String
+            let room: Bool
+            let invite: String
+            let choices: [BalanceChoice]
+        }
+        struct Link: Decodable {
+            let origin: String
+            let code: String
+            let link: String
+        }
+        let bots: [Bot]
+        let practiceBots: [String]
+        let botsFor: [ForSeats]
+        let practiceNotes: [PracticeNote]
+        let walletHint: String
+        let buyIns: [BuyIns]
+        let tables: [Table]
+        let inviteLinks: [Link]
+    }
     let hands: [HandCase]
     let bets: [BetCase]
     let events: [EventCase]
@@ -140,6 +205,7 @@ struct DisplayFixture: Decodable {
     let stepKeys: [KeyCase]
     let cards: [CardCase]
     let safety: SafetyCases
+    let lobby: LobbyCases
 
     static let shared: DisplayFixture = {
         let url = repository.appending(path: "ios/RiverMindKit/Fixtures/display.json")
@@ -269,6 +335,47 @@ private func nameOf(_ names: [String?]) -> (Int) -> String {
 
     /// The page renders `undefined` where a newer server leaves a field out or sends a
     /// kind this build does not know; the app says something plain instead.
+    @Test func theLobbysWordsMatchThePage() throws {
+        let lobby = fixture.lobby
+        let bots = lobby.bots.map(\.bot)
+        for case_ in lobby.bots {
+            #expect(LobbyWords.botNote(case_.bot) == case_.note, "\(case_.bot.kind)")
+            #expect(LobbyWords.trainedNote(case_.bot.kind) == case_.trained)
+        }
+        #expect(LobbyWords.practiceBots(bots).map(\.kind) == lobby.practiceBots)
+        for case_ in lobby.botsFor {
+            #expect(LobbyWords.bots(bots, for: case_.seats).map(\.kind) == case_.kinds)
+        }
+        for case_ in lobby.practiceNotes {
+            #expect(LobbyWords.practiceNote(stack: case_.stack) == case_.text)
+        }
+        #expect(LobbyWords.walletHint == lobby.walletHint)
+        for case_ in lobby.buyIns {
+            #expect(LobbyWords.affordableBuyIns(bigBlind: case_.big, balance: case_.balance) == case_.affordable)
+            #expect(LobbyWords.buyIns.map { LobbyWords.buyInLabel($0, bigBlind: case_.big) } == case_.labels)
+        }
+        #expect(lobby.tables.count >= 50)
+        let kinds = Set(lobby.tables.flatMap { $0.choices.map(\.choice.kind) })
+        #expect(kinds == ["seated", "ready", "held", "waiting", "sit", "waitlist"])
+        for case_ in lobby.tables {
+            let t = case_.table
+            #expect(LobbyWords.seatsText(t) == case_.seats, "\(t.tableID)")
+            #expect(LobbyWords.pips(t) == case_.pips, "\(t.tableID)")
+            #expect(LobbyWords.tableDetail(t) == case_.detail)
+            #expect(LobbyWords.hasRoom(t) == case_.room)
+            #expect(LobbyWords.inviteLine(t) == case_.invite)
+            for choice in case_.choices {
+                let expected = try #require(choice.choice.swift)
+                #expect(LobbyWords.choice(t, balance: choice.balance) == expected, "\(t.tableID) \(String(describing: choice.balance))")
+            }
+        }
+        for case_ in lobby.inviteLinks {
+            #expect(LobbyWords.inviteLink(origin: case_.origin, code: case_.code) == case_.link)
+            // A link the app made reads back as its code.
+            #expect(LobbyWords.inviteCode(in: case_.link) == case_.code)
+        }
+    }
+
     @Test func aNewerServerReadsPlainly() throws {
         let event = try JSONDecoder().decode(
             TableEvent.self,
