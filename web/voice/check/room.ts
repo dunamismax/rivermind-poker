@@ -78,6 +78,9 @@ export type RoomReport = {
 	reconnects: number;
 	// The code the room ended with, or null while it stands.
 	closed: number | null;
+	// The track this page sends and its AudioContext, as the page sees them
+	// (the app's voice check, P5D.9, reads them in the background).
+	local: { readyState: string; muted: boolean; enabled: boolean; context: string | null } | null;
 	// Everyone else, as this page's own copy of the group and the service's
 	// notices have them (P4C.6).
 	people: { seat: number | null; sending: boolean; muted: boolean; deafened: boolean }[];
@@ -275,6 +278,7 @@ async function decodeOpus(frames: Uint8Array[]): Promise<{ failed: number; pcm: 
 }
 
 let room: VoiceRoom | null = null;
+let sending: MediaStreamTrack | null = null;
 let reconnects = 0;
 let closed: number | null = null;
 let context: AudioContext | null = null;
@@ -349,7 +353,7 @@ window.room = {
 			giveUpMs: options.giveUpMs,
 			connectMs: options.connectMs,
 			iceGiveUpMs: options.iceGiveUpMs,
-			track: await track(options),
+			track: (sending = await track(options)),
 			onheard: heard,
 			onended: (stream) => {
 				analysers.delete(stream.peer);
@@ -424,6 +428,12 @@ window.room = {
 			iceRestarts: now.iceRestarts,
 			reconnects,
 			closed,
+			local: sending && {
+				readyState: sending.readyState,
+				muted: sending.muted,
+				enabled: sending.enabled,
+				context: context?.state ?? null
+			},
 			people: now.people
 				.map(({ seat, sending, muted, deafened }) => ({ seat, sending, muted, deafened }))
 				.sort((a, b) => (a.seat ?? 0) - (b.seat ?? 0))
@@ -476,5 +486,35 @@ window.room = {
 		return { decoder: true, failed, samples: pcm.length, ...analyse(pcm, atHz) };
 	}
 };
+
+// A page nobody drives, such as the app's web view (P5D.9), joins from its
+// address: `#join=` and the JoinOptions as JSON, with `report`, a name for it,
+// added. It then posts its report to the page's server every two seconds.
+async function joinFromAddress(): Promise<void> {
+	const options = JSON.parse(
+		decodeURIComponent(location.hash.slice('#join='.length))
+	) as JoinOptions & { report: string };
+	const post = (body: Record<string, unknown>) =>
+		fetch('/result', {
+			method: 'POST',
+			body: JSON.stringify({
+				room: options.report,
+				agent: navigator.userAgent,
+				at: Date.now(),
+				...body
+			})
+		}).catch(() => {});
+	try {
+		await window.room.join(options);
+	} catch (error) {
+		await post({ error: String(error) });
+		return;
+	}
+	for (;;) {
+		await post({ report: await window.room.report(1000) }).catch(() => {});
+		await new Promise((resolve) => setTimeout(resolve, 1000));
+	}
+}
+if (location.hash.startsWith('#join=')) void joinFromAddress();
 
 document.body.setAttribute('data-room', 'ready');

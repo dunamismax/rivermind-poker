@@ -36,17 +36,32 @@ const csp = [
 	"form-action 'self'"
 ].join('; ');
 
-// A browser run by hand posts what it found (page.ts), and the server prints it.
+// A browser run by hand posts what it found (page.ts, room.ts), and the server
+// prints it. It also keeps them, newest last, for `GET /results`: what the
+// app's voice check reads back from the app's web view (app.tool.ts, P5D.9).
+const kept: unknown[] = [];
 const results: Plugin = {
 	name: 'voice-check:results',
 	configurePreviewServer(server) {
+		server.middlewares.use('/results', (_request, response) => {
+			response.setHeader('content-type', 'application/json');
+			response.end(JSON.stringify(kept));
+		});
 		server.middlewares.use('/result', (request, response) => {
 			let body = '';
 			request.on('data', (chunk) => {
-				if (body.length < 20_000) body += chunk;
+				if (body.length < 200_000) body += chunk;
 			});
 			request.on('end', () => {
-				if (request.method === 'POST') console.log(`[voice-check] ${body}`);
+				if (request.method === 'POST') {
+					if (!body.includes('"room"')) console.log(`[voice-check] ${body}`);
+					try {
+						kept.push(JSON.parse(body));
+						if (kept.length > 500) kept.shift();
+					} catch {
+						// Not JSON: printed, not kept.
+					}
+				}
 				response.statusCode = 204;
 				response.end();
 			});

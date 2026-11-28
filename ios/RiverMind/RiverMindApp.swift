@@ -33,6 +33,9 @@ struct RiverMindApp: App {
             // `-gallery` opens the kit's gallery (P5D.5), for screenshots and its UI test.
             if ProcessInfo.processInfo.arguments.contains("-gallery") {
                 NavigationStack { GalleryView() }
+            } else if let (url, hidden) = VoiceCheckView.fromEnvironment {
+                // Voice's design check (P5D.9): the site's voice code in a web view.
+                VoiceCheckView(url: url, hidden: hidden)
             } else {
                 RootView(model: lobby, table: table)
             }

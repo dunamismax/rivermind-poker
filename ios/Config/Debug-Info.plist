@@ -11,6 +11,15 @@
 	<!-- Debug builds only: plain HTTP to a server on this Mac (the Simulator shares its
 	     loopback), so the app can talk to `pnpm start` and the seeded server. A release
 	     build has no such exception and talks to https://rivermindpoker.com alone. -->
+	<!-- Debug builds only, for voice's design check (P5D.9, RiverMind/VoiceCheckView.swift):
+	     the microphone, and voice kept going in the background (Q-16). P5D.10 gives the
+	     release build its own. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Table voice is opt-in and end-to-end encrypted. The microphone is used only while you are in voice.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

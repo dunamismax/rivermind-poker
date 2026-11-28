@@ -408,5 +408,13 @@ async function runCall(source: CallOptions['source']): Promise<void> {
 
 document.querySelector('#call')!.addEventListener('click', () => void runCall('capture'));
 document.querySelector('#tone')!.addEventListener('click', () => void runCall('tone'));
-if (new URLSearchParams(location.search).has('run')) void runAlone();
+// `/?run` runs the checks alone; `&call=tone` (or `capture`) then makes the call
+// too, for a browser nobody clicks in, such as the app's web view (P5D.9).
+const params = new URLSearchParams(location.search);
+if (params.has('run')) {
+	void runAlone().then(() => {
+		const source = params.get('call');
+		if (source === 'tone' || source === 'capture') return runCall(source);
+	});
+}
 document.body.setAttribute('data-check', 'ready');

@@ -26,6 +26,7 @@ test-results
 test-results-visual
 playwright-report
 test-results-voice
+test-results-voice-app
 test-results-voice-check
 test-results-voice-measure
 test-results-voice-stranger

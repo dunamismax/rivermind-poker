@@ -27,6 +27,7 @@
 		"e2e:live": "playwright test --config playwright.live.config.ts",
 		"visual": "playwright test --config playwright.visual.config.ts",
 		"visual:compare": "node scripts/visual-compare.ts",
+		"voice:app": "playwright test --config playwright.voice-app.config.ts",
 		"voice:check": "playwright test --config playwright.voice-check.config.ts",
 		"voice:load": "node scripts/voice-load.ts",
 		"voice:measure": "playwright test --config playwright.voice-measure.config.ts",

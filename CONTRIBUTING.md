@@ -334,6 +334,15 @@ VOICE_DEBUG=1 pnpm voice:check -g heard  # with the page's console
 
 `pnpm voice:check` (CI runs it) builds [`web/voice/check/`](web/voice/check/) with Vite, the worker a bundled module of its own, and serves it on `127.0.0.1:4391` with the site's CSP. Its page runs the vectors on the engine's own WebCrypto, then a WebRTC call between two peer connections on the one page, a speaker's and a listener's, each with a worker and key store of its own. The checks are a call that is heard, a listener with another secret, with no key and with the stream taken for another person's, a speaker with no key, a sender with no worker at all, a change of epoch and a retired one, and what SFrame costs a page in a full room. Its second page, `room.html`, is a person in a table's voice room on the real voice service, which the run starts beside it ([below](#the-voice-service-p4c4)).
 
+**Voice in the app's web view (P5D.9).** `pnpm voice:app` puts a person in Chromium and the iPhone app in one table's voice room, the app running the site's own voice code in a `WKWebView` ([`ios/RiverMind/VoiceCheckView.swift`](ios/RiverMind/VoiceCheckView.swift), debug builds only), and measures it, the background included ([docs/voice.md](docs/voice.md#voice-in-the-app-the-design-check-p5d9)). It needs a booted simulator of your own with a debug build installed, and writes what it finds to `artifacts/voice-app/`:
+
+```sh
+xcodebuild build -project ios/RiverMind.xcodeproj -scheme RiverMind -destination "id=$UDID" -derivedDataPath ios/DerivedData
+xcrun simctl install "$UDID" ios/DerivedData/Build/Products/Debug-iphonesimulator/RiverMind.app
+xcrun simctl privacy "$UDID" grant microphone com.rivermindpoker.app
+cd web && VOICE_APP_DEVICE="$UDID" pnpm voice:app      # VOICE_APP_SOURCE=capture, VOICE_APP_HIDDEN=1 or 2
+```
+
 CI runs the checks in Playwright's Linux browsers, which differ from the macOS ones: Chromium's fake microphone works there, Firefox has no sound device, and WebKit has no `RTCRtpScriptTransform`, so its call checks are skipped. To run them that way before a push, with Docker running:
 
 ```sh
