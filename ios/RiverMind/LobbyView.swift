@@ -5,6 +5,7 @@ import SwiftUI
 /// the server offers (`GET /api/config`). P5D.5 brings the clean look and P5D.6 the lobby.
 struct LobbyView: View {
     let model: LobbyModel
+    let table: TableConnection
 
     var body: some View {
         NavigationStack {
@@ -37,6 +38,11 @@ struct LobbyView: View {
 
     private func offer(_ config: ConfigResponse, guest: SessionResponse) -> some View {
         List {
+            #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-practice") {
+                    PracticeProbe(model: model, table: table)
+                }
+            #endif
             Section {
                 Text("No-limit Texas hold’em for play money only. Chips can never be bought, sold or cashed out.")
                     .font(.callout)
@@ -87,3 +93,38 @@ struct LobbyView: View {
             : counts.map(String.init).joined(separator: ", ") + " seats"
     }
 }
+
+#if DEBUG
+    /// A debug build launched with `-practice` joins a practice table and shows how its
+    /// connection stands, for the UI tests of P5D.3 until P5D.7 brings the table itself.
+    struct PracticeProbe: View {
+        let model: LobbyModel
+        let table: TableConnection
+        @State private var failure: String?
+
+        var body: some View {
+            Section("Practice table (debug)") {
+                LabeledContent("Connection", value: status)
+                    .accessibilityIdentifier("probe.status")
+                LabeledContent("Joins", value: String(table.joins))
+                    .accessibilityIdentifier("probe.joins")
+                LabeledContent("Hand", value: table.view?.hand.map { String($0.handNo) } ?? "none")
+                    .accessibilityIdentifier("probe.hand")
+                if let failure { Text(failure).accessibilityIdentifier("probe.failure") }
+            }
+            .task {
+                guard table.tableID == nil else { return }
+                do { try await model.practice(on: table) } catch { failure = error.localizedDescription }
+            }
+        }
+
+        private var status: String {
+            switch table.status {
+            case .idle: table.suspended ? "suspended" : "idle"
+            case .connecting: "connecting"
+            case .open: "open"
+            case .closed: "closed"
+            }
+        }
+    }
+#endif

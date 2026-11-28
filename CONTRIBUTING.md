@@ -479,11 +479,15 @@ The app and its UI tests are in `ios/RiverMind.xcodeproj`. Open it in Xcode, cho
 PORT=4380 ORIGIN=http://127.0.0.1:4380 RIVERMIND_API=1 pnpm start
 ```
 
-`ios/test.sh` is what CI's `ios` job runs: it starts that server from `web/build` (so run `pnpm build` in `web/` first), runs the package's tests against it, makes or reuses a simulator called “RiverMind Test” (an iPhone 17 on the newest iOS runtime installed, apart from the simulators other sessions use), and runs the UI tests there. `ios/test.sh package` and `ios/test.sh app` run one half. Results and logs are kept under `ios/DerivedData/`, which Git ignores.
+`ios/test.sh` is what CI's `ios` job runs: it starts that server from `web/build` (so run `pnpm build` in `web/` first), runs the package's tests against it, makes or reuses a simulator called “RiverMind Test” (an iPhone 17 on the newest iOS runtime installed, apart from the simulators other sessions use), and runs the UI tests there. `ios/test.sh package` and `ios/test.sh app` run one half. For the package's tests it also starts the seeded site (`web/e2e/seeded-server.ts` with seed 10, on the next port), where the table connection plays the recorded practice session, and, when `RIVERMIND_TEST_DATABASE_URL` names a disposable test database, the site on PostgreSQL (`web/e2e/restart-server.ts`, on the two ports after), which the restart check kills mid-hand and starts again; it empties that database, so never run it beside `pnpm test` or `pnpm e2e` with the same one. CI's macOS runner has no PostgreSQL, so the restart check runs only here. Results and logs are kept under `ios/DerivedData/`, which Git ignores.
+
+```sh
+RIVERMIND_TEST_DATABASE_URL=postgresql://localhost/rivermind_test ios/test.sh
+```
 
 Add a Swift file by putting it in its folder: the app's folders are synchronized groups, so the project file does not change.
 
-The app's protocol types are generated from the TypeScript (P5D.2). After changing `web/src/lib/protocol-v2.ts` or `web/src/lib/voice/signalling.ts`, write them again, and after a change to what the server sends in the recorded sessions, or to the page's display code that the app ports (`hand-name.ts`, `bet.ts`, `faces.ts`, `replay.ts`, `safety.ts`, `wording.ts`'s card names, P5D.4), write the fixtures the Swift tests read; Vitest fails while any of them is stale, and the Swift tests fail until the port says the same.
+The app's protocol types are generated from the TypeScript (P5D.2). After changing `web/src/lib/protocol-v2.ts` or `web/src/lib/voice/signalling.ts`, write them again, and after a change to what the server sends in the recorded sessions, to the page's display code that the app ports (`hand-name.ts`, `bet.ts`, `faces.ts`, `replay.ts`, `safety.ts`, `wording.ts`'s card names, P5D.4), or to how the seeded practice table plays (the engine, the dealing, RiverMind Easy; P5D.3's `session.json`), write the fixtures the Swift tests read; Vitest fails while any of them is stale, and the Swift tests fail until the port says the same.
 
 ```sh
 cd web

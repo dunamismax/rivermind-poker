@@ -46,6 +46,37 @@ final class LobbyUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["lobby.guest"].label, first)
     }
 
+    /// P5D.3, Q-16: out of voice, the app lets go of its table socket in the background
+    /// and rejoins by itself when it comes back.
+    func testTheTableRejoinsWhenTheAppComesBack() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["RIVERMIND_SERVER"] = try server()
+        app.launchArguments = ["-practice"]
+        app.launch()
+
+        let status = app.staticTexts["probe.status"]
+        let joins = app.staticTexts["probe.joins"]
+        XCTAssertTrue(status.waitForExistence(timeout: 20))
+        expect(status, "Connection, open")
+        XCTAssertEqual(joins.label, "Joins, 1")
+        let hand = app.staticTexts["probe.hand"]
+        XCTAssertNotEqual(hand.label, "Hand, none")
+
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackgroundSuspended, timeout: 10) || app.state == .runningBackground)
+        app.activate()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        expect(joins, "Joins, 2")
+        expect(status, "Connection, open")
+    }
+
+    /// Waits for an element's label to read `label`.
+    private func expect(_ element: XCUIElement, _ label: String, timeout: TimeInterval = 20) {
+        let matches = NSPredicate(format: "label == %@", label)
+        let found = XCTNSPredicateExpectation(predicate: matches, object: element)
+        XCTAssertEqual(XCTWaiter().wait(for: [found], timeout: timeout), .completed, "\(element.label) is not \(label)")
+    }
+
     func testTheLobbySaysWhenNoServerAnswers() throws {
         _ = try server()
         let app = XCUIApplication()

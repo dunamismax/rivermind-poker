@@ -8,7 +8,12 @@
 #   ios/test.sh app         the app alone (xcodebuild test)
 #
 # RIVERMIND_SERVER        use a server that is already running instead of starting one
-# RIVERMIND_TEST_PORT     the port the started server listens on (4380)
+# RIVERMIND_TEST_PORT     the port the started server listens on (4380); the seeded site
+#                         (web/e2e/seeded-server.ts, for the session check) takes the next
+#                         one, and the restartable site on the test database the two after
+# RIVERMIND_TEST_DATABASE_URL  a disposable test database: the package's tests then also
+#                         check a rejoin across a server restart (web/e2e/restart-server.ts),
+#                         which empties it
 # RIVERMIND_SIMULATOR     the simulator's name ("RiverMind Test"), made if missing
 # RIVERMIND_DEVICE_TYPE   its device type when made (iPhone 17)
 set -euo pipefail
@@ -25,8 +30,22 @@ mkdir -p "$logs"
 case "$what" in all | package | app) ;; *) echo "usage: ios/test.sh [all|package|app]" >&2; exit 2 ;; esac
 
 server_pid=
+seeded_pid=
+restart_pid=
 cleanup() {
-	if [ -n "$server_pid" ]; then kill "$server_pid" 2>/dev/null || true; fi
+	for pid in "$server_pid" "$seeded_pid" "$restart_pid"; do
+		if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; fi
+	done
+}
+
+# Waits until $1 answers, or fails with the log $3 of the process $2.
+wait_for() {
+	for _ in $(seq 1 120); do
+		if curl -sf -o /dev/null "$1"; then return 0; fi
+		if ! kill -0 "$2" 2>/dev/null; then cat "$3" >&2; exit 1; fi
+		sleep 0.5
+	done
+	curl -sf -o /dev/null "$1" || { cat "$3" >&2; exit 1; }
 }
 trap cleanup EXIT
 
@@ -54,6 +73,31 @@ fi
 echo "server: $RIVERMIND_SERVER"
 
 if [ "$what" != app ]; then
+	# A fresh seeded site for the session check (TableConnectionSessionTests.swift): its
+	# first table deals from seed 10, as the session fixture was recorded.
+	seeded_port=$((port + 1))
+	if [ ! -f "$root/web/build/handler.js" ]; then
+		echo "web/build is missing: run pnpm build in web/ first" >&2
+		exit 1
+	fi
+	(cd "$root/web" && exec env PORT="$seeded_port" SEED=10 PRACTICE_STACK=300 \
+		node e2e/seeded-server.ts) >"$logs/seeded.log" 2>&1 &
+	seeded_pid=$!
+	wait_for "http://127.0.0.1:$seeded_port/healthz" "$seeded_pid" "$logs/seeded.log"
+	export RIVERMIND_SEEDED_SERVER="http://127.0.0.1:$seeded_port"
+	echo "seeded site: $RIVERMIND_SEEDED_SERVER"
+
+	if [ -n "${RIVERMIND_TEST_DATABASE_URL:-}" ]; then
+		restart_port=$((port + 2))
+		(cd "$root/web" && exec env PORT="$restart_port" CONTROL_PORT=$((port + 3)) \
+			node e2e/restart-server.ts) >"$logs/restart.log" 2>&1 &
+		restart_pid=$!
+		wait_for "http://127.0.0.1:$restart_port/healthz" "$restart_pid" "$logs/restart.log"
+		export RIVERMIND_RESTART_SERVER="http://127.0.0.1:$restart_port"
+		export RIVERMIND_RESTART_CONTROL="http://127.0.0.1:$((port + 3))"
+		echo "restartable site: $RIVERMIND_RESTART_SERVER"
+	fi
+
 	(cd "$here/RiverMindKit" && swift test -Xswiftc -warnings-as-errors)
 fi
 

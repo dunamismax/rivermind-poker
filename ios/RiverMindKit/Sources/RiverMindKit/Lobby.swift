@@ -21,6 +21,13 @@ public final class LobbyModel {
         self.server = client.server
     }
 
+    /// One-click practice (P6.0b): the guest's practice table, followed by `table`. P5D.6
+    /// gives it the lobby's button; a debug build's `-practice` launch uses it until then.
+    public func practice(on table: TableConnection) async throws {
+        let started = try await client.practice()
+        table.follow(started.tableID)
+    }
+
     /// `POST /api/session`, then `GET /api/config`, as a page does on load.
     public func load() async {
         state = .loading
