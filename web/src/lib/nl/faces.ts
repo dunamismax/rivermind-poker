@@ -52,14 +52,16 @@ export function botLabel(kind: string | null): string {
  * A bot's name for a phone's pod, which has room for about eight letters: the part
  * that tells it from the others. "RiverMind Easy 4" is "Easy 4" there and "Calling
  * bot 2" is "Calling 2", under the "Bot" tag every bot wears (D-7). Each part says
- * whether a pod shows it; together they are the whole name.
+ * whether a pod shows it; together they are the whole name. The `house` part is the
+ * site's own name, which no seat has room for beside the rest: a wide seat cut
+ * "RiverMind Easy 4" off before the number that tells nine of them apart.
  */
-export function podName(name: string): { text: string; pod: boolean }[] {
+export function podName(name: string): { text: string; pod: boolean; house?: boolean }[] {
 	const match = /^(RiverMind )?(.+?)( bot)?( \d+)?$/.exec(name);
 	if (!match) return [{ text: name, pod: true }];
 	const [, house = '', core, bot = '', number = ''] = match;
 	return [
-		{ text: house, pod: false },
+		{ text: house, pod: false, house: true },
 		{ text: core, pod: true },
 		{ text: bot, pod: false },
 		{ text: number, pod: true }

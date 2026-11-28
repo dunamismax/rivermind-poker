@@ -70,8 +70,8 @@
 	// as wide as the pods on the bottom corners leave between them.
 	const seat = $derived(
 		me
-			? 'z-2 w-100 [--k:1.4] lap:w-86 lap:[--k:1] phone:w-110 tab:w-120 tab:[--k:1.4] pocket:w-[min(220px,calc(75%-92px))]'
-			: 'z-1 w-88 [--k:1] lap:w-75 phone:w-42 phone:text-s phone:[--k:0.5] tab:w-75 tab:text-m'
+			? 'z-2 w-[calc(var(--seat-w,176px)_+_32px)] [--k:1.4] lap:w-86 lap:[--k:1] phone:w-110 phone:-translate-y-[calc(50%_+_10px)] tab:w-120 tab:[--k:1.4] pocket:w-[min(220px,calc(75%-92px))]'
+			: 'z-1 w-[var(--seat-w,176px)] [--k:1] phone:w-42 phone:text-s phone:[--k:0.5] tab:w-75 tab:text-m'
 	);
 	/**
 	 * Where a pod's shown cards go, by the side of the table it sits on: under a seat
@@ -107,8 +107,14 @@
 		'side-low-left': 'phone:top-auto phone:right-auto phone:-bottom-4 phone:-left-3',
 		'side-low-right': 'phone:top-auto phone:-right-3 phone:-bottom-4'
 	};
-	// A bot's pod leaves out the words its name shares with the others ("Easy 4"); the
-	// whole name stays in the seat's label and title, and on every wider seat.
+	/** On a bottom corner the button sits on the pod's outer end, and the stack moves over for it. */
+	const DEALER_ROOM: Record<string, string> = {
+		'side-low-left': 'phone:pl-5',
+		'side-low-right': 'phone:pr-5'
+	};
+	// A bot's seat leaves out the site's name, and its pod also the other words its name
+	// shares with the rest ("Easy 4"). The whole name stays in the seat's label and title,
+	// and in its text, hidden, which the browser tests read.
 	const parts = $derived(!me && info.kind === 'bot' ? podName(info.name) : null);
 	const tag =
 		'mt-1 bg-ink px-3 text-s leading-10 whitespace-nowrap rounded-[4px] phone:px-2 phone:text-xs phone:leading-7 tab:text-s tab:leading-10';
@@ -169,6 +175,7 @@
 			'plate relative flex min-h-26 w-full items-center gap-4 px-2 py-1 phone:min-h-0 phone:gap-2 phone:px-1',
 			frame,
 			me ? 'phone:py-0' : 'phone:block phone:pt-1 phone:pb-0 phone:text-center',
+			!me && button && DEALER_ROOM[side],
 			dim && 'opacity-55',
 			acting && 'animate-nudge',
 			voice?.speaking && 'speaking outline-2 outline-offset-2 outline-green-light animate-speak'
@@ -193,7 +200,7 @@
 			{:else}
 				<div class={['name truncate text-shadow-ink', me && 'text-gold']} title={info.name}>
 					{#if parts}{#each parts as part, i (i)}{#if part.pod}{part.text}{:else}<span
-									class="phone:hidden"
+									class={part.house ? 'hidden' : 'phone:hidden'}
 								>
 									{part.text}
 								</span>{/if}{/each}{:else}{info.name}{/if}
@@ -233,6 +240,19 @@
 			>
 				<span class="sr-only">{info.name}: </span>{reaction}
 			</div>{/if}
+		{#if clock && !me}
+			<!-- Another seat's time left, on a wide table: a bar along the plate's lower edge,
+			     which takes no room among the tags and bets under the seat. -->
+			<svg
+				class="clock-edge pointer-events-none absolute -bottom-[5px] left-2 block h-[3px] w-[calc(100%-8px)] overflow-hidden rounded-full phone:hidden"
+				viewBox="0 0 36 1"
+				preserveAspectRatio="none"
+				aria-hidden="true"
+			>
+				<rect class="fill-ink" width="36" height="1" />
+				<rect class={lamp} width={Math.max(0.5, clock.fraction * 36)} height="1" />
+			</svg>
+		{/if}
 		{#if button}<span
 				class={[
 					'sprite dealer-button dealer absolute -top-7 -right-5 phone:size-9',
@@ -251,10 +271,16 @@
 			></span>
 		{/if}
 	</div>
+	<!-- Nothing here changes the seat's size, so the plate stays where it is when a tag or
+	     the turn's clock comes and goes: the viewer's hang under the seat, and another
+	     seat keeps a row for its tags. A pod's clock hangs under its tags; on a wide
+	     table another seat's is the bar on its plate. -->
 	<div
 		class={[
 			'below grid justify-items-center',
-			!me && 'phone:absolute phone:inset-x-0 phone:top-full'
+			me
+				? 'absolute inset-x-0 top-full'
+				: 'relative min-h-11 phone:absolute phone:inset-x-0 phone:top-full phone:min-h-0'
 		]}
 	>
 		<div class="tags flex min-h-0 justify-center gap-3">
@@ -271,7 +297,8 @@
 		{#if clock}
 			<div
 				class={[
-					'clock mt-2 flex items-center gap-3 text-s text-shadow-ink phone:mt-1 phone:gap-2',
+					'clock mt-2 items-center gap-3 text-s whitespace-nowrap text-shadow-ink phone:mt-1 phone:gap-2',
+					me ? 'flex' : 'absolute top-full left-1/2 hidden -translate-x-1/2 phone:flex',
 					clock.bank
 						? 'bank text-red-light'
 						: clock.fraction < 0.3
@@ -332,7 +359,9 @@
 				) /
 				var(--dpr, 1)
 		);
-		min-height: calc(95 * var(--hand-a) * 0.55);
+		/* As tall with no cards as with them, so the plate never moves when a hand is
+		   dealt, folded or shown. */
+		min-height: calc(95 * var(--hand-a));
 		margin-bottom: calc(-95 * var(--hand-a) * 0.3);
 	}
 	.hand :global(.card + .card) {
@@ -346,13 +375,13 @@
 	}
 
 	/* A pod's shown cards: at least 2 device pixels per card unit so the indices
-	   read, fanned tight and cut to a 58 × 50 window (the first card's index and
-	   the second card's corner) so the pod stays small. */
+	   read, fanned tight and cut to a 74 × 50 window (the first card's index, a
+	   ten's included, and the second card's corner) so the pod stays small. */
 	@media (max-width: 639px), (max-width: 1099px) and (orientation: portrait) {
 		.seat:not(.me) .hand {
 			--k: 0.75;
 			--card-min: 2;
-			width: calc(58 * var(--hand-a));
+			width: calc(74 * var(--hand-a));
 			height: calc(50 * var(--hand-a));
 			min-height: 0;
 			margin: 0;
@@ -361,7 +390,7 @@
 			transform: none;
 		}
 		.seat:not(.me) .hand :global(.card + .card) {
-			margin-left: calc(-53 * var(--hand-a));
+			margin-left: calc(-35 * var(--hand-a));
 		}
 	}
 	/* Upright tablets have room for the whole cards. */

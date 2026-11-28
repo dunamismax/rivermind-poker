@@ -103,8 +103,8 @@
 			class="ui-panel detail {panel}"
 			aria-label="Hand {open.hand.hand_no} at {open.hand.table_name}"
 		>
-			<div class="detail-top flex items-center justify-between gap-6">
-				<h3 class="mb-4 text-m text-gold text-shadow-ink">
+			<div class="detail-top mb-3 flex items-center justify-between gap-6">
+				<h3 class="text-m text-gold text-shadow-ink">
 					{open.hand.table_name} · hand #{open.hand.hand_no}
 				</h3>
 				<button type="button" class="ui-btn small" onclick={close}>Close</button>
@@ -135,20 +135,23 @@
 					<li class="row ui-inset">
 						<button
 							type="button"
-							class="open group grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_90px] items-center gap-x-6 px-4 py-3 text-left"
+							class="open group grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_90px] items-center gap-x-6 px-4 py-3 text-left lt-460:grid-cols-[minmax(0,1fr)_auto_64px] lt-460:gap-x-3"
 							aria-current={open?.hand.hand_id === hand.hand_id ? 'true' : undefined}
 							disabled={opening !== null}
 							onclick={() => show(hand.hand_id)}
 						>
 							<span
-								class="title col-1 row-1 truncate group-hover:text-gold-light group-focus-visible:text-gold-light group-aria-[current=true]:text-gold-light"
+								class="title col-1 row-1 truncate group-hover:text-gold-light lt-460:line-clamp-2 lt-460:whitespace-normal group-focus-visible:text-gold-light group-aria-[current=true]:text-gold-light"
 							>
 								{hand.table_name} · hand #{hand.hand_no}
 							</span>
-							<span class="when col-1 row-2 text-s text-paper-shade">
-								{#if hand.practice}<span class="tag gold first mr-3 bg-gold px-3 text-s text-ink">
+							<!-- The tag and the time each stay whole: on a phone the time goes under the tag. -->
+							<span
+								class="when col-1 row-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-s text-paper-shade"
+							>
+								{#if hand.practice}<span class="tag gold first bg-gold px-3 text-s text-ink">
 										Practice
-									</span>{/if}{when(hand.at)}
+									</span>{/if}<span class="whitespace-nowrap">{when(hand.at)}</span>
 							</span>
 							<span class="cards card-peek col-2 row-[1/3]" aria-hidden="true">
 								{#each hand.cards as card (`${card.rank}${card.suit}`)}<PlayingCard {card} />{/each}

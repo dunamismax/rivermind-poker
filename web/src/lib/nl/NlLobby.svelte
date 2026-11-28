@@ -307,7 +307,7 @@
 										class="sprite avatar {avatarClass({ kind: 'bot', bot: bot.kind, name: '' })}"
 										aria-hidden="true"
 									></span>
-									<span class="text grid gap-1">
+									<span class="text grid gap-2 leading-[1.15]">
 										<span class="name">{bot.label}</span>
 										{#if botNote(bot)}<span class={opponentNote}>
 												{botNote(bot)}
@@ -323,7 +323,7 @@
 									class="sprite avatar {avatarClass({ kind: 'human', bot: null, name: 'You' })}"
 									aria-hidden="true"
 								></span>
-								<span class="text grid gap-1">
+								<span class="text grid gap-2 leading-[1.15]">
 									<span class="name">No bots</span>
 									<span class={opponentNote}>Seats wait for people.</span>
 								</span>

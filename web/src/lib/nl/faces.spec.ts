@@ -19,6 +19,16 @@ describe('podName', () => {
 		expect(shown('Random bot 9')).toBe('Random 9');
 	});
 
+	it('marks the site’s own name, which no seat shows', () => {
+		const house = (name: string) =>
+			podName(name)
+				.filter((part) => part.house)
+				.map((part) => part.text);
+		expect(house('RiverMind Medium 3')).toEqual(['RiverMind ']);
+		expect(house('Calling bot 2')).toEqual([]);
+		expect(house('RiverMind')).toEqual([]);
+	});
+
 	it('keeps every letter of the name between its parts', () => {
 		for (const name of [
 			'RiverMind Easy 4',

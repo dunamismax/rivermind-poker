@@ -252,6 +252,10 @@
 	}
 
 	const note = 'note text-green-light text-shadow-ink';
+	// A menu that opens from the bar lies over the table at every size, so opening one
+	// never moves the table or the seats under the pointer.
+	const popover =
+		'absolute top-[calc(100%+4px)] left-0 z-7 p-4 [box-shadow:0_0_0_1px_var(--edge),var(--elevation-3)] phone:inset-x-0 phone:w-auto';
 	const bet =
 		'bet absolute z-2 flex -translate-1/2 animate-pop items-center gap-3 rounded-full bg-[rgb(12_13_21/0.94)] py-1 pr-4 pl-2 text-s whitespace-nowrap text-paper phone:gap-[3px] phone:py-0 phone:pr-2 phone:pl-1 phone:text-xs';
 	// A seat nobody is in: a dashed outline on the felt, and a button when the viewer may take it.
@@ -298,7 +302,7 @@
 	aria-label="Table"
 >
 	<div
-		class="bar relative col-span-full row-1 flex min-h-24 flex-wrap items-center gap-6 phone:z-6 phone:min-h-20 phone:gap-4 pocket:gap-2"
+		class="bar relative z-6 col-span-full row-1 flex min-h-24 flex-wrap items-center gap-6 phone:min-h-20 phone:gap-4 pocket:gap-2"
 	>
 		{#if me}
 			<button
@@ -358,7 +362,7 @@
 		</span>
 		{#if sharing && inviteLink}
 			<div
-				class="share ui-inset flex flex-[1_1_100%] flex-wrap items-center gap-4 p-4 phone:absolute phone:inset-x-0 phone:top-[calc(100%+4px)]"
+				class="share ui-inset {popover} flex w-[min(100%,560px)] flex-wrap items-center gap-4"
 				role="group"
 				aria-label="Invite link"
 			>
@@ -380,7 +384,7 @@
 		{/if}
 		{#if picked !== null && pickedInfo}
 			<div
-				class="player-menu ui-inset grid flex-[1_1_100%] gap-4 p-4 text-mist phone:absolute phone:inset-x-0 phone:top-[calc(100%+4px)]"
+				class="player-menu ui-inset {popover} grid w-[min(100%,460px)] gap-4 text-mist"
 				role="dialog"
 				aria-label="Player {pickedInfo.name}"
 			>
@@ -480,7 +484,7 @@
 			: 'tall:row-3 phone:row-2'} phone:h-[calc(100svh_-_var(--above)_-_var(--zone))] phone:max-h-[calc((100vw_-_8px)_*_1.45_+_68px)] phone:min-h-[424px] phone:px-0 phone:pt-0 phone:pb-34 tab:pb-46"
 	>
 		<div
-			class="stage relative mx-auto aspect-[21/10] w-[min(100%,calc((100dvh-340px)*2.1))] min-w-[min(100%,560px)] lap:aspect-[18/10] lap:w-[min(100%,calc((100dvh-330px)*1.8))] lap:min-w-[min(100%,480px)] tall:aspect-[16/10] tall:w-[min(100%,calc((100dvh-520px)*1.6))] tall:min-w-[min(100%,520px)] phone:aspect-auto phone:h-full phone:w-full phone:min-w-0 phone:[--pod-drop:60px] phone:[--pod-lift:-34px] tab:[--pod-drop:78px] tab:[--pod-lift:-44px]"
+			class="stage relative mx-auto aspect-[21/10] w-[min(100%,calc((100dvh-340px)*2.1))] min-h-[min(420px,calc(100dvh-350px))] min-w-[min(100%,560px)] [--seat-clear:calc(var(--seat-w)/2_+_50px)] [--board-above:82px] [--board-below:86px] [--seat-drop:88px] [--tag-level:64px] [--tag-side:92px] [--seat-w:clamp(176px,13.2vw,190px)] lap:aspect-[18/10] lap:[--board-above:63px] lap:[--board-below:67px] lap:[--seat-w:150px] lap:min-h-[min(400px,calc(100dvh-330px))] lap:w-[min(100%,calc((100dvh-330px)*1.8))] lap:min-w-[min(100%,480px)] tall:aspect-[16/10] tall:min-h-0 tall:w-[min(100%,calc((100dvh-520px)*1.6))] tall:min-w-[min(100%,520px)] phone:aspect-auto phone:h-full phone:w-full phone:min-w-0 phone:[--pod-drop:60px] phone:[--pod-lift:-34px] tab:[--pod-drop:78px] tab:[--pod-lift:-44px]"
 		>
 			<div class="felt ui-table absolute inset-0 lap:[--table-unit:2px]" aria-hidden="true"></div>
 			<div
@@ -495,7 +499,7 @@
 				<!-- On a phone the board's places overlap by 6px; that much is cut off each
 				     empty slot's drawn edge, so the row reads as single edges, as the replay's does. -->
 				<div
-					class="board flex gap-4 phone:gap-0 phone:[&>.card+.card]:-ml-3 phone:[&>.card+.slot]:[clip-path:inset(0_0_0_6px)]"
+					class="board flex gap-4 lap:gap-2 phone:gap-0 phone:[&>.card+.card]:-ml-3 phone:[&>.card+.slot]:[clip-path:inset(0_0_0_6px)]"
 					aria-label="Board"
 				>
 					{#each board as card, i (i)}
@@ -732,7 +736,7 @@
 
 	{#if me}
 		<div
-			class="tools col-2 row-3 flex flex-wrap items-center justify-center gap-4 tall:col-1 tall:row-2 tall:justify-start phone:min-h-(--zone) phone:content-start phone:justify-center phone:gap-3 {review
+			class="tools col-2 row-3 flex flex-wrap items-center justify-center gap-4 tall:col-1 tall:row-2 tall:justify-start phone:min-h-(--zone) phone:content-start phone:justify-center phone:gap-3 phone:pt-2 {review
 				? 'phone:row-4'
 				: 'phone:row-3'}"
 		>
@@ -744,32 +748,6 @@
 				<button type="button" class="ui-btn small" onclick={() => connection.sitOut()}>
 					<span>Sit out<span class="pocket:sr-only">&#32;next hand</span></span>
 				</button>
-			{/if}
-			{#if rebuyRoom > 0 && !me.leaving && !view.practice}
-				<form
-					class="rebuy flex items-center gap-3"
-					onsubmit={(e) => {
-						e.preventDefault();
-						connection.rebuy(Math.floor(rebuyAmount));
-					}}
-				>
-					<label>
-						<span class="sr-only">Rebuy amount</span>
-						<input
-							class="ui-field w-60 text-right phone:min-h-20 phone:w-42"
-							type="number"
-							inputmode="numeric"
-							min="1"
-							max={rebuyRoom}
-							step="1"
-							bind:value={rebuyAmount}
-						/>
-					</label>
-					<button type="submit" class="ui-btn small">Rebuy</button>
-				</form>
-			{/if}
-			{#if view.you.pending_rebuy}
-				<span class={note}>+{view.you.pending_rebuy} after this hand</span>
 			{/if}
 			{#if view.practice && opponents.length > 1}
 				<button
@@ -790,7 +768,7 @@
 				{#if choosing}
 					<div
 						id="opponents"
-						class="opponents flex flex-[1_1_100%] flex-wrap gap-3"
+						class="opponents order-last flex flex-[1_1_100%] flex-wrap justify-center gap-3 tall:justify-start phone:justify-center"
 						role="group"
 						aria-label="Practice opponent"
 					>
@@ -817,10 +795,39 @@
 			>
 				React
 			</button>
+			<!-- React stands beside the first button, and the rebuy after them: where the row is
+			     too narrow for all three, the amount and its button wrap together. The rows a
+			     button opens come last, whatever opened them. -->
+			{#if rebuyRoom > 0 && !me.leaving && !view.practice}
+				<form
+					class="rebuy flex items-center gap-3"
+					onsubmit={(e) => {
+						e.preventDefault();
+						connection.rebuy(Math.floor(rebuyAmount));
+					}}
+				>
+					<label>
+						<span class="sr-only">Rebuy amount</span>
+						<input
+							class="ui-field w-60 text-right phone:min-h-20 phone:w-42"
+							type="number"
+							inputmode="numeric"
+							min="1"
+							max={rebuyRoom}
+							step="1"
+							bind:value={rebuyAmount}
+						/>
+					</label>
+					<button type="submit" class="ui-btn small">Rebuy</button>
+				</form>
+			{/if}
+			{#if view.you.pending_rebuy}
+				<span class={note}>+{view.you.pending_rebuy} after this hand</span>
+			{/if}
 			{#if reacting}
 				<div
 					id="reactions"
-					class="reactions flex flex-[1_1_100%] flex-wrap gap-3 pocket:flex-nowrap pocket:overflow-x-auto"
+					class="reactions order-last flex flex-[1_1_100%] flex-wrap justify-center gap-3 tall:justify-start phone:justify-center pocket:flex-nowrap pocket:justify-start pocket:overflow-x-auto"
 					role="group"
 					aria-label="Reactions"
 				>

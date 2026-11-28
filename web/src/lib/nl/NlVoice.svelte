@@ -196,7 +196,7 @@
 {#if open}
 	<div
 		id="voice-popover"
-		class="voice-panel ui-inset absolute top-[calc(100%+4px)] left-0 z-7 grid max-h-[calc(100svh-120px)] phone:max-h-[calc(100svh_-_var(--above)_-_var(--zone)_-_8px)] w-[min(100%,460px)] gap-4 overflow-auto p-4 text-mist phone:inset-x-0 phone:w-auto"
+		class="voice-panel ui-inset absolute top-[calc(100%+4px)] left-0 z-7 grid [box-shadow:0_0_0_1px_var(--edge),var(--elevation-3)] max-h-[calc(100svh-120px)] phone:max-h-[calc(100svh_-_var(--above)_-_var(--zone)_-_8px)] w-[min(100%,460px)] gap-4 overflow-auto p-4 text-mist phone:inset-x-0 phone:w-auto"
 		role="dialog"
 		aria-label="Table voice"
 		tabindex="-1"

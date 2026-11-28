@@ -194,9 +194,19 @@ export function places(count: number, shape: Shape = 'wide'): { left: number; to
 	return spots.map(([left, top]) => ({ left, top }));
 }
 
+/** Where the board's row is on the wide table, in percent, and the places level with it. */
+const BOARD_LINE = 48;
+const BOARD_BAND = [35, 70];
+
+/** A wide place this near the top (in percent) is on the top rail, its seat's tags over the felt. */
+const TOP_RAIL = 12;
+
 /**
  * Where a place's bet sits. On the wide table, part of the way from the seat
- * towards the pot; the viewer's bet clears the viewer's larger cards. On the
+ * towards the pot; the viewer's bet clears the viewer's larger cards, a bet from
+ * the top rail sits a `shift` under its seat and `aside`, clear of the seat's tags,
+ * and any other is `beside` its seat, at least `--seat-clear` from the seat's middle, and
+ * over or under the board's row where the seat is level with it. On the
  * tall one no bet lands on the board or on the viewer's cards: under a seat in
  * the top row, beside a seat at the side, and just above a seat on a bottom
  * corner, a little towards the middle. Under and above are a `shift` in CSS pixels from the place, the pod's
@@ -207,7 +217,7 @@ export function betSpot(
 	spot: { left: number; top: number },
 	place: number,
 	shape: Shape
-): { left: number; top: number; shift?: string } {
+): { left: number; top: number; shift?: string; aside?: string; beside?: 'left' | 'right' } {
 	const round = (v: number) => Math.round(v * 10) / 10;
 	if (shape === 'tall') {
 		const side = sideOf(spot, place);
@@ -221,10 +231,33 @@ export function betSpot(
 		return { left: spot.left + inward, top: spot.top, shift: 'var(--pod-lift)' };
 	}
 	const toward = place === 0 ? 0.52 : 0.36;
-	return {
-		left: round(spot.left + (50 - spot.left) * toward),
-		top: round(spot.top + (48 - spot.top) * toward)
-	};
+	const left = round(spot.left + (50 - spot.left) * toward);
+	// A seat on the top rail has its tags hanging where its bet would land, and they
+	// are as tall on a small felt as on a large one, so the bet clears them by pixels.
+	// Under the tags, a little away from the middle, is clear of the pot and of the
+	// next seat's bet; the seat straight across has the pot under it, so its bet goes
+	// beside its tags.
+	if (place !== 0 && spot.top <= TOP_RAIL) {
+		if (spot.left === 50) {
+			return { ...spot, shift: 'var(--tag-level)', aside: 'var(--tag-side)' };
+		}
+		// A seat near the middle moves its bet out, off the pot; one near a corner moves
+		// it in, onto the felt.
+		const out = Math.abs(spot.left - 50) <= 20 ? 12 : -10;
+		return { ...spot, shift: 'var(--seat-drop)', aside: `${spot.left < 50 ? -out : out}px` };
+	}
+	const top = round(spot.top + (BOARD_LINE - spot.top) * toward);
+	if (place === 0) return { left, top };
+	// Any other seat's bet is beside it, and a seat is as wide on a small felt as on a
+	// large one: the bet stays a seat's half width and its own clear of the seat.
+	const beside = spot.left < 50 ? 'right' : 'left';
+	// Beside a seat at the side of the table is the end of the board, so that seat's
+	// bet goes just under the board's row, or just over it, by the cards' own height.
+	if (spot.top >= BOARD_BAND[0] && spot.top <= BOARD_BAND[1]) {
+		const shift = spot.top >= BOARD_LINE ? 'var(--board-below)' : 'calc(-1 * var(--board-above))';
+		return { left, top: BOARD_LINE, shift, beside };
+	}
+	return { left, top, beside };
 }
 
 function rules(shape: Shape, indent: string): string[] {
@@ -236,8 +269,16 @@ function rules(shape: Shape, indent: string): string[] {
 				`${indent}.at-${count}-${place} {\n${indent}\tleft: ${spot.left}%;\n${indent}\ttop: ${spot.top}%;\n${indent}}`
 			);
 			const top = bet.shift ? `calc(${bet.top}% + ${bet.shift})` : `${bet.top}%`;
+			const left =
+				bet.beside === 'right'
+					? `max(${bet.left}%, calc(${spot.left}% + var(--seat-clear)))`
+					: bet.beside === 'left'
+						? `min(${bet.left}%, calc(${spot.left}% - var(--seat-clear)))`
+						: bet.aside
+							? `calc(${bet.left}% + ${bet.aside})`
+							: `${bet.left}%`;
 			out.push(
-				`${indent}.bet-${count}-${place} {\n${indent}\tleft: ${bet.left}%;\n${indent}\ttop: ${top};\n${indent}}`
+				`${indent}.bet-${count}-${place} {\n${indent}\tleft: ${left};\n${indent}\ttop: ${top};\n${indent}}`
 			);
 		});
 	}

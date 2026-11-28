@@ -12,8 +12,8 @@
 	top: 0%;
 }
 .bet-2-1 {
-	left: 50%;
-	top: 17.3%;
+	left: calc(50% + var(--tag-side));
+	top: calc(0% + var(--tag-level));
 }
 .at-3-0 {
 	left: 50%;
@@ -28,7 +28,7 @@
 	top: 22%;
 }
 .bet-3-1 {
-	left: 23.1%;
+	left: max(23.1%, calc(8% + var(--seat-clear)));
 	top: 31.4%;
 }
 .at-3-2 {
@@ -36,7 +36,7 @@
 	top: 22%;
 }
 .bet-3-2 {
-	left: 76.9%;
+	left: min(76.9%, calc(92% - var(--seat-clear)));
 	top: 31.4%;
 }
 .at-4-0 {
@@ -52,24 +52,24 @@
 	top: 50%;
 }
 .bet-4-1 {
-	left: 19.3%;
-	top: 49.3%;
+	left: max(19.3%, calc(2% + var(--seat-clear)));
+	top: calc(48% + var(--board-below));
 }
 .at-4-2 {
 	left: 50%;
 	top: 0%;
 }
 .bet-4-2 {
-	left: 50%;
-	top: 17.3%;
+	left: calc(50% + var(--tag-side));
+	top: calc(0% + var(--tag-level));
 }
 .at-4-3 {
 	left: 98%;
 	top: 50%;
 }
 .bet-4-3 {
-	left: 80.7%;
-	top: 49.3%;
+	left: min(80.7%, calc(98% - var(--seat-clear)));
+	top: calc(48% + var(--board-below));
 }
 .at-5-0 {
 	left: 50%;
@@ -84,32 +84,32 @@
 	top: 66%;
 }
 .bet-5-1 {
-	left: 20.6%;
-	top: 59.5%;
+	left: max(20.6%, calc(4% + var(--seat-clear)));
+	top: calc(48% + var(--board-below));
 }
 .at-5-2 {
 	left: 24%;
 	top: 2%;
 }
 .bet-5-2 {
-	left: 33.4%;
-	top: 18.6%;
+	left: calc(24% + 10px);
+	top: calc(2% + var(--seat-drop));
 }
 .at-5-3 {
 	left: 76%;
 	top: 2%;
 }
 .bet-5-3 {
-	left: 66.6%;
-	top: 18.6%;
+	left: calc(76% + -10px);
+	top: calc(2% + var(--seat-drop));
 }
 .at-5-4 {
 	left: 96%;
 	top: 66%;
 }
 .bet-5-4 {
-	left: 79.4%;
-	top: 59.5%;
+	left: min(79.4%, calc(96% - var(--seat-clear)));
+	top: calc(48% + var(--board-below));
 }
 .at-6-0 {
 	left: 50%;
@@ -124,7 +124,7 @@
 	top: 78%;
 }
 .bet-6-1 {
-	left: 21.8%;
+	left: max(21.8%, calc(6% + var(--seat-clear)));
 	top: 67.2%;
 }
 .at-6-2 {
@@ -132,7 +132,7 @@
 	top: 22%;
 }
 .bet-6-2 {
-	left: 21.8%;
+	left: max(21.8%, calc(6% + var(--seat-clear)));
 	top: 31.4%;
 }
 .at-6-3 {
@@ -140,15 +140,15 @@
 	top: 0%;
 }
 .bet-6-3 {
-	left: 50%;
-	top: 17.3%;
+	left: calc(50% + var(--tag-side));
+	top: calc(0% + var(--tag-level));
 }
 .at-6-4 {
 	left: 94%;
 	top: 22%;
 }
 .bet-6-4 {
-	left: 78.2%;
+	left: min(78.2%, calc(94% - var(--seat-clear)));
 	top: 31.4%;
 }
 .at-6-5 {
@@ -156,7 +156,7 @@
 	top: 78%;
 }
 .bet-6-5 {
-	left: 78.2%;
+	left: min(78.2%, calc(94% - var(--seat-clear)));
 	top: 67.2%;
 }
 .at-7-0 {
@@ -172,7 +172,7 @@
 	top: 88%;
 }
 .bet-7-1 {
-	left: 24.4%;
+	left: max(24.4%, calc(10% + var(--seat-clear)));
 	top: 73.6%;
 }
 .at-7-2 {
@@ -180,39 +180,39 @@
 	top: 38%;
 }
 .bet-7-2 {
-	left: 18.6%;
-	top: 41.6%;
+	left: max(18.6%, calc(1% + var(--seat-clear)));
+	top: calc(48% + calc(-1 * var(--board-above)));
 }
 .at-7-3 {
 	left: 30%;
 	top: 0%;
 }
 .bet-7-3 {
-	left: 37.2%;
-	top: 17.3%;
+	left: calc(30% + -12px);
+	top: calc(0% + var(--seat-drop));
 }
 .at-7-4 {
 	left: 70%;
 	top: 0%;
 }
 .bet-7-4 {
-	left: 62.8%;
-	top: 17.3%;
+	left: calc(70% + 12px);
+	top: calc(0% + var(--seat-drop));
 }
 .at-7-5 {
 	left: 99%;
 	top: 38%;
 }
 .bet-7-5 {
-	left: 81.4%;
-	top: 41.6%;
+	left: min(81.4%, calc(99% - var(--seat-clear)));
+	top: calc(48% + calc(-1 * var(--board-above)));
 }
 .at-7-6 {
 	left: 90%;
 	top: 88%;
 }
 .bet-7-6 {
-	left: 75.6%;
+	left: min(75.6%, calc(90% - var(--seat-clear)));
 	top: 73.6%;
 }
 .at-8-0 {
@@ -228,7 +228,7 @@
 	top: 96%;
 }
 .bet-8-1 {
-	left: 28.2%;
+	left: max(28.2%, calc(16% + var(--seat-clear)));
 	top: 78.7%;
 }
 .at-8-2 {
@@ -236,47 +236,47 @@
 	top: 50%;
 }
 .bet-8-2 {
-	left: 18.6%;
-	top: 49.3%;
+	left: max(18.6%, calc(1% + var(--seat-clear)));
+	top: calc(48% + var(--board-below));
 }
 .at-8-3 {
 	left: 18%;
 	top: 4%;
 }
 .bet-8-3 {
-	left: 29.5%;
-	top: 19.8%;
+	left: calc(18% + 10px);
+	top: calc(4% + var(--seat-drop));
 }
 .at-8-4 {
 	left: 50%;
 	top: 0%;
 }
 .bet-8-4 {
-	left: 50%;
-	top: 17.3%;
+	left: calc(50% + var(--tag-side));
+	top: calc(0% + var(--tag-level));
 }
 .at-8-5 {
 	left: 82%;
 	top: 4%;
 }
 .bet-8-5 {
-	left: 70.5%;
-	top: 19.8%;
+	left: calc(82% + -10px);
+	top: calc(4% + var(--seat-drop));
 }
 .at-8-6 {
 	left: 99%;
 	top: 50%;
 }
 .bet-8-6 {
-	left: 81.4%;
-	top: 49.3%;
+	left: min(81.4%, calc(99% - var(--seat-clear)));
+	top: calc(48% + var(--board-below));
 }
 .at-8-7 {
 	left: 84%;
 	top: 96%;
 }
 .bet-8-7 {
-	left: 71.8%;
+	left: min(71.8%, calc(84% - var(--seat-clear)));
 	top: 78.7%;
 }
 .at-9-0 {
@@ -292,7 +292,7 @@
 	top: 98%;
 }
 .bet-9-1 {
-	left: 30.8%;
+	left: max(30.8%, calc(20% + var(--seat-clear)));
 	top: 80%;
 }
 .at-9-2 {
@@ -300,55 +300,55 @@
 	top: 56%;
 }
 .bet-9-2 {
-	left: 18.6%;
-	top: 53.1%;
+	left: max(18.6%, calc(1% + var(--seat-clear)));
+	top: calc(48% + var(--board-below));
 }
 .at-9-3 {
 	left: 8%;
 	top: 12%;
 }
 .bet-9-3 {
-	left: 23.1%;
-	top: 25%;
+	left: calc(8% + 10px);
+	top: calc(12% + var(--seat-drop));
 }
 .at-9-4 {
 	left: 36%;
 	top: 0%;
 }
 .bet-9-4 {
-	left: 41%;
-	top: 17.3%;
+	left: calc(36% + -12px);
+	top: calc(0% + var(--seat-drop));
 }
 .at-9-5 {
 	left: 64%;
 	top: 0%;
 }
 .bet-9-5 {
-	left: 59%;
-	top: 17.3%;
+	left: calc(64% + 12px);
+	top: calc(0% + var(--seat-drop));
 }
 .at-9-6 {
 	left: 92%;
 	top: 12%;
 }
 .bet-9-6 {
-	left: 76.9%;
-	top: 25%;
+	left: calc(92% + -10px);
+	top: calc(12% + var(--seat-drop));
 }
 .at-9-7 {
 	left: 99%;
 	top: 56%;
 }
 .bet-9-7 {
-	left: 81.4%;
-	top: 53.1%;
+	left: min(81.4%, calc(99% - var(--seat-clear)));
+	top: calc(48% + var(--board-below));
 }
 .at-9-8 {
 	left: 80%;
 	top: 98%;
 }
 .bet-9-8 {
-	left: 69.2%;
+	left: min(69.2%, calc(80% - var(--seat-clear)));
 	top: 80%;
 }
 @media (max-width: 639px), (max-width: 1099px) and (orientation: portrait) {

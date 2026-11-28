@@ -111,13 +111,45 @@ describe('seat places', () => {
 		expect(placesCss()).toContain('top: calc(10% + var(--pod-drop));');
 	});
 
+	it('moves a wide bet by pixels where a seat, its tags or the board are in the way', () => {
+		const at = (count: number, place: number) =>
+			betSpot(places(count, 'wide')[place], place, 'wide');
+		// Straight across: beside the seat's tags, since the pot is under them.
+		expect(at(2, 1)).toEqual({
+			left: 50,
+			top: 0,
+			shift: 'var(--tag-level)',
+			aside: 'var(--tag-side)'
+		});
+		// The top rail: under the tags, out from the middle or in from a corner.
+		expect(at(9, 4)).toEqual({ left: 36, top: 0, shift: 'var(--seat-drop)', aside: '-12px' });
+		expect(at(9, 5)).toEqual({ left: 64, top: 0, shift: 'var(--seat-drop)', aside: '12px' });
+		expect(at(9, 3)).toEqual({ left: 8, top: 12, shift: 'var(--seat-drop)', aside: '10px' });
+		// Level with the board: under its row, or over it, and clear of the seat.
+		expect(at(9, 2)).toMatchObject({ top: 48, shift: 'var(--board-below)', beside: 'right' });
+		expect(at(7, 5)).toMatchObject({
+			top: 48,
+			shift: 'calc(-1 * var(--board-above))',
+			beside: 'left'
+		});
+		// Anywhere else: towards the pot, and never nearer the seat than its own width allows.
+		expect(at(6, 1)).toEqual({ left: 21.8, top: 67.2, beside: 'right' });
+		expect(at(6, 0)).toEqual({ left: 50, top: 73 });
+		const css = placesCss();
+		expect(css).toContain('left: max(21.8%, calc(6% + var(--seat-clear)));');
+		expect(css).toContain('left: min(78.2%, calc(94% - var(--seat-clear)));');
+		expect(css).toContain('top: calc(48% + var(--board-below));');
+	});
+
 	it('puts each bet between its seat and the pot', () => {
 		for (const shape of ['wide', 'tall'] as const) {
 			for (let count = 2; count <= 9; count += 1) {
 				places(count, shape).forEach((spot, place) => {
 					const bet = betSpot(spot, place, shape);
 					expect(Math.abs(bet.left - 50)).toBeLessThanOrEqual(Math.abs(spot.left - 50));
-					expect(Math.abs(bet.top - 50)).toBeLessThan(Math.abs(spot.top - 50) + 2);
+					// A bet moved by pixels starts from its seat's own line, or from the board's.
+					const slack = bet.shift ? 2.5 : 2;
+					expect(Math.abs(bet.top - 50)).toBeLessThan(Math.abs(spot.top - 50) + slack);
 				});
 			}
 		}

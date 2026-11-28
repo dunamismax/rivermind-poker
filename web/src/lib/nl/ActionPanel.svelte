@@ -18,11 +18,14 @@
 	} = $props();
 
 	let amount = $state(0);
+	/** The size last picked by its button, for as long as the amount is still that size. */
+	let picked = $state<string | null>(null);
 	let lastTurn = -1;
 	$effect.pre(() => {
 		if (turnSeq !== lastTurn) {
 			lastTurn = turnSeq;
 			amount = legal.min_to;
+			picked = null;
 		}
 	});
 
@@ -31,6 +34,14 @@
 	const sizes = $derived(presets(legal, hand));
 	const target = $derived(clampAmount(amount, legal));
 	const canRaise = $derived(legal.raise_kind !== null && legal.max_to >= legal.min_to);
+	// One size is lit at a time. Two can come to the same amount (the minimum raise is
+	// often half the pot): the one picked is lit then, or else the first of them.
+	const lit = $derived(
+		(
+			sizes.find((size) => size.label === picked && size.amount === target) ??
+			sizes.find((size) => size.amount === target)
+		)?.label ?? null
+	);
 
 	// The three main buttons: tall, with room for a label on two lines.
 	const main =
@@ -45,10 +56,13 @@
 					<button
 						type="button"
 						class="ui-btn small choice p-0"
-						aria-pressed={preset.amount === target}
+						aria-pressed={preset.label === lit}
 						aria-label={`${preset.label}: ${preset.amount}`}
 						{disabled}
-						onclick={() => (amount = preset.amount)}
+						onclick={() => {
+							amount = preset.amount;
+							picked = preset.label;
+						}}
 					>
 						{SHORT[preset.label] ?? preset.label}
 					</button>

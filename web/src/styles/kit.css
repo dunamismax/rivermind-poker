@@ -42,10 +42,12 @@
 	width: calc(14 * var(--spacing));
 	height: calc(13 * var(--spacing));
 }
-/* A compact hand: cards fanned tight and cut to a 58 × 50 card-unit window
+/* A compact hand: cards fanned tight and cut to a 74 × 50 card-unit window
    (the first card's index and the second card's corner), at 2 device pixels
    per card unit or more where the screen has them, so the ranks read in a
-   list or a small seat. --peek-a is one card unit, snapped as PlayingCard's. */
+   list or a small seat. The second card starts 36 units along, where a ten's
+   index ends: any nearer and a ten reads as a one. --peek-a is one card unit,
+   snapped as PlayingCard's. */
 .card-peek {
 	--k: 0.75;
 	--card-min: 2;
@@ -59,7 +61,7 @@
 	);
 	display: flex;
 	flex: none;
-	width: calc(58 * var(--peek-a));
+	width: calc(74 * var(--peek-a));
 	height: calc(50 * var(--peek-a));
 	overflow: hidden;
 }
@@ -67,7 +69,7 @@
 	transform: none;
 }
 .card-peek > .card + .card {
-	margin-left: calc(-53 * var(--peek-a));
+	margin-left: calc(-35 * var(--peek-a));
 }
 .emblem {
 	width: calc(15 * var(--spacing));

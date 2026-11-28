@@ -74,6 +74,10 @@
 	const number = 'px-3 py-2 text-right align-top whitespace-nowrap lt-460:px-2';
 	// A phone has no room for the hands column: every matchup has as many, and the note says how many.
 	const wide = `${number} lt-460:hidden`;
+	// Where the page has room, every table keeps its columns in the same places.
+	const narrow = 'ge-600:w-[16%]';
+	const middle = 'ge-600:w-[19%]';
+	const broad = 'ge-600:w-[27%]';
 	// On a phone the interval breaks after “to”.
 	const interval =
 		'px-3 py-2 text-right align-top whitespace-nowrap lt-460:px-2 lt-460:whitespace-normal';
@@ -172,7 +176,7 @@
 								: 'The strategy as it will be served'}
 					</h4>
 					<div class="overflow-x-auto">
-						<table class="ui-inset w-full border-collapse text-s">
+						<table class="ui-inset w-full border-collapse text-s ge-600:table-fixed">
 							<caption class="sr-only">
 								Results of {champion.name}, {evaluation.candidate === 'bundle'
 									? 'as served'
@@ -181,15 +185,15 @@
 							<thead class="text-gold-light">
 								<tr>
 									<th scope="col" class={cell}>Against, and stacks</th>
-									<th scope="col" class={wide}>Hands</th>
-									<th scope="col" class={number}>Won per 100</th>
-									<th scope="col" class={interval}>95% interval</th>
+									<th scope="col" class="{wide} {narrow}">Hands</th>
+									<th scope="col" class="{number} {middle}">Won per 100</th>
+									<th scope="col" class="{interval} {broad}">95% interval</th>
 								</tr>
 							</thead>
 							<tbody>
 								{#each evaluation.results as row (`${row.opponent}-${row.stack_bb}`)}
 									<tr class={row.gate ? 'text-paper' : ''}>
-										<th scope="row" class="{cell} font-normal">
+										<th scope="row" class="{cell} font-[400]">
 											{opponentName(row)}{#if row.gate}<span class="text-gold-light">*</span>{/if}
 											<span class="block text-haze">{row.stack_bb} bb</span>
 										</th>
@@ -275,22 +279,22 @@
 						against RiverMind Hard itself:
 					</p>
 					<div class="mt-5 overflow-x-auto">
-						<table class="ui-inset w-full border-collapse text-s">
+						<table class="ui-inset w-full border-collapse text-s ge-600:table-fixed">
 							<caption class="sr-only">
 								Results of RiverMind Medium made from {champion.name}
 							</caption>
 							<thead class="text-gold-light">
 								<tr>
 									<th scope="col" class={cell}>Against, and stacks</th>
-									<th scope="col" class={wide}>Hands</th>
-									<th scope="col" class={number}>Won per 100</th>
-									<th scope="col" class={interval}>95% interval</th>
+									<th scope="col" class="{wide} {narrow}">Hands</th>
+									<th scope="col" class="{number} {middle}">Won per 100</th>
+									<th scope="col" class="{interval} {broad}">95% interval</th>
 								</tr>
 							</thead>
 							<tbody>
 								{#each level.evaluation.results as row (`${row.opponent}-${row.stack_bb}`)}
 									<tr>
-										<th scope="row" class="{cell} font-normal">
+										<th scope="row" class="{cell} font-[400]">
 											{opponentName(row)}
 											<span class="block text-haze">{row.stack_bb} bb</span>
 										</th>
