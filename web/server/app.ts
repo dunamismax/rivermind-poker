@@ -47,6 +47,12 @@ export interface Options {
 	 * own list of static files does not hold it.
 	 */
 	voiceFiles?: string | null;
+	/**
+	 * The iPhone app's ids (`<team>.com.rivermindpoker.app`), for the site association file
+	 * that makes the site's invite links open the app where it is installed (P5D.8). None
+	 * until the app has a team (Q-13), and then no file is served.
+	 */
+	appIds?: readonly string[];
 }
 
 /** One open socket, fed the frames that arrive. */
@@ -105,6 +111,42 @@ function pathOf(req: IncomingMessage): string {
 /** Where the release publishes the hashes of the files its pages run (P4C.8). */
 export const VOICE_FILES_PATH = '/voice-files.json';
 
+/** Where iOS asks a site which of its links an app opens (Apple's universal links). */
+export const APP_SITE_ASSOCIATION_PATH = '/.well-known/apple-app-site-association';
+
+/** The id an app id must look like: a ten-character team, then the bundle id. */
+const APP_ID = /^[A-Z0-9]{10}\.[A-Za-z0-9.-]+$/;
+
+/**
+ * The site association file (P5D.8): the app opens a private table's invite (`/?invite=`)
+ * and nothing else, so every other link stays the site's. Shared replays join it at P6.1a.
+ */
+export function appSiteAssociation(appIds: readonly string[]): string {
+	for (const id of appIds) {
+		if (!APP_ID.test(id)) throw new RangeError(`not an app id: ${id}`);
+	}
+	return (
+		JSON.stringify({
+			applinks: {
+				details: [
+					{
+						appIDs: [...appIds],
+						components: [{ '/': '/', '?': { invite: '?*' }, comment: 'A private table’s invite' }]
+					}
+				]
+			}
+		}) + '\n'
+	);
+}
+
+/** The app ids `RIVERMIND_APPLE_APP_IDS` names, separated by commas. */
+export function appIdsFrom(text: string | undefined): string[] {
+	return (text ?? '')
+		.split(',')
+		.map((id) => id.trim())
+		.filter((id) => id !== '');
+}
+
 /** Paths the HTTP API answers. */
 export function isApiPath(path: string): boolean {
 	return path === '/api' || path.startsWith('/api/');
@@ -119,8 +161,10 @@ export function createApp({
 	origin = null,
 	sockets: tables = null,
 	voiceProxy = null,
-	voiceFiles = null
+	voiceFiles = null,
+	appIds = []
 }: Options): App {
+	const association = appIds.length ? appSiteAssociation(appIds) : null;
 	const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
 	let closing = false;
 
@@ -163,6 +207,21 @@ export function createApp({
 				'content-length': Buffer.byteLength(voiceFiles)
 			});
 			res.end(req.method === 'HEAD' ? undefined : voiceFiles);
+			return;
+		}
+		// Served as JSON with no redirect, as iOS requires; iOS fetches it through Apple's
+		// content network, which caches it for itself.
+		if (
+			path === APP_SITE_ASSOCIATION_PATH &&
+			association !== null &&
+			/^(GET|HEAD)$/.test(req.method ?? '')
+		) {
+			res.writeHead(200, {
+				'content-type': 'application/json',
+				'cache-control': 'max-age=3600',
+				'content-length': Buffer.byteLength(association)
+			});
+			res.end(req.method === 'HEAD' ? undefined : association);
 			return;
 		}
 		// Hashed assets are cached for a year by the handler; everything else revalidates,

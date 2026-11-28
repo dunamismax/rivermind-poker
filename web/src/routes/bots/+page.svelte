@@ -6,9 +6,16 @@
 	import { resolve } from '$app/paths';
 	import SiteHeader from '#lib/components/SiteHeader.svelte';
 	import registry from '#lib/champions.json';
+	import {
+		BOT_CAVEATS,
+		BOTS_LEAD,
+		measuredText,
+		REPOSITORY as SOURCE,
+		SIMPLE_BOTS
+	} from '#lib/nl/content.ts';
 	import { winRate } from '#lib/nl/faces.ts';
 
-	const REPOSITORY = 'https://github.com/dunamismax/rivermind-poker/blob/main/docs';
+	const REPOSITORY = `${SOURCE}/docs`;
 	const OPPONENTS: Record<string, string> = {
 		heuristic: 'RiverMind Easy',
 		calling_station: 'Calling bot',
@@ -98,20 +105,15 @@
 <main class="page mx-auto max-w-[860px] p-8">
 	<article class="ui-panel px-10 pt-8 pb-10 text-mist">
 		<h2 class="mb-5 text-l text-gold text-shadow-ink">The bots</h2>
-		<p class="lead text-paper">
-			Every bot at a RiverMind table is labelled as a bot and never poses as a person. Anything this
-			site says about how well a bot plays comes from a published measurement, shown on this page.
-		</p>
+		<p class="lead text-paper">{BOTS_LEAD}</p>
 
 		<section aria-labelledby="simple">
 			<h3 id="simple" class={heading}>The simple bots</h3>
 			<ul class={list}>
-				<li>
-					<strong class="text-paper">RiverMind Easy</strong> plays its cards with a plan: it raises strong
-					hands, folds weak ones and rarely bluffs. It follows hand-written rules and was not trained.
-				</li>
-				<li><strong class="text-paper">Calling bot</strong> checks or calls almost anything.</li>
-				<li><strong class="text-paper">Random bot</strong> picks any legal action.</li>
+				{#each SIMPLE_BOTS as bot (bot.label)}<li>
+						<strong class="text-paper">{bot.label}</strong>
+						{bot.text}
+					</li>{/each}
 			</ul>
 		</section>
 
@@ -160,13 +162,7 @@
 						at {champion.seats}-seat tables is still being built.
 					</p>
 				{/if}
-				<p class="mt-5">
-					It was measured in duplicate matches. {champion.seats === 2
-						? 'Each deal is played twice with the seats swapped, so both sides hold the same cards once'
-						: `Each deal is played ${champion.seats} times, the bot once in every seat against ${champion.seats - 1} copies of its opponent, so it holds every seat’s cards once`}
-					and luck largely cancels. Results are big blinds won per 100 hands at blinds of 50 and 100,
-					with a 95% interval: if the interval’s lower end is above zero, the win is unlikely to be chance.
-				</p>
+				<p class="mt-5">{measuredText(champion.seats)}</p>
 				{#each champion.evaluations as evaluation (evaluation.report)}
 					<h4 class="mt-8 mb-3 text-paper">
 						{evaluation.candidate !== 'bundle'
@@ -225,18 +221,7 @@
 
 				<h4 class="mt-8 mb-3 text-paper">What these numbers do not say</h4>
 				<ul class={list}>
-					<li>
-						They measure play against these bots, not against people. No claim is made about how it
-						does against you: play it and see.
-					</li>
-					<li>
-						It plays a simplified game: a few bet sizes on each street, and hands grouped into
-						buckets of similar strength. Bets it has not seen are mapped to the nearest sizes it
-						has.
-					</li>
-					<li>
-						Like every bot here, it sees only its own cards and the table, never yours or the deck.
-					</li>
+					{#each BOT_CAVEATS as caveat (caveat)}<li>{caveat}</li>{/each}
 				</ul>
 
 				<h4 class="mt-8 mb-3 text-paper">What the server checks before it plays</h4>

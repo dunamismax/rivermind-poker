@@ -67,6 +67,8 @@ public struct ActionSizing: Sendable, Hashable {
 public final class TableModel {
     public let connection: TableConnection
     private let client: APIClient
+    /// A finished hand of this table, opened without leaving the seat (P5D.8).
+    public let review: HandReview
 
     /// Who the guest muted or blocked, by public reference.
     public private(set) var relations: [RelationItem] = []
@@ -82,6 +84,13 @@ public final class TableModel {
     public init(connection: TableConnection, client: APIClient) {
         self.connection = connection
         self.client = client
+        review = HandReview(client: client)
+    }
+
+    /// Opens a finished hand of this table for review: hand `handNo`, or the guest's newest here.
+    public func openReview(handNo: Int?) async {
+        guard let tableID = connection.tableID else { return }
+        await review.open(table: tableID, handNo: handNo, on: connection)
     }
 
     /// Reads the guest's mutes and blocks, and the practice opponents the server offers.

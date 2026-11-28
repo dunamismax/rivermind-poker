@@ -3,6 +3,7 @@
 	// the table rules where card rooms differ. docs/rules.md is the full text.
 	import { resolve } from '$app/paths';
 	import SiteHeader from '#lib/components/SiteHeader.svelte';
+	import { BOT_RULES, CONDUCT, TABLE_RULES } from '#lib/nl/content.ts';
 
 	const heading = 'mt-10 mb-3 text-m text-gold-light';
 	const list = 'list-disc pl-10 [&>li+li]:mt-3';
@@ -57,15 +58,7 @@
 		<section aria-labelledby="bots">
 			<h3 id="bots" class={heading}>Bots play by the same rules</h3>
 			<ul class={list}>
-				<li>
-					Bots are always labelled. They decide from the same view a person in their seat would
-					have: their own cards and what happened at the table. They never see other hole cards or
-					the deck.
-				</li>
-				<li>
-					Bots keep seats warm: when a person wants a seat at a table of bots, a bot finishes its
-					hand and gives the seat up.
-				</li>
+				{#each BOT_RULES as rule (rule)}<li>{rule}</li>{/each}
 			</ul>
 		</section>
 
@@ -82,40 +75,8 @@
 		<section aria-labelledby="table-rules">
 			<h3 id="table-rules" class={heading}>Table rules</h3>
 			<dl class="my-10 [&>dd]:mt-1 [&>dd]:ml-10 [&>dt]:mt-5 [&>dt]:text-paper">
-				<dt>Blinds and the button</dt>
-				<dd>
-					The two players left of the button post the small and big blinds. Heads-up, the button
-					posts the small blind and acts first before the flop. The button moves one seat after
-					every hand.
-				</dd>
-				<dt>Joining</dt>
-				<dd>
-					A player who sits down is dealt in from the next hand, with no missed-blind charges. A
-					seat can be held for a player for 60 seconds while they buy in.
-				</dd>
-				<dt>Betting</dt>
-				<dd>
-					No-limit: a bet or raise can be any amount from the minimum up to all your chips. A raise
-					must be at least as large as the last full bet or raise. An all-in for less than a full
-					raise does not reopen the betting for players who have already acted.
-				</dd>
-				<dt>Pots</dt>
-				<dd>
-					An uncalled bet is returned. When players are all-in for different amounts, side pots are
-					formed, and each pot goes to the best hand among the players in it. Split pots are shared
-					equally; an odd chip goes to the first winner left of the button.
-				</dd>
-				<dt>Showdown</dt>
-				<dd>
-					Hands are shown in order, and a hand that cannot win or tie is mucked unseen. When players
-					are all-in with no more betting possible, their hands are shown at once.
-				</dd>
-				<dt>The clock</dt>
-				<dd>
-					Each turn has 20 seconds, then a 30-second time bank that grows back by 2 seconds a hand.
-					When both run out you check if you can, and fold otherwise. A player who is away for a
-					full orbit is sat out.
-				</dd>
+				{#each TABLE_RULES as rule (rule.term)}<dt>{rule.term}</dt>
+					<dd>{rule.text}</dd>{/each}
 			</dl>
 		</section>
 
@@ -132,11 +93,7 @@
 
 		<section aria-labelledby="conduct">
 			<h3 id="conduct" class={heading}>Playing fair</h3>
-			<p>
-				There is no chat: players can send a few preset reactions. Select a player’s name at the
-				table to mute, block or report them. Reports, and signs of players working together such as
-				two people at one table from the same network, are kept for review.
-			</p>
+			<p>{CONDUCT}</p>
 		</section>
 	</article>
 </main>

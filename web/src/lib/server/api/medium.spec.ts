@@ -153,6 +153,7 @@ describe('serving Medium', () => {
 			name: 'test-champion',
 			promoted: '2026-11-21',
 			iterations: 1_000,
+			report: 'docs/evaluations/test-champion-medium.md',
 			stack_bb: 100,
 			results: [
 				{

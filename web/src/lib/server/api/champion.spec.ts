@@ -148,6 +148,7 @@ describe('loading a champion', () => {
 			name: 'test-champion',
 			promoted: '2026-11-21',
 			iterations: 1_000,
+			report: 'docs/evaluations/test-champion-served.md',
 			stack_bb: 100,
 			results: [
 				{
@@ -442,4 +443,22 @@ describe('the registry this build was made with', () => {
 		},
 		60_000
 	);
+});
+
+describe('the published reports the config names (P5D.8)', () => {
+	it('names a report that is in the repository for every registered champion and level', async () => {
+		const { default: registry } = await import('../../champions.json', { with: { type: 'json' } });
+		const { describeMedium } = await import('./runtime.ts');
+		const root = resolve(import.meta.dirname, '../../../../..');
+		const champions = registry.champions as unknown as Champion[];
+		expect(champions.length).toBeGreaterThan(0);
+		for (const champion of champions) {
+			const described = [describeChampion(champion)];
+			if (champion.levels?.medium) described.push(describeMedium(champion));
+			for (const { report } of described) {
+				expect(report).toMatch(/^docs\/evaluations\/.+\.md$/);
+				expect(existsSync(join(root, report!)), report!).toBe(true);
+			}
+		}
+	});
 });

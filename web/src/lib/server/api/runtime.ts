@@ -149,7 +149,8 @@ export function describeChampion(champion: Champion, seats?: readonly number[]):
 	return described(
 		champion,
 		(served?.results ?? []).filter((r) => r.gate),
-		seats
+		seats,
+		served?.report
 	);
 }
 
@@ -163,17 +164,21 @@ export function describeMedium(champion: Champion, seats?: readonly number[]): p
 	return described(
 		champion,
 		LEVEL_OPPONENTS.flatMap((kind) => rows.filter((r) => r.opponent === kind)),
-		seats
+		seats,
+		evaluation?.report
 	);
 }
 
 function described(
 	champion: Champion,
 	rows: ChampionEvaluation['results'],
-	seats?: readonly number[]
+	seats?: readonly number[],
+	report?: string
 ): p.BotChampion {
 	return {
 		...(seats ? { seats: [...seats] } : {}),
+		// The registry names a report without its extension (`evaluations/x-served`).
+		...(report ? { report: `docs/${report}.md` } : {}),
 		name: champion.name,
 		promoted: champion.promoted,
 		iterations: champion.iterations,

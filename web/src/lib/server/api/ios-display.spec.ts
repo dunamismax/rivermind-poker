@@ -55,6 +55,16 @@ import {
 import { buildReplay, describeAction, shortCard, stageOf, stepForKey } from '../../nl/replay.ts';
 import { REACTIONS, REPORT_REASONS, VOICE_REPORT_NOTE, relationText } from '../../nl/safety.ts';
 import {
+	BOT_CAVEATS,
+	BOT_RULES,
+	BOTS_LEAD,
+	CONDUCT,
+	measuredText,
+	REPOSITORY,
+	SIMPLE_BOTS,
+	TABLE_RULES
+} from '../../nl/content.ts';
+import {
 	buyInHint,
 	busted,
 	dealtIn,
@@ -918,6 +928,16 @@ describe('the iPhone app display fixture', () => {
 			lobby: lobbyCases(seededRandom(41)),
 			layout: layoutCases(),
 			table: tableCases(messages),
+			content: {
+				tableRules: TABLE_RULES,
+				botRules: BOT_RULES,
+				conduct: CONDUCT,
+				botsLead: BOTS_LEAD,
+				simpleBots: SIMPLE_BOTS,
+				botCaveats: BOT_CAVEATS,
+				measured: [2, 3, 6, 9].map((seats) => ({ seats, text: measuredText(seats) })),
+				repository: REPOSITORY
+			},
 			replays,
 			actions,
 			stepKeys: keys.flatMap((key) =>

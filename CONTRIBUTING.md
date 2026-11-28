@@ -519,6 +519,10 @@ RIVERMIND_RECORD_SNAPSHOTS=1 swift test --filter KitSnapshotTests
 RIVERMIND_RECORD_APP_SESSION=1 ios/test.sh package
 ```
 
+**Hands, the bots and fairness (P5D.8).** “Your hands”, the replayer, the review at the table, the bots and the fairness screen read only what a page reads: `GET /api/hands`, `GET /api/hands/{id}` and `GET /api/config`, whose trained bots now name the published report their results come from (`report`, a path in the repository). The words the site's `/fairness` and `/bots` pages and the app both show (the table rules, how bots play, the simple bots, the caveats, how a model was measured) are in `web/src/lib/nl/content.ts`, which the pages render as they are; `ContentWords.swift` ports them and `pnpm ios:fixtures` holds the two together.
+
+**Invite links open the app (P5D.8).** The Node server serves `/.well-known/apple-app-site-association`, which tells iOS that the app opens a private table's invite (`/?invite=`) and no other link, when `RIVERMIND_APPLE_APP_IDS` names the app's ids (`<team id>.com.rivermindpoker.app`, comma-separated). The app has no team until Q-13 is answered, so the variable is unset everywhere and the path is an ordinary 404; once there is a team, set it in the web unit and add the Associated Domains entitlement (`applinks:rivermindpoker.com`) to the app, then check an invite opened from Messages in the Simulator.
+
 The app names itself to the server in a `RiverMind-Client: ios/<build>` header on every request and on the `/ws` handshake, and the server counts sessions, new guests, sockets and deletions by kind of client (`web/src/lib/server/api/clients.ts`) for P7.1. The header identifies nobody: every copy of a build sends the same value.
 
 ## Deploy rivermindpoker.com

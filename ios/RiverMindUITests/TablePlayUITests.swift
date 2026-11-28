@@ -53,7 +53,9 @@ final class TablePlayUITests: XCTestCase {
     }
 
     private static let main = ["table.fold", "table.call", "table.raise"]
-    private static let tools = ["table.sitOut", "table.sitIn", "table.react", "table.rebuy", "table.opponent", "table.refill"]
+    private static let tools = [
+        "table.sitOut", "table.sitIn", "table.react", "table.rebuy", "table.opponent", "table.refill", "table.reviewHand",
+    ]
 
     /// Checks or calls at each turn until `done`, keeping the main buttons' frames.
     private func play(
@@ -172,6 +174,120 @@ final class TablePlayUITests: XCTestCase {
         play(app, frames: &frames) { $0.turns > turns }
         checkNothingUnder(frames)
         leave(app)
+    }
+
+    /// A settled hand reviewed from the dock and from the hand log, over the felt, with the
+    /// next hand played while it is open (P5D.8); then the same hand in “Your hands”, and the
+    /// bots and fairness screens.
+    func testReviewsAHandAtTheTableAndInYourHands() throws {
+        let app = launch(
+            server: try environment("RIVERMIND_SERVER"),
+            ["RIVERMIND_TABLE_SEATS": "2", "RIVERMIND_TABLE_BOTS": "calling_station", "RIVERMIND_TABLE_BUY_IN": "40"])
+        XCTAssertTrue(element(app, "table.screen").waitForExistence(timeout: 20))
+        var frames = Frames()
+        let reviewHand = app.buttons["table.reviewHand"]
+        play(app, frames: &frames) { _ in reviewHand.exists && reviewHand.isHittable && !self.element(app, "table.actions").exists }
+        let handLabel = element(app, "table.hand").label
+        reviewHand.tap()
+
+        // The review opens on the result, over the felt.
+        let review = element(app, "review")
+        XCTAssertTrue(review.waitForExistence(timeout: 20))
+        let stage = element(app, "replay.stage")
+        expect(stage, "label BEGINSWITH %@", "Result · step ")
+        app.buttons["replay.first"].tap()
+        expect(stage, "label CONTAINS %@", "step 1 of ")
+        XCTAssertFalse(app.buttons["replay.first"].isEnabled)
+        app.buttons["replay.next"].tap()
+        expect(stage, "label CONTAINS %@", "step 2 of ")
+        app.buttons["replay.last"].tap()
+        expect(stage, "label BEGINSWITH %@", "Result")
+        XCTAssertTrue(review.frame.maxY <= app.buttons["table.sitOut"].frame.minY, "the review covers the zone")
+
+        // The next turn comes with the review open, and its buttons stand where they did.
+        let turns = frames.turns
+        play(app, frames: &frames) { $0.turns > turns }
+        XCTAssertTrue(review.exists, "the review closed by itself")
+        app.buttons["review.close"].tap()
+        XCTAssertFalse(review.waitForExistence(timeout: 2))
+
+        // “Review last hand” from the hand log opens the newest settled hand.
+        app.buttons["table.logButton"].tap()
+        let last = app.buttons["table.reviewLast"]
+        XCTAssertTrue(last.waitForExistence(timeout: 10))
+        last.tap()
+        XCTAssertTrue(review.waitForExistence(timeout: 20))
+        app.buttons["review.close"].tap()
+        checkNothingUnder(frames)
+        leave(app)
+
+        // “Your hands” lists the hand, and opens it to replay.
+        let hands = app.buttons["lobby.hands"]
+        XCTAssertTrue(scrollTo(app, hands))
+        hands.tap()
+        XCTAssertTrue(element(app, "hands").waitForExistence(timeout: 10))
+        let number = handLabel.firstMatch(of: /Hand #(\d+)/).map { String($0.1) } ?? ""
+        // The same guest practises in another test: take a hand of this table's.
+        let row = app.buttons.matching(
+            NSPredicate(format: "identifier == %@ AND NOT (label CONTAINS %@)", "hands.row.\(number)", "Practice")
+        ).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 20), "hand #\(number) is not listed")
+        row.tap()
+        XCTAssertTrue(element(app, "hand.detail").waitForExistence(timeout: 10))
+        expect(element(app, "replay.stage"), "label BEGINSWITH %@", "Result · step ")
+        XCTAssertTrue(element(app, "hand.history").waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["hand.practiceAgain"].exists, "a hand at a real table offers practice")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        // The bots, each trained one with its published results, and the fairness screen.
+        let bots = app.buttons["lobby.bots"]
+        XCTAssertTrue(scrollTo(app, bots))
+        bots.tap()
+        XCTAssertTrue(element(app, "bots").waitForExistence(timeout: 10))
+        let easy = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "RiverMind Easy plays its cards with a plan")).firstMatch
+        XCTAssertTrue(easy.waitForExistence(timeout: 5))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let fairness = app.buttons["lobby.fairness"]
+        XCTAssertTrue(scrollTo(app, fairness))
+        fairness.tap()
+        XCTAssertTrue(element(app, "fairness").waitForExistence(timeout: 10))
+        // The table rules are the page's words, below the fold.
+        let rule = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Blinds and the button")).firstMatch
+        XCTAssertTrue(scrollTo(app, rule))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+    }
+
+    /// From a practice hand in “Your hands”, practice again goes back to the practice table.
+    func testPracticesAgainFromAReview() throws {
+        let app = launch(server: try environment("RIVERMIND_SERVER"), arguments: ["-practice"])
+        XCTAssertTrue(element(app, "table.screen").waitForExistence(timeout: 20))
+        var frames = Frames()
+        let reviewHand = app.buttons["table.reviewHand"]
+        play(app, frames: &frames) { _ in reviewHand.exists }
+        leave(app)
+        let hands = app.buttons["lobby.hands"]
+        XCTAssertTrue(scrollTo(app, hands))
+        hands.tap()
+        let row = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "hands.row.", "Practice")
+        ).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 20), "no practice hand listed")
+        row.tap()
+        let again = app.buttons["hand.practiceAgain"]
+        XCTAssertTrue(again.waitForExistence(timeout: 10))
+        again.tap()
+        XCTAssertTrue(element(app, "table.screen").waitForExistence(timeout: 20))
+        leave(app)
+    }
+
+    /// Scrolls the lobby until `target` can be tapped.
+    private func scrollTo(_ app: XCUIApplication, _ target: XCUIElement) -> Bool {
+        for _ in 0..<12 {
+            if target.exists && target.isHittable { return true }
+            app.swipeUp()
+        }
+        return target.exists && target.isHittable
     }
 
     func testBustsAndPlaysAgainAtPractice() throws {

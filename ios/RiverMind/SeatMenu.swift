@@ -81,6 +81,7 @@ struct SeatMenu: View {
 
 /// The hand log: the table's events, newest first, each naming who sat there then.
 struct HandLogSheet: View {
+    let model: TableModel
     let table: TableConnection
     @Environment(\.dismiss) private var dismiss
 
@@ -107,6 +108,20 @@ struct HandLogSheet: View {
             .navigationTitle("Hand log")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                // “Review last hand” is in the log's heading, as on the site (P6.1).
+                if let view = table.view, TableWords.me(view) != nil {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Review last hand") {
+                            let settled = view.hand.flatMap { hand in
+                                hand.result != nil && TableWords.dealtIn(view) ? hand.handNo : nil
+                            }
+                            dismiss()
+                            Task { await model.openReview(handNo: settled) }
+                        }
+                        .disabled(!TableWords.reviewable(view) || model.review.loading)
+                        .accessibilityIdentifier("table.reviewLast")
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) { Button("Close") { dismiss() } }
             }
             .safeAreaInset(edge: .bottom) {

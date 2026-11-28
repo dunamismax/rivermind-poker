@@ -202,6 +202,28 @@ struct LobbyList: View {
             }
             OpenInviteSection(model: model)
             Section {
+                NavigationLink {
+                    HandsView(lobby: model, table: table)
+                } label: {
+                    Label("Your hands", systemImage: "rectangle.stack")
+                }
+                .accessibilityIdentifier("lobby.hands")
+                NavigationLink {
+                    BotsView(config: config, server: model.server)
+                } label: {
+                    Label("The bots", systemImage: "cpu")
+                }
+                .accessibilityIdentifier("lobby.bots")
+                NavigationLink {
+                    FairnessView(lobby: model, table: table)
+                } label: {
+                    Label("Rules and fair dealing", systemImage: "checkmark.shield")
+                }
+                .accessibilityIdentifier("lobby.fairness")
+            } footer: {
+                Text("Step through any hand you played, see how each bot was measured, and how the cards are dealt.")
+            }
+            Section {
                 Text(model.server.origin.host() ?? model.server.origin.absoluteString)
                     .font(.footnote.monospaced())
                     .foregroundStyle(Palette.haze.color)
@@ -270,9 +292,13 @@ struct TrainedBotRow: View {
                         Text(Faces.championLine(champion))
                             .foregroundStyle(Palette.mist.color)
                     }
-                    // P5D.8 brings the bots screen; until then the site's page has the reports.
-                    Link("How it was measured", destination: model.server.url("/bots"))
+                    if let config = model.config {
+                        NavigationLink("How it was measured") {
+                            BotsView(config: config, server: model.server)
+                        }
                         .foregroundStyle(Palette.goldLight.color)
+                        .accessibilityIdentifier("lobby.measured.\(bot.kind)")
+                    }
                 }
                 .font(.system(size: Metrics.textS))
             }

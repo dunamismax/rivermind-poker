@@ -62,6 +62,13 @@ struct TableContent: View {
                     menuSeat = seat
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // The review lies over the felt, never in the zone, so the next hand can be
+                // played with it open and nothing at the foot moves (P5D.8).
+                .overlay {
+                    if let detail = model.review.detail {
+                        ReviewPanel(model: model, table: table, detail: detail)
+                    }
+                }
                 .overlay(alignment: .top) { NoticeBanner(notice: table.notice) }
             } else {
                 ProgressView("Joining the table")
@@ -84,7 +91,7 @@ struct TableContent: View {
         .animation(reduceMotion ? nil : .easeOut(duration: Motion.drop.duration), value: table.view?.hand?.board)
         .sensoryFeedback(.impact(weight: .medium), trigger: turnKey) { old, new in new != nil && new != old }
         .sheet(isPresented: $showingLog) {
-            HandLogSheet(table: table)
+            HandLogSheet(model: model, table: table)
                 .presentationDetents([.medium, .large])
         }
         .sheet(item: $menuSeat) { seat in
@@ -283,7 +290,7 @@ struct TableZone: View {
                 VStack(spacing: TableMetrics.gap) {
                     SeatTools(model: model, table: table, view: view, rebuying: $rebuying)
                         .frame(height: ButtonPalette.smallHeight)
-                    DockLine(table: table, view: view)
+                    DockLine(model: model, table: table, view: view)
                     Spacer(minLength: 0)
                 }
                 .padding(.top, 6)
@@ -304,8 +311,15 @@ struct TableZone: View {
 /// The line about the hand while it is not the guest's turn, and the refill at a practice
 /// table once out of chips. It stands above the main buttons' row, never in it.
 struct DockLine: View {
+    let model: TableModel
     let table: TableConnection
     let view: TableView
+
+    /// The settled hand on the felt, when the guest was dealt into it: it can be reviewed.
+    private var settled: Int? {
+        guard let hand = view.hand, hand.result != nil, TableWords.dealtIn(view) else { return nil }
+        return hand.handNo
+    }
 
     var body: some View {
         if TableWords.busted(view) && view.practice == true {
@@ -313,21 +327,38 @@ struct DockLine: View {
                 Text("You are out of practice chips.")
                     .font(.system(size: Metrics.textS))
                     .foregroundStyle(Palette.mist.color)
-                Button(TableWords.refillText(view)) { table.refill() }
-                    .buttonStyle(.kit(.amber, small: true))
-                    .disabled(!table.connected)
-                    .accessibilityIdentifier("table.refill")
+                HStack(spacing: 8) {
+                    Button(TableWords.refillText(view)) { table.refill() }
+                        .buttonStyle(.kit(.amber, small: true))
+                        .disabled(!table.connected)
+                        .accessibilityIdentifier("table.refill")
+                    reviewButton
+                }
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Out of practice chips")
             .accessibilityIdentifier("table.outOfChips")
         } else {
-            Text(TableWords.dockLine(view))
-                .font(.system(size: Metrics.textS))
-                .foregroundStyle(Palette.mist.color)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, minHeight: 20)
-                .accessibilityIdentifier("table.dock")
+            HStack(spacing: 8) {
+                Text(TableWords.dockLine(view))
+                    .font(.system(size: Metrics.textS))
+                    .foregroundStyle(Palette.mist.color)
+                    .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("table.dock")
+                reviewButton
+            }
+            .frame(maxWidth: .infinity, minHeight: 20)
+        }
+    }
+
+    /// “Review hand” beside the line, once a hand the guest played has settled. It stands
+    /// above the main buttons' row, as the refill does.
+    @ViewBuilder private var reviewButton: some View {
+        if let settled {
+            Button("Review hand") { Task { await model.openReview(handNo: settled) } }
+                .buttonStyle(.kit(small: true))
+                .disabled(model.review.loading)
+                .accessibilityIdentifier("table.reviewHand")
         }
     }
 }
@@ -477,5 +508,52 @@ struct JoinPanel: View {
             .disabled(short || lobby.busy != nil)
             .accessibilityIdentifier("table.sit")
         }
+    }
+}
+
+// MARK: - The review
+
+/// A finished hand of this table, over the felt (P5D.8): its number, a line that says when
+/// it is the guest's turn at the table, and the replayer. Its frame is the felt's, so the
+/// zone and its buttons stay where they are while it is open.
+struct ReviewPanel: View {
+    let model: TableModel
+    let table: TableConnection
+    let detail: HandDetail
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Hand #\(detail.hand.handNo)")
+                    .font(.system(size: Metrics.textM))
+                    .foregroundStyle(Palette.gold.color)
+                Spacer()
+                Button("Close") { model.review.close() }
+                    .buttonStyle(.kit(small: true))
+                    .accessibilityIdentifier("review.close")
+            }
+            // Always one line, so the steps below never move when the turn comes round.
+            Group {
+                if let view = table.view, TableWords.myTurn(view) {
+                    Text("Your turn at the table").foregroundStyle(Palette.goldLight.color)
+                } else {
+                    Text((detail.hand.practice == true ? "Practice · " : "") + "Blinds \(detail.hand.smallBlind)/\(detail.hand.bigBlind)")
+                        .foregroundStyle(Palette.paperShade.color)
+                }
+            }
+            .font(.system(size: Metrics.textS))
+            .lineLimit(1)
+            .accessibilityIdentifier("review.line")
+            ScrollView {
+                HandReplayView(detail: detail)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .kitFrame(.raised)
+        .padding(4)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Hand review")
+        .accessibilityIdentifier("review")
     }
 }

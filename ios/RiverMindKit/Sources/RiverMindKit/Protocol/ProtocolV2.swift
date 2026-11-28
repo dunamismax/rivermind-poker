@@ -172,6 +172,10 @@ public struct BotChampion: Codable, Sendable, Hashable {
     public var results: [BotResult]
     /// The table sizes this model plays, in a bot's `champions`; missing in `champion`.
     public var seats: [Int]?
+    /// The published report these results come from, as a path in the repository
+    /// (`docs/evaluations/….md`), which has every input needed to rerun it (P5D.8).
+    /// Missing from a server before it.
+    public var report: String?
     /// The optional fields written as an explicit null when they are nil, rather than
     /// left out: those that came as null, and those a request means as null.
     public var nulls: Set<Null> = []
@@ -179,6 +183,7 @@ public struct BotChampion: Codable, Sendable, Hashable {
     /// An optional field that may be written as null.
     public enum Null: Sendable, Hashable {
         case seats
+        case report
     }
 
     public init(
@@ -188,6 +193,7 @@ public struct BotChampion: Codable, Sendable, Hashable {
         stackBB: Double,
         results: [BotResult],
         seats: [Int]? = nil,
+        report: String? = nil,
         nulls: Set<Null> = []
     ) {
         self.name = name
@@ -196,6 +202,7 @@ public struct BotChampion: Codable, Sendable, Hashable {
         self.stackBB = stackBB
         self.results = results
         self.seats = seats
+        self.report = report
         self.nulls = nulls
     }
 
@@ -206,6 +213,7 @@ public struct BotChampion: Codable, Sendable, Hashable {
         case stackBB = "stack_bb"
         case results
         case seats
+        case report
     }
 
     public init(from decoder: any Decoder) throws {
@@ -216,7 +224,9 @@ public struct BotChampion: Codable, Sendable, Hashable {
         stackBB = try container.decode(Double.self, forKey: .stackBB)
         results = try container.decode([BotResult].self, forKey: .results)
         seats = try container.decodeIfPresent([Int].self, forKey: .seats)
+        report = try container.decodeIfPresent(String.self, forKey: .report)
         if container.contains(.seats), try container.decodeNil(forKey: .seats) { nulls.insert(.seats) }
+        if container.contains(.report), try container.decodeNil(forKey: .report) { nulls.insert(.report) }
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -227,6 +237,7 @@ public struct BotChampion: Codable, Sendable, Hashable {
         try container.encode(stackBB, forKey: .stackBB)
         try container.encode(results, forKey: .results)
         if let seats { try container.encode(seats, forKey: .seats) } else if nulls.contains(.seats) { try container.encodeNil(forKey: .seats) }
+        if let report { try container.encode(report, forKey: .report) } else if nulls.contains(.report) { try container.encodeNil(forKey: .report) }
     }
 }
 

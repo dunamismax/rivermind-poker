@@ -12,6 +12,9 @@ import { seededDealer } from '../src/lib/server/table/runner.ts';
 import type * as p from '../src/lib/protocol-v2.ts';
 import { MAX_BODY_BYTES } from './api.ts';
 import {
+	APP_SITE_ASSOCIATION_PATH,
+	appIdsFrom,
+	appSiteAssociation,
 	createApp,
 	MAX_FRAME_BYTES,
 	SERVICE_RESTART,
@@ -118,6 +121,36 @@ describe('the web server', () => {
 		expect(await (await fetch(`http://${without.host}/voice-files.json`)).text()).toBe(
 			'page /voice-files.json'
 		);
+	});
+
+	it('serves the site association file that opens invites in the iPhone app (P5D.8)', async () => {
+		const { host } = await start({ appIds: ['ABCDE12345.com.rivermindpoker.app'] });
+		const file = await fetch(`http://${host}${APP_SITE_ASSOCIATION_PATH}`, { redirect: 'manual' });
+		expect(file.status).toBe(200);
+		expect(file.headers.get('content-type')).toBe('application/json');
+		// No policy: iOS reads it as data, and Caddy adds none to the Node server's answers.
+		expect(file.headers.get('content-security-policy')).toBeNull();
+		expect(await file.json()).toEqual({
+			applinks: {
+				details: [
+					{
+						appIDs: ['ABCDE12345.com.rivermindpoker.app'],
+						components: [{ '/': '/', '?': { invite: '?*' }, comment: 'A private table’s invite' }]
+					}
+				]
+			}
+		});
+		// Until the app has a team (Q-13) there is no file, and the handler answers as for any path.
+		const without = await start();
+		expect(await (await fetch(`http://${without.host}${APP_SITE_ASSOCIATION_PATH}`)).text()).toBe(
+			`page ${APP_SITE_ASSOCIATION_PATH}`
+		);
+		expect(appIdsFrom(' ABCDE12345.com.rivermindpoker.app, ,FGHIJ67890.com.x ')).toEqual([
+			'ABCDE12345.com.rivermindpoker.app',
+			'FGHIJ67890.com.x'
+		]);
+		expect(appIdsFrom(undefined)).toEqual([]);
+		expect(() => appSiteAssociation(['com.rivermindpoker.app'])).toThrow(RangeError);
 	});
 
 	it('without the API, gives /api to the handler and turns sockets away', async () => {

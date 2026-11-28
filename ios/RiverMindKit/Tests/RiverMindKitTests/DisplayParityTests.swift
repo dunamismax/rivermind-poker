@@ -208,6 +208,22 @@ struct DisplayFixture: Decodable {
     let lobby: LobbyCases
     let layout: LayoutCases
     let table: TableCases
+    let content: ContentCases
+
+    struct ContentCases: Decodable {
+        struct Measured: Decodable {
+            let seats: Int
+            let text: String
+        }
+        let tableRules: [ContentWords.Rule]
+        let botRules: [String]
+        let conduct: String
+        let botsLead: String
+        let simpleBots: [ContentWords.SimpleBot]
+        let botCaveats: [String]
+        let measured: [Measured]
+        let repository: String
+    }
 
     struct LayoutCases: Decodable {
         struct BetSpot: Decodable {
@@ -532,6 +548,24 @@ private func nameOf(_ names: [String?]) -> (Int) -> String {
         for case_ in table.noHand {
             #expect(TableWords.noHandText(case_.handNo) == case_.text)
         }
+    }
+
+    @Test func theContentPagesWordsMatchThePage() {
+        let content = fixture.content
+        #expect(ContentWords.tableRules == content.tableRules)
+        #expect(ContentWords.botRules == content.botRules)
+        #expect(ContentWords.conduct == content.conduct)
+        #expect(ContentWords.botsLead == content.botsLead)
+        #expect(ContentWords.simpleBots == content.simpleBots)
+        #expect(ContentWords.botCaveats == content.botCaveats)
+        for case_ in content.measured {
+            #expect(ContentWords.measuredText(seats: case_.seats) == case_.text)
+        }
+        #expect(ContentWords.repository == content.repository)
+        #expect(
+            ContentWords.reportURL("docs/evaluations/hu-m1-s0-1024m-served.md")?.absoluteString
+                == "\(content.repository)/docs/evaluations/hu-m1-s0-1024m-served.md")
+        #expect(ContentWords.reportURL("../secret") == nil)
     }
 
     @Test func aNewerServerReadsPlainly() throws {

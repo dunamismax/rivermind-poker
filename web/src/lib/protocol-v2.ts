@@ -44,6 +44,12 @@ export interface BotChampion {
 	results: BotResult[];
 	/** The table sizes this model plays, in a bot's `champions`; missing in `champion`. */
 	seats?: number[] | null;
+	/**
+	 * The published report these results come from, as a path in the repository
+	 * (`docs/evaluations/….md`), which has every input needed to rerun it (P5D.8).
+	 * Missing from a server before it.
+	 */
+	report?: string | null;
 }
 
 export interface BotOption {

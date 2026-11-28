@@ -32,7 +32,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRuntime } from '../src/lib/server/api/runtime.ts';
-import { createApp, type Handler } from './app.ts';
+import { appIdsFrom, createApp, type Handler } from './app.ts';
 
 // Bundled as build/start.js the handler sits beside this file; run from the source
 // (node server/index.ts) it is in ../build.
@@ -72,7 +72,8 @@ const app = createApp({
 			: null,
 	voiceFiles: existsSync(resolve(build, 'client', 'voice-files.json'))
 		? readFileSync(resolve(build, 'client', 'voice-files.json'), 'utf8')
-		: null
+		: null,
+	appIds: appIdsFrom(process.env.RIVERMIND_APPLE_APP_IDS)
 });
 
 app.server.listen(port, host, () => {
