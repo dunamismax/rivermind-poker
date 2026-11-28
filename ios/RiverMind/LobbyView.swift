@@ -28,8 +28,42 @@ struct RootView: View {
                 else { return }
                 await model.startPractice(on: table)
             }
+            // `RIVERMIND_TABLE_SEATS=n` (and `RIVERMIND_TABLE_BOTS=kind`) sits the guest at a new
+            // table of n seats with bots at launch, for the table's UI tests and screenshots.
+            .task(id: model.isReady) {
+                let environment = ProcessInfo.processInfo.environment
+                guard model.isReady, let seats = environment["RIVERMIND_TABLE_SEATS"].flatMap(Int.init),
+                      let config = model.config
+                else { return }
+                await leaveRejoined(but: nil)
+                model.form.seats = seats
+                model.form.bots = environment["RIVERMIND_TABLE_BOTS"] ?? "calling_station"
+                model.form.buyInBlinds = Int(environment["RIVERMIND_TABLE_BUY_IN"] ?? "") ?? 100
+                await model.newTable(config, on: table)
+            }
+            // `RIVERMIND_JOIN_TABLE=id` takes a seat at that table at launch, for the UI tests.
+            .task(id: model.isReady) {
+                guard model.isReady, let id = ProcessInfo.processInfo.environment["RIVERMIND_JOIN_TABLE"]
+                else { return }
+                await leaveRejoined(but: id)
+                await model.takeSeat(at: id, on: table)
+            }
         #endif
     }
+
+    #if DEBUG
+        /// Leaves the table a launch rejoined, which an earlier run may have left, unless it is
+        /// `keep`. The leave goes once the socket is open, or the server would never hear it
+        /// and keep the guest's chips at that table.
+        private func leaveRejoined(but keep: String?) async {
+            guard let rejoined = table.tableID, rejoined != keep else { return }
+            for _ in 0..<100 where table.status != .open && table.tableID != nil {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            if table.tableID != nil { table.leave() }
+            await model.refreshWallet()
+        }
+    #endif
 }
 
 /// The lobby (P5D.6), as the site's has it: practice first, then the guest's chips, the

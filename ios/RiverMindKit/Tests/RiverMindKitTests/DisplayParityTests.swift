@@ -206,6 +206,93 @@ struct DisplayFixture: Decodable {
     let cards: [CardCase]
     let safety: SafetyCases
     let lobby: LobbyCases
+    let layout: LayoutCases
+    let table: TableCases
+
+    struct LayoutCases: Decodable {
+        struct BetSpot: Decodable {
+            let left: Double
+            let top: Double
+            let shift: String?
+            let aside: String?
+            let beside: TableLayout.Side?
+        }
+        struct Place: Decodable {
+            let spot: TableLayout.Spot
+            let side: TableLayout.Side
+            let bet: BetSpot
+        }
+        struct ShapeCase: Decodable {
+            let shape: TableLayout.Shape
+            let places: [Place]
+        }
+        struct PlaceOf: Decodable {
+            let seat: Int
+            let anchor: Int?
+            let place: Int
+        }
+        struct Table: Decodable {
+            let count: Int
+            let shapes: [ShapeCase]
+            let placeOf: [PlaceOf]
+        }
+        struct Clock: Decodable {
+            struct Span: Decodable {
+                let started: Double
+                let deadline: Double
+                let final: Double
+            }
+            let turn: Span
+            let now: Double
+            let left: TableLayout.ClockLeft
+        }
+        let tables: [Table]
+        let clocks: [Clock]
+    }
+
+    struct TableCases: Decodable {
+        struct JoinLine: Decodable {
+            let holdLeft: Int?
+            let short: Bool
+            let text: String
+        }
+        struct Case: Decodable {
+            let view: TableView
+            let names: [String]
+            let inHand: Bool
+            let myTurn: Bool
+            let waitingFor: String?
+            let rebuyRoom: Int
+            let busted: Bool
+            let dealtIn: Bool
+            let reviewable: Bool
+            let room: Bool
+            let empty: [TableWords.EmptySeat]
+            let handLine: String
+            let dockLine: String
+            let joinLines: [JoinLine]
+            let buyInHint: String
+            let refill: String
+            let pendingRebuy: String?
+        }
+        struct Entry: Decodable {
+            let event: TableEvent
+            let who: String?
+        }
+        struct Log: Decodable {
+            let log: [Entry]
+            let view: TableView
+            let lines: [TableWords.LogLine]
+        }
+        struct NoHand: Decodable {
+            let handNo: Int?
+            let text: String
+        }
+        let cases: [Case]
+        let logs: [Log]
+        let emptyText: [String: String]
+        let noHand: [NoHand]
+    }
 
     static let shared: DisplayFixture = {
         let url = repository.appending(path: "ios/RiverMindKit/Fixtures/display.json")
@@ -373,6 +460,77 @@ private func nameOf(_ names: [String?]) -> (Int) -> String {
             #expect(LobbyWords.inviteLink(origin: case_.origin, code: case_.code) == case_.link)
             // A link the app made reads back as its code.
             #expect(LobbyWords.inviteCode(in: case_.link) == case_.code)
+        }
+    }
+
+    @Test func theTableLayoutMatchesThePage() {
+        #expect(fixture.layout.tables.map(\.count) == Array(2...9))
+        for table in fixture.layout.tables {
+            for shape in table.shapes {
+                let spots = TableLayout.places(table.count, shape.shape)
+                #expect(spots == shape.places.map(\.spot), "\(table.count) \(shape.shape)")
+                for (place, expected) in shape.places.enumerated() {
+                    let spot = spots[place]
+                    #expect(TableLayout.sideOf(spot, place: place) == expected.side)
+                    let bet = TableLayout.betSpot(spot, place: place, shape: shape.shape)
+                    let what = "\(table.count) \(shape.shape) place \(place)"
+                    #expect(bet.left == expected.bet.left, "\(what)")
+                    #expect(bet.top == expected.bet.top, "\(what)")
+                    #expect(bet.shift?.css == expected.bet.shift, "\(what)")
+                    #expect(bet.aside?.css == expected.bet.aside, "\(what)")
+                    #expect(bet.beside == expected.bet.beside, "\(what)")
+                }
+            }
+            for case_ in table.placeOf {
+                #expect(TableLayout.placeOf(case_.seat, anchor: case_.anchor, count: table.count) == case_.place)
+            }
+        }
+        #expect(TableLayout.places(10).isEmpty)
+        for clock in fixture.layout.clocks {
+            let left = TableLayout.clockLeft(
+                started: clock.turn.started, deadline: clock.turn.deadline, final: clock.turn.final, now: clock.now)
+            #expect(left == clock.left, "\(clock.turn) at \(clock.now)")
+        }
+    }
+
+    @Test func theTablesWordsMatchThePage() {
+        let table = fixture.table
+        #expect(table.cases.count > 200)
+        // Every line the dock and the join panel can show comes up.
+        #expect(Set(table.cases.map { $0.dockLine.prefix(12) }).count >= 5)
+        #expect(table.cases.contains(where: \.myTurn) && table.cases.contains(where: \.busted))
+        for case_ in table.cases {
+            let view = case_.view
+            let what = "view seq \(view.seq)"
+            #expect(view.seats.indices.map { TableWords.nameOf(view, $0) } == case_.names, "\(what)")
+            #expect(TableWords.inHand(view) == case_.inHand, "\(what)")
+            #expect(TableWords.myTurn(view) == case_.myTurn, "\(what)")
+            #expect(TableWords.waitingFor(view) == case_.waitingFor, "\(what)")
+            #expect(TableWords.rebuyRoom(view) == case_.rebuyRoom, "\(what)")
+            #expect(TableWords.busted(view) == case_.busted, "\(what)")
+            #expect(TableWords.dealtIn(view) == case_.dealtIn, "\(what)")
+            #expect(TableWords.reviewable(view) == case_.reviewable, "\(what)")
+            #expect(TableWords.hasSeatRoom(view) == case_.room, "\(what)")
+            #expect(view.seats.indices.map { TableWords.emptySeat(view, $0) } == case_.empty, "\(what)")
+            #expect(TableWords.handLine(view) == case_.handLine, "\(what)")
+            #expect(TableWords.dockLine(view) == case_.dockLine, "\(what)")
+            for line in case_.joinLines {
+                #expect(TableWords.joinLine(view, holdLeft: line.holdLeft, short: line.short) == line.text, "\(what)")
+            }
+            #expect(TableWords.buyInHint(view) == case_.buyInHint)
+            #expect(TableWords.refillText(view) == case_.refill)
+            #expect(TableWords.pendingRebuyText(view) == case_.pendingRebuy, "\(what)")
+        }
+        #expect(table.logs.count > 10)
+        for log in table.logs {
+            let entries = log.log.map { LoggedEvent(event: $0.event, who: $0.who) }
+            #expect(TableWords.logLines(entries, log.view) == log.lines, "log at view \(log.view.seq)")
+        }
+        for kind in TableWords.EmptySeat.allCases {
+            #expect(table.emptyText[kind.rawValue] == kind.text)
+        }
+        for case_ in table.noHand {
+            #expect(TableWords.noHandText(case_.handNo) == case_.text)
         }
     }
 

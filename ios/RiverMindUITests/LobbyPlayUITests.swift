@@ -62,14 +62,15 @@ final class LobbyPlayUITests: XCTestCase {
         practice.tap()
 
         XCTAssertTrue(element(app, "table.screen").waitForExistence(timeout: 20))
-        // Asking again returns the guest's practice table, where a guest who never acted
-        // has timed out into sitting out.
-        expect(app.staticTexts["table.you"], "label MATCHES %@", "You are (sitting out )?in seat [0-9]\\.")
-        expect(app.staticTexts["table.stakes"], "label ENDSWITH %@", "practice chips")
+        // The guest has a seat at the bottom of the table.
+        let mine = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Your seat: "))
+            .firstMatch
+        XCTAssertTrue(mine.waitForExistence(timeout: 20))
+        expect(element(app, "table.stakes"), "label ENDSWITH %@", "practice chips")
         // Heads-up against a labelled bot (D-7).
         let seats = [element(app, "table.seat.0"), element(app, "table.seat.1")]
         expect(seats[0], "label CONTAINS %@", ":")
-        XCTAssertEqual(seats.filter { $0.label.hasSuffix("(bot)") }.count, 1, seats.map(\.label).description)
+        XCTAssertEqual(seats.filter { $0.label.contains("(bot)") }.count, 1, seats.map(\.label).description)
         XCTAssertTrue(seats.contains { $0.label.contains("RiverMind Easy") }, seats.map(\.label).description)
         leaveTheTable(app)
     }
@@ -88,13 +89,12 @@ final class LobbyPlayUITests: XCTestCase {
         sit.tap()
 
         XCTAssertTrue(element(app, "table.screen").waitForExistence(timeout: 20))
-        expect(app.staticTexts["table.stakes"], "label ENDSWITH %@", "3 seats")
-        expect(app.staticTexts["table.you"], "label == %@", "You are in seat 1.")
+        expect(element(app, "table.stakes"), "label ENDSWITH %@", "3 seats")
         let seats = (0..<3).map { element(app, "table.seat.\($0)") }
         expect(seats[2], "label CONTAINS %@", "(bot)")
-        XCTAssertTrue(seats[0].label.hasPrefix("Your seat: "), seats[0].label)
+        expect(seats[0], "label BEGINSWITH %@", "Your seat: ")
         for seat in seats.dropFirst() {
-            XCTAssertTrue(seat.label.contains("Random") && seat.label.hasSuffix("(bot)"), seat.label)
+            XCTAssertTrue(seat.label.contains("Random") && seat.label.contains("(bot)"), seat.label)
         }
         leaveTheTable(app)
     }

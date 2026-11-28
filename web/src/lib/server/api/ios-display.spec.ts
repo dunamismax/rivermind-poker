@@ -33,6 +33,7 @@ import {
 	winRate
 } from '../../nl/faces.ts';
 import { HAND_CLASSES, nameHand } from '../../nl/hand-name.ts';
+import { betSpot, clockLeft, placeOf, places, sideOf, type Shape } from '../../nl/layout.ts';
 import {
 	affordableBuyIns,
 	botNote,
@@ -53,6 +54,27 @@ import {
 } from '../../nl/lobby.ts';
 import { buildReplay, describeAction, shortCard, stageOf, stepForKey } from '../../nl/replay.ts';
 import { REACTIONS, REPORT_REASONS, VOICE_REPORT_NOTE, relationText } from '../../nl/safety.ts';
+import {
+	buyInHint,
+	busted,
+	dealtIn,
+	dockLine,
+	emptySeat,
+	EMPTY_SEAT_TEXT,
+	handLine,
+	hasSeatRoom,
+	inHand,
+	joinLine,
+	logLines,
+	myTurn,
+	nameOf,
+	noHandText,
+	pendingRebuyText,
+	rebuyRoom,
+	refillText,
+	reviewable,
+	waitingFor
+} from '../../nl/table.ts';
 import type * as p from '../../protocol-v2.ts';
 import { cardName } from '../../wording.ts';
 import {
@@ -692,6 +714,157 @@ function lobbyCases(rng: Random) {
 	};
 }
 
+// ---- The table (P5D.7): where the seats and bets go, the clocks, and what the table
+// works out from a view to show.
+
+function layoutCases() {
+	const shapes: Shape[] = ['tall', 'wide'];
+	const tables = [];
+	for (let count = 2; count <= 9; count++) {
+		tables.push({
+			count,
+			shapes: shapes.map((shape) => ({
+				shape,
+				places: places(count, shape).map((spot, place) => ({
+					spot,
+					side: sideOf(spot, place),
+					bet: betSpot(spot, place, shape)
+				}))
+			})),
+			placeOf: [null, 0, 1, count - 1].flatMap((anchor) =>
+				Array.from({ length: count }, (_, seat) => ({
+					seat,
+					anchor,
+					place: placeOf(seat, anchor, count)
+				}))
+			)
+		});
+	}
+	const turn = { started: 1000, deadline: 1020, final: 1050 };
+	const clocks = [
+		990, 1000, 1000.4, 1007.25, 1019.9, 1020, 1020.1, 1035.5, 1049.99, 1050, 1060
+	].map((now) => ({ turn, now, left: clockLeft(turn, now) }));
+	const noBank = { started: 500, deadline: 515, final: 515 };
+	clocks.push(
+		...[500, 507.5, 515, 520].map((now) => ({ turn: noBank, now, left: clockLeft(noBank, now) }))
+	);
+	const instant = { started: 10, deadline: 10, final: 25 };
+	clocks.push(
+		...[5, 10, 12.5].map((now) => ({ turn: instant, now, left: clockLeft(instant, now) }))
+	);
+	return { tables, clocks };
+}
+
+/** Views as the viewer may stand at a table: seated, sitting out, holding a seat, in line, watching. */
+function tableViews(views: p.TableView[]): p.TableView[] {
+	const out: p.TableView[] = [];
+	const seen = new Set<string>();
+	const add = (view: p.TableView) => {
+		const key = JSON.stringify(view);
+		if (seen.has(key)) return;
+		seen.add(key);
+		out.push(view);
+	};
+	for (const view of views) {
+		add(view);
+		const free = view.seats.findIndex((s) => s === null);
+		const mine = view.you.seat;
+		if (mine !== null && view.seats[mine]) {
+			const me = view.seats[mine]!;
+			const seats = (stack: number) =>
+				view.seats.map((s, i) => (i === mine && s ? { ...s, stack } : s));
+			add({ ...view, you: { ...view.you, sitting_out: true } });
+			add({ ...view, you: { ...view.you, pending_rebuy: 250 } });
+			add({ ...view, seats: seats(0) });
+			add({ ...view, seats: seats(0), hand: view.hand ? { ...view.hand, result: null } : null });
+			add({ ...view, seats: seats(me.stack + 1) });
+		}
+		const watching = {
+			...view,
+			you: { ...view.you, seat: null, legal: null, sitting_out: false, cards: null }
+		} as p.TableView;
+		add(watching);
+		add({ ...watching, you: { ...watching.you, waitlist_position: 3 } });
+		if (free >= 0) {
+			const holds = [{ seat: free, name: 'Ann', ready: true, until: 1_800_000_000.5 }];
+			add({
+				...watching,
+				holds,
+				you: { ...watching.you, hold: holds[0] }
+			});
+			add({
+				...watching,
+				holds: [{ ...holds[0], ready: false, until: null }],
+				you: { ...watching.you, hold: { ...holds[0], ready: false, until: null } }
+			} as p.TableView);
+			add({ ...watching, holds });
+		}
+	}
+	return out;
+}
+
+function tableCases(messages: p.TableMessage[]) {
+	// Forty views spread over the session, each in every way the viewer may stand there.
+	const step = Math.max(1, Math.floor(messages.length / 40));
+	const views = tableViews(messages.filter((_, i) => i % step === 0).map((m) => m.view));
+	const cases = views.map((view) => ({
+		view,
+		names: view.seats.map((_, seat) => nameOf(view, seat)),
+		inHand: inHand(view),
+		myTurn: myTurn(view),
+		waitingFor: waitingFor(view),
+		rebuyRoom: rebuyRoom(view),
+		busted: busted(view),
+		dealtIn: dealtIn(view),
+		reviewable: reviewable(view),
+		room: hasSeatRoom(view),
+		empty: view.seats.map((_, seat) => emptySeat(view, seat)),
+		handLine: handLine(view),
+		dockLine: dockLine(view),
+		joinLines: [
+			[null, false],
+			[null, true],
+			[12, false],
+			[0, true]
+		].map(([holdLeft, short]) => ({
+			holdLeft,
+			short,
+			text: joinLine(view, holdLeft as number | null, short as boolean)
+		})),
+		buyInHint: buyInHint(view),
+		refill: refillText(view),
+		pendingRebuy: pendingRebuyText(view)
+	}));
+	// The hand log as it grows over the recorded session, each event naming the player
+	// in its seat when it happened.
+	const logs: { log: unknown[]; view: p.TableView; lines: { seq: number; text: string }[] }[] = [];
+	const log: { event: p.TableEvent; who: string | null }[] = [];
+	messages.forEach((message, i) => {
+		for (const event of message.events) {
+			const seat = event.seat;
+			const who =
+				seat === null || seat === undefined ? null : (message.view.seats[seat]?.name ?? null);
+			log.push({ event, who });
+		}
+		// The connection keeps the newest 60 events (TableConnection.logLimit).
+		log.splice(0, Math.max(0, log.length - 60));
+		if (i % step === 0 || i === messages.length - 1) {
+			const entries = log.map(({ event, who }) => ({ ...event, who }));
+			logs.push({
+				log: [...log],
+				view: message.view,
+				lines: logLines(entries, message.view)
+			});
+		}
+	});
+	return {
+		cases,
+		logs,
+		emptyText: EMPTY_SEAT_TEXT,
+		noHand: [null, 1, 42].map((handNo) => ({ handNo, text: noHandText(handNo) }))
+	};
+}
+
 // ---- The fixture.
 
 describe('the iPhone app display fixture', () => {
@@ -743,6 +916,8 @@ describe('the iPhone app display fixture', () => {
 			seats: seatCases(views),
 			faces: faceCases(seededRandom(31)),
 			lobby: lobbyCases(seededRandom(41)),
+			layout: layoutCases(),
+			table: tableCases(messages),
 			replays,
 			actions,
 			stepKeys: keys.flatMap((key) =>

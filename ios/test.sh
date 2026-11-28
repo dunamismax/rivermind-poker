@@ -10,7 +10,8 @@
 # RIVERMIND_SERVER        use a server that is already running instead of starting one
 # RIVERMIND_TEST_PORT     the port the started server listens on (4380); the seeded site
 #                         (web/e2e/seeded-server.ts, for the session check) takes the next
-#                         one, and the restartable site on the test database the two after
+#                         one, the restartable site on the test database the two after, and
+#                         the app's own seeded site (for the table's bust) the one after them
 # RIVERMIND_TEST_DATABASE_URL  a disposable test database: the package's tests then also
 #                         check a rejoin across a server restart (web/e2e/restart-server.ts),
 #                         which empties it
@@ -41,8 +42,9 @@ done
 server_pid=
 seeded_pid=
 restart_pid=
+app_seeded_pid=
 cleanup() {
-	for pid in "$server_pid" "$seeded_pid" "$restart_pid"; do
+	for pid in "$server_pid" "$seeded_pid" "$restart_pid" "$app_seeded_pid"; do
 		if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; fi
 	done
 }
@@ -131,9 +133,19 @@ print(ios[-1]["identifier"])')
 		echo "made simulator $simulator ($udid) on $runtime"
 	fi
 	echo "simulator: $simulator ($udid)"
+	# A fresh seeded site of the app's own for the table's UI tests (TablePlayUITests.swift):
+	# its first table, the bust test's practice table, deals from seed 10, where a guest who
+	# checks or calls is out of chips in the fourth hand (e2e/practice.e2e.ts).
+	app_seeded_port=$((port + 4))
+	(cd "$root/web" && exec env PORT="$app_seeded_port" SEED=10 PRACTICE_STACK=300 \
+		node e2e/seeded-server.ts) >"$logs/app-seeded.log" 2>&1 &
+	app_seeded_pid=$!
+	wait_for "http://127.0.0.1:$app_seeded_port/healthz" "$app_seeded_pid" "$logs/app-seeded.log"
+	echo "the app's seeded site: http://127.0.0.1:$app_seeded_port"
 	# xcodebuild hands TEST_RUNNER_ variables to the test runner without the prefix.
 	status=0
-	TEST_RUNNER_RIVERMIND_SERVER="$RIVERMIND_SERVER" xcodebuild test \
+	TEST_RUNNER_RIVERMIND_SERVER="$RIVERMIND_SERVER" \
+		TEST_RUNNER_RIVERMIND_SEEDED_SERVER="http://127.0.0.1:$app_seeded_port" xcodebuild test \
 		-project "$here/RiverMind.xcodeproj" -scheme RiverMind \
 		-destination "id=$udid" -derivedDataPath "$here/DerivedData" \
 		-resultBundlePath "$here/DerivedData/results/$(date +%Y%m%dT%H%M%S).xcresult" \

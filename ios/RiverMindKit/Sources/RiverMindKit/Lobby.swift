@@ -57,7 +57,14 @@ public final class LobbyModel {
         public var table: TableSummary?
         public var error: String?
     }
-    private let client: APIClient
+    /// The guest's API client, shared with the table screen.
+    public let client: APIClient
+
+    /// The server's config, once the lobby has read it.
+    public var config: ConfigResponse? {
+        if case let .ready(config, _) = state { return config }
+        return nil
+    }
     /// The build checked against the server's oldest: this one, or in a debug build's
     /// UI test an older one it pretends to be.
     private let build: Int

@@ -90,19 +90,19 @@ final class LobbyUITests: XCTestCase {
         app.launchArguments = ["-practice"]
         app.launch()
 
-        let status = app.staticTexts["table.status"]
-        let joins = app.staticTexts["table.joins"]
+        // The connection's lamp; a debug build gives it the count of sockets opened.
+        let status = app.descendants(matching: .any)["table.status"]
         XCTAssertTrue(status.waitForExistence(timeout: 20))
         expect(status, "Connection, open")
-        XCTAssertEqual(joins.label, "Joins, 1")
-        let hand = app.staticTexts["table.hand"]
-        XCTAssertNotEqual(hand.label, "Hand, none")
+        XCTAssertEqual(status.value as? String, "Joins 1")
+        let hand = app.descendants(matching: .any)["table.hand"]
+        expect(hand, "label BEGINSWITH %@", "Hand #")
 
         XCUIDevice.shared.press(.home)
         XCTAssertTrue(app.wait(for: .runningBackgroundSuspended, timeout: 10) || app.state == .runningBackground)
         app.activate()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
-        expect(joins, "Joins, 2")
+        expect(status, "value == %@", "Joins 2")
         expect(status, "Connection, open")
         // Leave the practice table, so the next test's launch starts in the lobby.
         app.buttons["table.leave"].tap()
@@ -111,9 +111,15 @@ final class LobbyUITests: XCTestCase {
 
     /// Waits for an element's label to read `label`.
     private func expect(_ element: XCUIElement, _ label: String, timeout: TimeInterval = 20) {
-        let matches = NSPredicate(format: "label == %@", label)
-        let found = XCTNSPredicateExpectation(predicate: matches, object: element)
-        XCTAssertEqual(XCTWaiter().wait(for: [found], timeout: timeout), .completed, "\(element.label) is not \(label)")
+        expect(element, "label == %@", label, timeout: timeout)
+    }
+
+    /// Waits for an element to match `format`, written against its `label` or `value`.
+    private func expect(_ element: XCUIElement, _ format: String, _ value: String, timeout: TimeInterval = 20) {
+        let found = XCTNSPredicateExpectation(predicate: NSPredicate(format: format, value), object: element)
+        XCTAssertEqual(
+            XCTWaiter().wait(for: [found], timeout: timeout), .completed,
+            "\(element.label) (\(String(describing: element.value))) is not \(format) \(value)")
     }
 
     func testTheLobbySaysWhenNoServerAnswers() throws {

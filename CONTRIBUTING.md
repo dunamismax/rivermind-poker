@@ -479,7 +479,18 @@ The app and its UI tests are in `ios/RiverMind.xcodeproj`. Open it in Xcode, cho
 PORT=4380 ORIGIN=http://127.0.0.1:4380 RIVERMIND_API=1 pnpm start
 ```
 
-`ios/test.sh` is what CI's `ios` job runs: it starts that server from `web/build` (so run `pnpm build` in `web/` first), runs the package's tests against it, makes or reuses a simulator called “RiverMind Test” (an iPhone 17 on the newest iOS runtime installed, apart from the simulators other sessions use), and runs the UI tests there. `ios/test.sh package` and `ios/test.sh app` run one half. For the package's tests it also starts the seeded site (`web/e2e/seeded-server.ts` with seed 10, on the next port), where the table connection plays the recorded practice session, and, when `RIVERMIND_TEST_DATABASE_URL` names a disposable test database, the site on PostgreSQL (`web/e2e/restart-server.ts`, on the two ports after), which the restart check kills mid-hand and starts again; it empties that database, so never run it beside `pnpm test` or `pnpm e2e` with the same one. CI's macOS runner has no PostgreSQL, so the restart check runs only here. Results and logs are kept under `ios/DerivedData/`, which Git ignores.
+`ios/test.sh` is what CI's `ios` job runs: it starts that server from `web/build` (so run `pnpm build` in `web/` first), runs the package's tests against it, makes or reuses a simulator called “RiverMind Test” (an iPhone 17 on the newest iOS runtime installed, apart from the simulators other sessions use), and runs the UI tests there. `ios/test.sh package` and `ios/test.sh app` run one half. For the package's tests it also starts the seeded site (`web/e2e/seeded-server.ts` with seed 10, on the next port), where the table connection plays the recorded practice session, and, when `RIVERMIND_TEST_DATABASE_URL` names a disposable test database, the site on PostgreSQL (`web/e2e/restart-server.ts`, on the two ports after), which the restart check kills mid-hand and starts again; it empties that database, so never run it beside `pnpm test` or `pnpm e2e` with the same one. CI's macOS runner has no PostgreSQL, so the restart check runs only here. For the UI tests it starts a seeded site of their own (seed 10, on the fourth port after the server's), whose first table is the table tests' practice table, where checking and calling busts in the fourth hand. Results and logs are kept under `ios/DerivedData/`, which Git ignores.
+
+A debug build also reads, at launch: `-practice`, to sit at the guest's practice table; `RIVERMIND_TABLE_SEATS=n`, with `RIVERMIND_TABLE_BOTS` (a bot kind, `calling_station` by default) and `RIVERMIND_TABLE_BUY_IN` (in big blinds, 100 by default), to sit at a new table of n seats with bots; and `RIVERMIND_JOIN_TABLE=id`, to take a seat at that table. Each leaves the table a launch rejoined first. They are how the table's UI tests start and how to look at a table of any size.
+
+`ios/crossplay.sh` (P5D.7) puts the app and Playwright's browsers at one table: it starts a server from `web/build` on 127.0.0.1:4386, runs `web/e2e/app.crossplay.ts` (its own config, `playwright.crossplay.config.ts`, not part of `pnpm e2e`), which seats a person in Chromium and one in WebKit at a table with no bots, then runs the app's `CrossPlayUITests` at that table in “RiverMind Test”; everyone checks or calls for `CROSSPLAY_HANDS` hands (3), and the script checks that each hand ended the same on every screen and that each side saw the others act. Without the script, `CrossPlayUITests` skips.
+
+To look at a table:
+
+```sh
+SIMCTL_CHILD_RIVERMIND_SERVER=http://127.0.0.1:4380 SIMCTL_CHILD_RIVERMIND_TABLE_SEATS=9 \
+  xcrun simctl launch <udid> com.rivermindpoker.app
+```
 
 ```sh
 RIVERMIND_TEST_DATABASE_URL=postgresql://localhost/rivermind_test ios/test.sh
@@ -487,7 +498,7 @@ RIVERMIND_TEST_DATABASE_URL=postgresql://localhost/rivermind_test ios/test.sh
 
 Add a Swift file by putting it in its folder: the app's folders are synchronized groups, so the project file does not change.
 
-The app's protocol types are generated from the TypeScript (P5D.2). After changing `web/src/lib/protocol-v2.ts` or `web/src/lib/voice/signalling.ts`, write them again, and after a change to what the server sends in the recorded sessions, to the page's display code that the app ports (`hand-name.ts`, `bet.ts`, `faces.ts`, `replay.ts`, `safety.ts`, `wording.ts`'s card names, P5D.4), or to how the seeded practice table plays (the engine, the dealing, RiverMind Easy; P5D.3's `session.json`), write the fixtures the Swift tests read; Vitest fails while any of them is stale, and the Swift tests fail until the port says the same.
+The app's protocol types are generated from the TypeScript (P5D.2). After changing `web/src/lib/protocol-v2.ts` or `web/src/lib/voice/signalling.ts`, write them again, and after a change to what the server sends in the recorded sessions, to the page's display code that the app ports (`hand-name.ts`, `bet.ts`, `faces.ts`, `replay.ts`, `safety.ts`, `wording.ts`'s card names, P5D.4; `lobby.ts`, P5D.6; `layout.ts` and `table.ts`, P5D.7), or to how the seeded practice table plays (the engine, the dealing, RiverMind Easy; P5D.3's `session.json`), write the fixtures the Swift tests read; Vitest fails while any of them is stale, and the Swift tests fail until the port says the same.
 
 ```sh
 cd web

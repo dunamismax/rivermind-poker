@@ -12,12 +12,32 @@
 	} from '../protocol-v2.ts';
 	import ActionPanel from './ActionPanel.svelte';
 	import { fetchConfig, fetchHand, findHand } from './api.ts';
-	import { describeEvent, potLines } from './bet.ts';
+	import { potLines } from './bet.ts';
 	import type { NlConnection } from './connection.svelte.ts';
 	import { chipFor } from './faces.ts';
 	import { inviteLink as inviteLinkFor } from './lobby.ts';
 	import HandReplay from './HandReplay.svelte';
 	import { betClass, clockLeft, placeClass, sideClass } from './layout.ts';
+	import {
+		EMPTY_SEAT_TEXT,
+		buyInHint,
+		busted as bustedAt,
+		dealtIn as dealtInAt,
+		dockLine,
+		emptySeat as emptyAt,
+		handLine,
+		hasSeatRoom,
+		inHand as inHandAt,
+		joinLine,
+		logLines,
+		myTurn as myTurnAt,
+		nameOf as nameAt,
+		noHandText,
+		pendingRebuyText,
+		rebuyRoom as rebuyRoomAt,
+		refillText,
+		reviewable as reviewableAt
+	} from './table.ts';
 	import NlSeat from './NlSeat.svelte';
 	import NlVoice from './NlVoice.svelte';
 	import { REACTIONS, REPORT_REASONS, VOICE_REPORT_NOTE, relationText } from './safety.ts';
@@ -53,24 +73,14 @@
 	const me = $derived(mine === null ? null : view.seats[mine]);
 	const hand = $derived(view.hand);
 	const result = $derived(hand?.result ?? null);
-	const inHand = $derived(hand !== null && result === null);
-	const nameOf = (seat: number) => view.seats[seat]?.name ?? `Seat ${seat + 1}`;
+	const inHand = $derived(inHandAt(view));
+	const nameOf = (seat: number) => nameAt(view, seat);
 	const board = $derived(Array.from({ length: 5 }, (_, i) => hand?.board[i]));
-	const lines = $derived(
-		connection.log
-			.map((event) => ({
-				seq: event.seq,
-				text: describeEvent(event, (seat) => event.who ?? nameOf(seat))
-			}))
-			.filter((line): line is { seq: number; text: string } => line.text !== null)
-			.slice(-30)
-			.reverse()
-	);
+	const lines = $derived(logLines(connection.log, view));
 	const winners = $derived(
 		result ? potLines(result, nameOf).map((text, i) => ({ key: i, text })) : []
 	);
-	const waitingFor = $derived(view.turn && view.turn.seat !== mine ? nameOf(view.turn.seat) : null);
-	const myTurn = $derived(Boolean(view.you.legal && hand && view.turn));
+	const myTurn = $derived(myTurnAt(view));
 
 	// At a practice table the guest can change opponents between hands (P5.7a):
 	// RiverMind Easy, or a trained bot the server offers for two seats.
@@ -118,15 +128,9 @@
 	let reviewHead = $state<HTMLElement>();
 	let reviewButton = $state<HTMLButtonElement>();
 	/** Whether the viewer was dealt into the hand on the felt, so it is among their hands. */
-	const dealtIn = $derived(
-		hand !== null &&
-			mine !== null &&
-			(hand.posts.some((post) => post.seat === mine) ||
-				hand.actions.some((action) => action.seat === mine) ||
-				(result?.net[mine] ?? 0) !== 0)
-	);
+	const dealtIn = $derived(dealtInAt(view));
 	/** A hand has finished at this table, so there may be one of the viewer's to review. */
-	const reviewable = $derived(hand !== null && (result !== null || hand.hand_no > 1));
+	const reviewable = $derived(reviewableAt(view));
 	const reviewClock = $derived(review && myTurn && view.turn ? clockLeft(view.turn, now) : null);
 
 	/** Open hand `handNo` of this table, or the viewer's newest hand here. */
@@ -136,11 +140,7 @@
 		try {
 			const handId = await findHand(view.table_id, handNo);
 			if (handId === null) {
-				connection.notify(
-					handNo === null
-						? 'You have not finished a hand at this table yet.'
-						: `You were not dealt into hand #${handNo}, so it is not among your hands.`
-				);
+				connection.notify(noHandText(handNo));
 				return;
 			}
 			review = await fetchHand(handId);
@@ -162,19 +162,16 @@
 	}
 
 	let rebuyAmount = $state(0);
-	const rebuyRoom = $derived(me ? view.settings.max_buy_in - me.stack - view.you.pending_rebuy : 0);
+	const rebuyRoom = $derived(rebuyRoomAt(view));
 	$effect.pre(() => {
 		if (rebuyAmount <= 0 || rebuyAmount > rebuyRoom) rebuyAmount = Math.max(0, rebuyRoom);
 	});
-	const busted = $derived(me !== null && me.stack === 0 && !inHand);
+	const busted = $derived(bustedAt(view));
 
 	// Seating from the table (P4.3): a spectator can hold an empty seat, take
 	// any seat, or wait in line; a held seat waits for its player to buy in.
 	const hold = $derived(view.you.hold);
-	const holdAt = $derived(new Map(view.holds.map((h) => [h.seat, h])));
-	const room = $derived(
-		view.seats.some((info, seat) => !holdAt.has(seat) && (info === null || info.kind === 'bot'))
-	);
+	const room = $derived(hasSeatRoom(view));
 	const holdLeft = $derived(hold?.until ? Math.max(0, Math.ceil(hold.until - now)) : null);
 	const most = $derived(Math.min(view.settings.max_buy_in, connection.balance ?? Infinity));
 	let buyIn = $state(0);
@@ -340,8 +337,7 @@
 		<div
 			class="meta flex-1 text-center text-mist capitalize text-shadow-ink phone:text-s pocket:min-w-0 pocket:truncate"
 		>
-			{#if hand}<span class="pocket:sr-only">Hand&#32;</span>#{hand.hand_no} · {hand.street}{:else}Waiting
-				for players{/if}
+			{#if hand}<span class="pocket:sr-only">Hand&#32;</span>{/if}{handLine(view)}
 		</div>
 		<div
 			class="stakes ml-auto flex items-center gap-3 text-paper-shade text-shadow-ink phone:text-s"
@@ -535,25 +531,25 @@
 							<span>Bet {info.bet}</span>
 						</div>
 					{/if}
-				{:else if holdAt.has(seat)}
+				{:else if emptyAt(view, seat) === 'mine' || emptyAt(view, seat) === 'held'}
 					<div class="held border-amber-dark text-amber {empty} {placeClass(seat, mine, count)}">
-						{hold?.seat === seat ? 'Your seat' : 'Held'}
+						{EMPTY_SEAT_TEXT[emptyAt(view, seat)]}
 					</div>
-				{:else if mine === null && !hold && view.you.waitlist_position === null}
+				{:else if emptyAt(view, seat) === 'open'}
 					<button
 						type="button"
 						class="{openSeat} {placeClass(seat, mine, count)}"
 						disabled={seating || short}
 						onclick={() => seatTask(() => connection.holdSeat(seat))}
 					>
-						Sit here<span class="sr-only">, seat {seat + 1}</span>
+						{EMPTY_SEAT_TEXT.open}<span class="sr-only">, seat {seat + 1}</span>
 					</button>
 				{:else}
 					<div
 						class="border-felt-light text-haze {empty} {placeClass(seat, mine, count)}"
 						aria-hidden="true"
 					>
-						Empty
+						{EMPTY_SEAT_TEXT.empty}
 					</div>
 				{/if}
 			{/each}
@@ -576,10 +572,7 @@
 				aria-label="Take a seat"
 			>
 				{#if hold?.ready}
-					<p role="status">
-						Seat {hold.seat + 1} is held for you{holdLeft !== null ? ` for ${holdLeft}s` : ''}. Buy
-						in to sit down.
-					</p>
+					<p role="status">{joinLine(view, holdLeft, short)}</p>
 					<form
 						class="buy-in flex flex-wrap items-center justify-center gap-4"
 						onsubmit={(e) => {
@@ -611,13 +604,9 @@
 							Give up
 						</button>
 					</form>
-					<p class="hint text-s text-haze">
-						Buy in for {view.settings.min_buy_in.toLocaleString('en-US')} to {view.settings.max_buy_in.toLocaleString(
-							'en-US'
-						)} play chips.
-					</p>
+					<p class="hint text-s text-haze">{buyInHint(view)}</p>
 				{:else if hold}
-					<p role="status">Seat {hold.seat + 1} is yours when the bot there finishes this hand.</p>
+					<p role="status">{joinLine(view, holdLeft, short)}</p>
 					<button
 						type="button"
 						class="ui-btn small"
@@ -627,9 +616,7 @@
 						Give up the seat
 					</button>
 				{:else if view.you.waitlist_position !== null}
-					<p role="status">
-						You are number {view.you.waitlist_position} in line. A seat is held for you when one opens.
-					</p>
+					<p role="status">{joinLine(view, holdLeft, short)}</p>
 					<button
 						type="button"
 						class="ui-btn small"
@@ -639,9 +626,7 @@
 						Leave the line
 					</button>
 				{:else}
-					<p role="status">
-						You are watching.{short ? ' You need more play chips to sit at this table.' : ''}
-					</p>
+					<p role="status">{joinLine(view, holdLeft, short)}</p>
 					{#if room}
 						<button
 							type="button"
@@ -684,7 +669,7 @@
 					disabled={!connection.connected}
 					onclick={() => connection.refill()}
 				>
-					Play again with {view.settings.max_buy_in.toLocaleString('en-US')} chips
+					{refillText(view)}
 				</button>
 				{#if result && hand && dealtIn}
 					<button
@@ -701,19 +686,7 @@
 			<div
 				class="waiting ui-inset flex min-h-32 flex-wrap items-center justify-center gap-x-6 gap-y-2 px-6 py-2 text-center text-mist phone:min-h-28 phone:py-0 phone:text-s"
 			>
-				<p role="status">
-					{#if busted}
-						You are out of chips. Rebuy to keep playing.
-					{:else if view.you.sitting_out}
-						You are sitting out.
-					{:else if waitingFor}
-						Waiting for {waitingFor}…
-					{:else if result}
-						Next hand soon…
-					{:else}
-						&nbsp;
-					{/if}
-				</p>
+				<p role="status">{dockLine(view) || '\u00a0'}</p>
 				{#if result && hand && dealtIn}
 					<button
 						type="button"
@@ -815,8 +788,8 @@
 					<button type="submit" class="ui-btn small">Rebuy</button>
 				</form>
 			{/if}
-			{#if view.you.pending_rebuy}
-				<span class={note}>+{view.you.pending_rebuy} after this hand</span>
+			{#if pendingRebuyText(view)}
+				<span class={note}>{pendingRebuyText(view)}</span>
 			{/if}
 			{#if reacting}
 				<div
