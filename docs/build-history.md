@@ -15,6 +15,10 @@ BUILD.md tracks whatever is still open. Commit hashes refer to `main`.
 
 <!-- newest entries go directly below this line -->
 
+### 2026-11-28 · A handoff entry moved from BUILD.md
+
+**2026-11-28 · Phase 9 withdrawn: no FeltPrep, no training section.** The owner changed their mind: FeltPrep will not be built or brought into RiverMind, and RiverMind stays focused on the best and most fun play-money poker with bots or friends and table voice, not learning, drills or solver study. **Removed:** D-20, Q-17 and Q-18, Phase 9 (P9.1 to P9.9) with its line in the phase overview, its jump link and its paragraph under **The 1.0 product**, and item 10 of [docs/roadmap.md](docs/roadmap.md). Kept: the clean deck's provenance from FeltPrep's code-drawn cards (D-18, `licenses/FeltPrep-cards.txt`), since the site still uses that deck. **Checked:** only the files themselves; no code changed. Moved the oldest entry to [docs/build-history.md](docs/build-history.md). **Next:** unchanged.
+
 ## Moved from BUILD.md on 2026-11-28: P5D.11, deployed
 
 - [x] **P5D.11 · The server's part: old builds, deletion and counts** · Depends on: P5D.3
