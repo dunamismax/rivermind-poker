@@ -67,6 +67,8 @@ Build on the settled decisions (`D-n`). Use an open question’s default (`Q-n`)
 
 Approval for one of these does not carry over to the next.
 
+**Technical decisions, downloads and installs are pre-approved** (D-22, owner, 2026-11-28). Make whatever technical decision is best for the build and carry it out without asking: download, install or use any library, framework, SDK, toolchain, binary, crate, package or tool the work needs (a WebRTC build, Rust targets, crates, Swift packages, npm packages, Docker images). Take each from its official source, pin it to an exact version where its tooling allows, record its license in `licenses/` when it ships ([section 12](#12-repository-boundaries)), and say in the handoff what was added and why. This changes nothing about the owner gates below, settled decisions, money or real identity.
+
 **Server setup is pre-authorized** (D-10). You may SSH into ubuntu-vm as root and install packages, set up databases, roles, services, files and configuration without asking. Keep the host’s other sites working, follow its conventions (see `deploy/setup-database.sh`) and record what changed in BUILD.md. Deploying to the live domain is covered by D-21 above.
 
 **When blocked,** work on a ready prerequisite within the current phase, or record exactly what is needed to proceed, and stop only at an owner gate.
