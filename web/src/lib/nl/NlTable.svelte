@@ -1,9 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { tableCardUrls } from '../card-assets.ts';
-	import { look } from '../look.svelte.ts';
 	import ConnectionStatus from '../components/ConnectionStatus.svelte';
-	import LookSwitch from '../components/LookSwitch.svelte';
 	import PlayingCard from '../components/PlayingCard.svelte';
 	import type {
 		BotOption,
@@ -36,9 +34,9 @@
 			voice.diagnostics();
 	}
 
-	// Fetch the look's faces and back, so no card pops in mid-deal; again when the look changes.
+	// Fetch the faces and the back, so no card pops in mid-deal.
 	$effect(() => {
-		for (const src of tableCardUrls(undefined, look.current)) new Image().src = src;
+		for (const src of tableCardUrls()) new Image().src = src;
 	});
 
 	// The turn clocks tick on the local clock, shifted to the server's.
@@ -255,28 +253,15 @@
 
 	const note = 'note text-green-light text-shadow-ink';
 	const bet =
-		'bet absolute z-2 flex -translate-1/2 animate-pop items-center gap-3 bg-[rgb(12_13_21/0.72)] py-1 pr-4 pl-2 text-s whitespace-nowrap text-paper clean:rounded-full clean:bg-[rgb(12_13_21/0.94)] phone:gap-[3px] phone:py-0 phone:pr-2 phone:pl-1 phone:text-xs';
+		'bet absolute z-2 flex -translate-1/2 animate-pop items-center gap-3 rounded-full bg-[rgb(12_13_21/0.94)] py-1 pr-4 pl-2 text-s whitespace-nowrap text-paper phone:gap-[3px] phone:py-0 phone:pr-2 phone:pl-1 phone:text-xs';
 	// A seat nobody is in: a dashed outline on the felt, and a button when the viewer may take it.
 	const emptySeat =
-		'empty absolute -translate-1/2 border-2 border-dashed bg-[rgb(12_13_21/0.35)] px-5 py-2 text-s clean:rounded-[10px] phone:px-3 phone:py-1';
+		'empty absolute -translate-1/2 border-2 border-dashed bg-[rgb(12_13_21/0.35)] px-5 py-2 text-s rounded-[10px] phone:px-3 phone:py-1';
 	const empty = `${emptySeat} phone:text-xs`;
 	const openSeat = `${emptySeat} open z-3 cursor-pointer border-gold text-gold-light enabled:hover:bg-[rgb(12_13_21/0.7)] enabled:hover:outline-2 enabled:hover:outline-gold-light focus-visible:bg-[rgb(12_13_21/0.7)] focus-visible:outline-2 focus-visible:outline-gold-light disabled:cursor-default disabled:opacity-60`;
 
 	let sharing = $state(false);
 	let copied = $state(false);
-	/** The table bar's menu (P5C.6): on a phone, where the site header is left out, it holds the look switch. */
-	let menuOpen = $state(false);
-	$effect(() => {
-		// One panel under the bar at a time: the menu gives way to the invite link and a player's menu.
-		if (sharing || picked !== null) menuOpen = false;
-	});
-	function toggleMenu() {
-		menuOpen = !menuOpen;
-		if (menuOpen) {
-			sharing = false;
-			picked = null;
-		}
-	}
 	const inviteLink = $derived(
 		view.invite ? `${location.origin}/?invite=${encodeURIComponent(view.invite)}` : null
 	);
@@ -318,7 +303,7 @@
 		{#if me}
 			<button
 				type="button"
-				class="px-btn small leave phone:px-1"
+				class="ui-btn small leave phone:px-1"
 				onclick={() => connection.leave()}
 			>
 				<span aria-hidden="true">←</span>
@@ -327,7 +312,7 @@
 		{:else}
 			<button
 				type="button"
-				class="px-btn small leave phone:px-1"
+				class="ui-btn small leave phone:px-1"
 				onclick={() => connection.leave()}
 			>
 				<span aria-hidden="true">←</span> Lobby
@@ -336,7 +321,7 @@
 		{#if inviteLink}
 			<button
 				type="button"
-				class="px-btn small"
+				class="ui-btn small"
 				aria-expanded={sharing}
 				onclick={() => (sharing = !sharing)}
 			>
@@ -348,7 +333,7 @@
 		{/if}
 		{#if view.practice}
 			<span
-				class="practice-tag bg-gold px-4 py-1 text-s whitespace-nowrap text-ink [box-shadow:0_2px_0_var(--color-amber-deep)] clean:rounded-full clean:[box-shadow:var(--elevation-1)]"
+				class="practice-tag bg-gold px-4 py-1 text-s whitespace-nowrap text-ink rounded-full [box-shadow:var(--elevation-1)]"
 				title="Practice chips: your wallet is not touched"
 			>
 				Practice
@@ -371,49 +356,23 @@
 		<span class="lamp hidden pocket:inline-flex">
 			<ConnectionStatus status={connection.status} />
 		</span>
-		<!-- And no look switch: the bar's menu holds it there (P5C.6). The bar keeps to one line in
-		     voice at a private table, so on a phone the blinds drop their chip and the gaps are 4px. -->
-		<button
-			type="button"
-			class="px-btn small table-menu-open hidden px-0 pocket:inline-flex pocket:w-15"
-			aria-label="Table menu"
-			aria-expanded={menuOpen}
-			aria-controls="table-menu"
-			onclick={toggleMenu}
-		>
-			<span class="flex gap-[3px]" aria-hidden="true">
-				{#each [0, 1, 2] as dot (dot)}<span class="size-[4px] bg-current clean:rounded-full"
-					></span>{/each}
-			</span>
-		</button>
-		{#if menuOpen}
-			<div
-				id="table-menu"
-				class="table-menu px-inset hidden flex-[1_1_100%] flex-wrap items-center justify-between gap-4 p-4 pocket:absolute pocket:inset-x-0 pocket:top-[calc(100%+4px)] pocket:flex"
-				role="dialog"
-				aria-label="Table menu"
-			>
-				<LookSwitch labelled />
-				<button type="button" class="px-btn small" onclick={() => (menuOpen = false)}>Close</button>
-			</div>
-		{/if}
 		{#if sharing && inviteLink}
 			<div
-				class="share px-inset flex flex-[1_1_100%] flex-wrap items-center gap-4 p-4 phone:absolute phone:inset-x-0 phone:top-[calc(100%+4px)]"
+				class="share ui-inset flex flex-[1_1_100%] flex-wrap items-center gap-4 p-4 phone:absolute phone:inset-x-0 phone:top-[calc(100%+4px)]"
 				role="group"
 				aria-label="Invite link"
 			>
 				<label class="min-w-0 flex-[1_1_260px]">
 					<span class="sr-only">Invite link</span>
 					<input
-						class="px-field w-full"
+						class="ui-field w-full"
 						type="text"
 						readonly
 						value={inviteLink}
 						onfocus={(e) => e.currentTarget.select()}
 					/>
 				</label>
-				<button type="button" class="px-btn small amber" onclick={copyInvite}>
+				<button type="button" class="ui-btn small amber" onclick={copyInvite}>
 					{copied ? 'Copied' : 'Copy'}
 				</button>
 				<span class={note}>This private table is not listed: anyone with the link can join.</span>
@@ -421,7 +380,7 @@
 		{/if}
 		{#if picked !== null && pickedInfo}
 			<div
-				class="player-menu px-inset grid flex-[1_1_100%] gap-4 p-4 text-mist phone:absolute phone:inset-x-0 phone:top-[calc(100%+4px)]"
+				class="player-menu ui-inset grid flex-[1_1_100%] gap-4 p-4 text-mist phone:absolute phone:inset-x-0 phone:top-[calc(100%+4px)]"
 				role="dialog"
 				aria-label="Player {pickedInfo.name}"
 			>
@@ -435,7 +394,7 @@
 				<div class="menu-row flex flex-wrap items-center gap-4">
 					<button
 						type="button"
-						class="px-btn small"
+						class="ui-btn small"
 						aria-pressed={pickedRelation === 'mute'}
 						disabled={busy}
 						onclick={() => toggle('mute')}
@@ -444,14 +403,14 @@
 					</button>
 					<button
 						type="button"
-						class="px-btn small red"
+						class="ui-btn small red"
 						aria-pressed={pickedRelation === 'block'}
 						disabled={busy}
 						onclick={() => toggle('block')}
 					>
 						{pickedRelation === 'block' ? 'Unblock' : 'Block'}
 					</button>
-					<button type="button" class="px-btn small" onclick={() => (picked = null)}>Close</button>
+					<button type="button" class="ui-btn small" onclick={() => (picked = null)}>Close</button>
 				</div>
 				<p class="hint text-s text-paper-shade">
 					Muting hides their reactions. Blocking also keeps quick seat from seating you together.
@@ -465,7 +424,7 @@
 					>
 						<button
 							type="button"
-							class={['px-btn small', voice.isMuted(ref) && 'red']}
+							class={['ui-btn small', voice.isMuted(ref) && 'red']}
 							aria-pressed={voice.isMuted(ref)}
 							onclick={() => voice.toggleMute(ref)}
 						>
@@ -475,7 +434,7 @@
 							Volume
 							<input
 								type="range"
-								class="px-range w-80"
+								class="ui-range w-80"
 								min="0"
 								max="200"
 								step="5"
@@ -496,13 +455,13 @@
 				>
 					<label>
 						<span class="sr-only">Reason</span>
-						<select class="px-field" bind:value={reason}>
+						<select class="ui-field" bind:value={reason}>
 							{#each REPORT_REASONS as option (option.reason)}
 								<option value={option.reason}>{option.text}</option>
 							{/each}
 						</select>
 					</label>
-					<button type="submit" class="px-btn small amber" disabled={busy}>Report</button>
+					<button type="submit" class="ui-btn small amber" disabled={busy}>Report</button>
 				</form>
 				{#if reason === 'voice'}<p class="hint text-s text-paper-shade" data-report="voice">
 						{VOICE_REPORT_NOTE}
@@ -523,7 +482,7 @@
 		<div
 			class="stage relative mx-auto aspect-[21/10] w-[min(100%,calc((100dvh-340px)*2.1))] min-w-[min(100%,560px)] lap:aspect-[18/10] lap:w-[min(100%,calc((100dvh-330px)*1.8))] lap:min-w-[min(100%,480px)] tall:aspect-[16/10] tall:w-[min(100%,calc((100dvh-520px)*1.6))] tall:min-w-[min(100%,520px)] phone:aspect-auto phone:h-full phone:w-full phone:min-w-0 phone:[--pod-drop:60px] phone:[--pod-lift:-34px] tab:[--pod-drop:78px] tab:[--pod-lift:-44px]"
 		>
-			<div class="felt px-table absolute inset-0 lap:[--table-px:2px]" aria-hidden="true"></div>
+			<div class="felt ui-table absolute inset-0 lap:[--table-unit:2px]" aria-hidden="true"></div>
 			<div
 				class="centre absolute top-[48%] left-1/2 z-1 grid -translate-1/2 justify-items-center gap-4 text-center [--k:1.4] lap:[--k:1] phone:top-1/2 phone:gap-3 tab:[--k:1.4] pocket:top-[51.5%]"
 			>
@@ -533,10 +492,10 @@
 						<span class="pot text-gold-light text-shadow-ink">Pot {hand.pot}</span>
 					{/if}
 				</div>
-				<!-- On a phone the board's places overlap by 6px; the clean look cuts that much off each
+				<!-- On a phone the board's places overlap by 6px; that much is cut off each
 				     empty slot's drawn edge, so the row reads as single edges, as the replay's does. -->
 				<div
-					class="board flex gap-4 phone:gap-0 phone:[&>.card+.card]:-ml-3 clean:phone:[&>.card+.slot]:[clip-path:inset(0_0_0_6px)]"
+					class="board flex gap-4 phone:gap-0 phone:[&>.card+.card]:-ml-3 phone:[&>.card+.slot]:[clip-path:inset(0_0_0_6px)]"
 					aria-label="Board"
 				>
 					{#each board as card, i (i)}
@@ -614,7 +573,7 @@
 	>
 		{#if !me}
 			<div
-				class="join px-inset grid justify-items-center gap-5 px-6 pt-5 pb-6 text-center text-mist"
+				class="join ui-inset grid justify-items-center gap-5 px-6 pt-5 pb-6 text-center text-mist"
 				role="group"
 				aria-label="Take a seat"
 			>
@@ -633,7 +592,7 @@
 						<label>
 							<span class="sr-only">Buy-in</span>
 							<input
-								class="px-field w-65 text-right"
+								class="ui-field w-65 text-right"
 								type="number"
 								inputmode="numeric"
 								min={view.settings.min_buy_in}
@@ -642,12 +601,12 @@
 								bind:value={buyIn}
 							/>
 						</label>
-						<button type="submit" class="px-btn amber" disabled={short || !connection.connected}>
+						<button type="submit" class="ui-btn amber" disabled={short || !connection.connected}>
 							Sit down
 						</button>
 						<button
 							type="button"
-							class="px-btn small"
+							class="ui-btn small"
 							disabled={seating}
 							onclick={() => seatTask(() => connection.giveUpHold())}
 						>
@@ -663,7 +622,7 @@
 					<p role="status">Seat {hold.seat + 1} is yours when the bot there finishes this hand.</p>
 					<button
 						type="button"
-						class="px-btn small"
+						class="ui-btn small"
 						disabled={seating}
 						onclick={() => seatTask(() => connection.giveUpHold())}
 					>
@@ -675,7 +634,7 @@
 					</p>
 					<button
 						type="button"
-						class="px-btn small"
+						class="ui-btn small"
 						disabled={seating}
 						onclick={() => seatTask(() => connection.leaveWaitlist(view.table_id))}
 					>
@@ -688,7 +647,7 @@
 					{#if room}
 						<button
 							type="button"
-							class="px-btn amber"
+							class="ui-btn amber"
 							disabled={seating || short}
 							onclick={() => seatTask(() => connection.takeSeat(view.table_id))}
 						>
@@ -697,7 +656,7 @@
 					{:else}
 						<button
 							type="button"
-							class="px-btn amber"
+							class="ui-btn amber"
 							disabled={seating || short}
 							onclick={() => seatTask(() => connection.joinWaitlist(view.table_id))}
 						>
@@ -716,14 +675,14 @@
 			/>
 		{:else if busted && view.practice}
 			<div
-				class="waiting refill px-inset grid min-h-32 place-items-center gap-4 px-6 py-4 text-center text-mist phone:min-h-28 phone:text-s"
+				class="waiting refill ui-inset grid min-h-32 place-items-center gap-4 px-6 py-4 text-center text-mist phone:min-h-28 phone:text-s"
 				role="group"
 				aria-label="Out of practice chips"
 			>
 				<p role="status">You are out of practice chips.</p>
 				<button
 					type="button"
-					class="px-btn amber"
+					class="ui-btn amber"
 					disabled={!connection.connected}
 					onclick={() => connection.refill()}
 				>
@@ -732,7 +691,7 @@
 				{#if result && hand && dealtIn}
 					<button
 						type="button"
-						class="px-btn small"
+						class="ui-btn small"
 						disabled={reviewLoading}
 						onclick={() => openReview(hand.hand_no)}
 					>
@@ -742,7 +701,7 @@
 			</div>
 		{:else}
 			<div
-				class="waiting px-inset flex min-h-32 flex-wrap items-center justify-center gap-x-6 gap-y-2 px-6 py-2 text-center text-mist phone:min-h-28 phone:py-0 phone:text-s"
+				class="waiting ui-inset flex min-h-32 flex-wrap items-center justify-center gap-x-6 gap-y-2 px-6 py-2 text-center text-mist phone:min-h-28 phone:py-0 phone:text-s"
 			>
 				<p role="status">
 					{#if busted}
@@ -760,7 +719,7 @@
 				{#if result && hand && dealtIn}
 					<button
 						type="button"
-						class="px-btn small"
+						class="ui-btn small"
 						disabled={reviewLoading}
 						onclick={() => openReview(hand.hand_no)}
 					>
@@ -778,11 +737,11 @@
 				: 'phone:row-3'}"
 		>
 			{#if view.you.sitting_out || view.you.sitting_out_next}
-				<button type="button" class="px-btn small green" onclick={() => connection.sitIn()}>
+				<button type="button" class="ui-btn small green" onclick={() => connection.sitIn()}>
 					I’m back
 				</button>
 			{:else}
-				<button type="button" class="px-btn small" onclick={() => connection.sitOut()}>
+				<button type="button" class="ui-btn small" onclick={() => connection.sitOut()}>
 					<span>Sit out<span class="pocket:sr-only">&#32;next hand</span></span>
 				</button>
 			{/if}
@@ -797,7 +756,7 @@
 					<label>
 						<span class="sr-only">Rebuy amount</span>
 						<input
-							class="px-field w-60 text-right phone:min-h-20 phone:w-42"
+							class="ui-field w-60 text-right phone:min-h-20 phone:w-42"
 							type="number"
 							inputmode="numeric"
 							min="1"
@@ -806,7 +765,7 @@
 							bind:value={rebuyAmount}
 						/>
 					</label>
-					<button type="submit" class="px-btn small">Rebuy</button>
+					<button type="submit" class="ui-btn small">Rebuy</button>
 				</form>
 			{/if}
 			{#if view.you.pending_rebuy}
@@ -815,7 +774,7 @@
 			{#if view.practice && opponents.length > 1}
 				<button
 					type="button"
-					class="px-btn small"
+					class="ui-btn small"
 					aria-expanded={choosing}
 					aria-controls="opponents"
 					onclick={() => (choosing = !choosing)}
@@ -838,7 +797,7 @@
 						{#each opponents as option (option.kind)}
 							<button
 								type="button"
-								class="px-btn small"
+								class="ui-btn small"
 								aria-pressed={option.kind === (asked ?? opponent)}
 								disabled={!connection.connected || option.kind === (asked ?? opponent)}
 								onclick={() => playAgainst(option.kind)}
@@ -851,7 +810,7 @@
 			{/if}
 			<button
 				type="button"
-				class="px-btn small"
+				class="ui-btn small"
 				aria-expanded={reacting}
 				aria-controls="reactions"
 				onclick={() => (reacting = !reacting)}
@@ -868,7 +827,7 @@
 					{#each REACTIONS as option (option.kind)}
 						<button
 							type="button"
-							class="px-btn small"
+							class="ui-btn small"
 							disabled={!connection.connected}
 							onclick={() => connection.react(option.kind)}
 						>
@@ -888,7 +847,7 @@
 
 	{#if review}
 		<section
-			class="review px-inset col-2 row-4 grid content-start gap-4 self-start p-4 tall:col-1 tall:row-3 phone:row-2"
+			class="review ui-inset col-2 row-4 grid content-start gap-4 self-start p-4 tall:col-1 tall:row-3 phone:row-2"
 			aria-label="Hand review"
 			tabindex="-1"
 			bind:this={reviewPanel}
@@ -896,7 +855,7 @@
 			<div class="grid scroll-mt-4 gap-1" bind:this={reviewHead}>
 				<div class="flex items-center justify-between gap-4">
 					<h2 class="text-m text-gold text-shadow-ink">Hand #{review.hand.hand_no}</h2>
-					<button type="button" class="px-btn small" onclick={closeReview}>Close</button>
+					<button type="button" class="ui-btn small" onclick={closeReview}>Close</button>
 				</div>
 				<!-- Always one line, so the steps below never move when the turn comes round. -->
 				<p class="min-h-[21px] truncate text-s text-paper-shade">
@@ -915,7 +874,7 @@
 		</section>
 	{:else}
 		<section
-			class="log px-inset col-2 row-4 max-h-[440px] min-h-60 self-stretch overflow-auto p-4 lap:max-h-[360px] tall:col-1 tall:row-5 tall:max-h-[220px] phone:row-4 phone:max-h-none"
+			class="log ui-inset col-2 row-4 max-h-[440px] min-h-60 self-stretch overflow-auto p-4 lap:max-h-[360px] tall:col-1 tall:row-5 tall:max-h-[220px] phone:row-4 phone:max-h-none"
 			aria-label="Hand log"
 		>
 			<div class="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -923,7 +882,7 @@
 				{#if me}
 					<button
 						type="button"
-						class="px-btn small"
+						class="ui-btn small"
 						title={reviewable ? undefined : 'No hand has finished here yet'}
 						disabled={!reviewable || reviewLoading}
 						bind:this={reviewButton}

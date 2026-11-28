@@ -1,6 +1,6 @@
-The clean deck (web/src/lib/art/clean/cards/, drawn by web/scripts/clean-art/deck.js)
+The deck (web/src/lib/art/cards/, drawn by web/scripts/art/deck.js)
 
-RiverMind Poker's clean look (Phase 5C, decision D-18) draws its playing cards
+RiverMind Poker's look (Phase 5C, decision D-18) draws its playing cards
 after the code-drawn cards of FeltPrep, a separate project by the same owner,
 first drawn there at FeltPrep commit cd8293a (2026-11-26, its step P3.1):
 web/src/lib/ui/PlayingCard.svelte, SuitPip.svelte and cards.ts. RiverMind takes

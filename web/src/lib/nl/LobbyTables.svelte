@@ -62,11 +62,11 @@
 
 	const fieldLabel = 'field-label mb-3 block text-gold text-shadow-ink';
 	const seatState = 'state text-s text-green-light text-shadow-ink';
-	/** A pip's colour by who has the seat; each is a square with an inset edge, or in the clean look a dot. */
+	/** A pip's colour by who has the seat; each is a dot. */
 	const PIPS = {
-		person: 'person bg-gold [box-shadow:inset_0_0_0_2px_var(--color-ink)] clean:[box-shadow:none]',
-		bot: 'bot bg-blue-light [box-shadow:inset_0_0_0_2px_var(--color-ink)] clean:[box-shadow:none]',
-		held: 'held bg-amber opacity-60 [box-shadow:inset_0_0_0_2px_var(--color-ink)] clean:[box-shadow:none]',
+		person: 'person bg-gold',
+		bot: 'bot bg-blue-light',
+		held: 'held bg-amber opacity-60',
 		empty: 'empty bg-transparent [box-shadow:inset_0_0_0_2px_var(--color-haze)]'
 	};
 
@@ -90,12 +90,12 @@
 	}
 </script>
 
-<section class="tables px-panel grid gap-6 px-7 pt-6 pb-7" aria-labelledby="tables-title">
+<section class="tables ui-panel grid gap-6 px-7 pt-6 pb-7" aria-labelledby="tables-title">
 	<div class="head flex items-center justify-between gap-6">
 		<h2 id="tables-title" class="text-l text-gold text-shadow-ink">Tables</h2>
 		<button
 			type="button"
-			class="px-btn amber quick min-h-24 px-9 lt-460:px-5"
+			class="ui-btn amber quick min-h-24 px-9 lt-460:px-5"
 			disabled={busy !== null}
 			onclick={() =>
 				run('quick', () => connection.quickSeat({ seats, big_blind: bigBlind, buy_in: null }))}
@@ -115,7 +115,7 @@
 	>
 		<label>
 			<span class={fieldLabel}>Seats</span>
-			<select class="px-field w-full" bind:value={seats}>
+			<select class="ui-field w-full" bind:value={seats}>
 				<option value={null}>Any</option>
 				{#each config?.seat_counts ?? [] as count (count)}
 					<option value={count}>{count}</option>
@@ -124,7 +124,7 @@
 		</label>
 		<label>
 			<span class={fieldLabel}>Blinds</span>
-			<select class="px-field w-full" bind:value={bigBlind}>
+			<select class="ui-field w-full" bind:value={bigBlind}>
 				<option value={null}>Any</option>
 				{#each config?.stakes ?? [] as stakes (stakes.big_blind)}
 					<option value={stakes.big_blind}>{stakes.small_blind}/{stakes.big_blind}</option>
@@ -149,7 +149,7 @@
 		<ul class="list grid max-h-[520px] gap-4 overflow-auto" aria-label="Open tables">
 			{#each tables as t (t.table_id)}
 				<li
-					class="row px-inset grid grid-cols-[minmax(0,1fr)_auto] items-center gap-5 px-5 py-4 lt-460:grid-cols-1"
+					class="row ui-inset grid grid-cols-[minmax(0,1fr)_auto] items-center gap-5 px-5 py-4 lt-460:grid-cols-1"
 					data-table={t.table_id}
 				>
 					<div class="info grid min-w-0 gap-2">
@@ -169,7 +169,7 @@
 						</span>
 						<span class="seats flex flex-wrap items-center gap-4 text-s text-mist">
 							<span class="pips flex gap-1" aria-hidden="true">
-								{#each pips(t) as pip, i (i)}<span class="pip size-5 clean:rounded-full {PIPS[pip]}"
+								{#each pips(t) as pip, i (i)}<span class="pip size-5 rounded-full {PIPS[pip]}"
 									></span>{/each}
 							</span>
 							<span>{seatsText(t)}</span>
@@ -179,7 +179,7 @@
 						{#if t.seated}
 							<button
 								type="button"
-								class="px-btn small green"
+								class="ui-btn small green"
 								onclick={() => connection.watch(t.table_id)}
 							>
 								Back to your seat
@@ -188,7 +188,7 @@
 							<span class={seatState}>Your seat is ready</span>
 							<button
 								type="button"
-								class="px-btn small amber"
+								class="ui-btn small amber"
 								disabled={busy !== null}
 								onclick={() => run(t.table_id, () => connection.takeSeat(t.table_id))}
 							>
@@ -196,7 +196,7 @@
 							</button>
 							<button
 								type="button"
-								class="px-btn small"
+								class="ui-btn small"
 								disabled={busy !== null}
 								onclick={() => run(t.table_id, () => connection.giveUpHold(t.table_id))}
 							>
@@ -206,7 +206,7 @@
 							<span class={seatState}>Seat held: a bot is finishing its hand</span>
 							<button
 								type="button"
-								class="px-btn small"
+								class="ui-btn small"
 								onclick={() => run(t.table_id, () => connection.takeSeat(t.table_id))}
 							>
 								Go to the table
@@ -215,7 +215,7 @@
 							<span class={seatState}>Number {t.waitlist_position} in line</span>
 							<button
 								type="button"
-								class="px-btn small"
+								class="ui-btn small"
 								disabled={busy !== null}
 								onclick={() => run(t.table_id, () => connection.leaveWaitlist(t.table_id))}
 							>
@@ -225,7 +225,7 @@
 							{#if hasRoom(t)}
 								<button
 									type="button"
-									class="px-btn small amber"
+									class="ui-btn small amber"
 									disabled={busy !== null || !canAfford(t)}
 									onclick={() => run(t.table_id, () => connection.takeSeat(t.table_id))}
 								>
@@ -234,7 +234,7 @@
 							{:else}
 								<button
 									type="button"
-									class="px-btn small amber"
+									class="ui-btn small amber"
 									disabled={busy !== null || !canAfford(t)}
 									onclick={() => run(t.table_id, () => connection.joinWaitlist(t.table_id))}
 								>
@@ -243,7 +243,7 @@
 							{/if}
 							<button
 								type="button"
-								class="px-btn small"
+								class="ui-btn small"
 								onclick={() => connection.watch(t.table_id)}
 							>
 								Watch

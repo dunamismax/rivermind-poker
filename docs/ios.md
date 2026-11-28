@@ -95,10 +95,10 @@ The server is authoritative (D-2): the app decides nothing about cards, turns or
 | `hand-name.ts` and the browser-safe evaluator in `src/lib/engine` | the table layout at 2 to 9 seats, from the same rules as `layout.ts` (P5D.7) |
 | `bet.ts`: bet and raise sizes and presets | the action panel, slider and haptics |
 | `replay.ts`'s steps | the replayer's controls |
-| `faces.ts`: card faces and suits | the cards themselves, from `scripts/clean-art/deck.js`'s geometry (P5D.5) |
+| `faces.ts`: card faces and suits | the cards themselves, from `scripts/art/deck.js`'s geometry (P5D.5) |
 | `wording.ts` and the table's own wording of events, errors and results | animations, with Reduce Motion |
 | what `connection.svelte.ts` does: hello, `seq`, errors, rejoining (P5D.3) | the voice panel (P5D.10) |
-| the clean look's tokens, written into Swift by `pnpm art` from `clean.css`'s source (P5D.5) | |
+| the site's tokens, written into Swift by `pnpm art` from `theme.css` (P5D.5) | |
 
 Small formatting rules that the page writes inline are ported where they are first needed and tested against the page's own output: P5D.1's `ConfigResponse.chips` matches `toLocaleString('en-US')`, and `ConfigResponse.blinds` the lobby's `small/big`.
 

@@ -15,6 +15,10 @@ BUILD.md tracks whatever is still open. Commit hashes refer to `main`.
 
 <!-- newest entries go directly below this line -->
 
+## Moved from BUILD.md on 2026-11-27: a handoff entry
+
+**2026-11-27 · Phase 9 added: FeltPrep becomes Train, after 1.0 (planning only).** The owner wants one brand and one site: their FeltPrep trainer becomes rivermindpoker.com's Train section once 1.0 is done, and FeltPrep is then eliminated, leaving one domain and one project, with the iOS app. They asked for this as a phase at the end of this file, then settled its questions. **Reviewed** both repositories: the stacks and host contract match; FeltPrep's engine is this one's code apart from import headers, import paths, a few lint annotations and a split `random.ts`; FeltPrep has the solver, the solved jam-or-fold game, a lesson, study, drills, short-stack practice and review, with its grading gate and benchmarks; the clean deck already came from it (D-18). **Added** (`d9b8125`, then cut down the same day once the owner said FeltPrep is their own tool, used by nobody else): D-20, which now holds the owner's answers (FeltPrep keeps being built until 1.0; GPL-3.0-or-later for its code and lessons; no data, redirects or URL map; no grade during a hand with people; Train in the app before the phase is done; FeltPrep removed from the host without asking and without a dump; its repository, domains and Cloudflare records left to the owner); Q-17 and Q-18, both decided by it; and Phase 9, P9.1 to P9.9: a browser-safe engine, the solver and its benchmarks with byte-identical solutions, lessons and study, drills, practice and review at this site's practice tables, Train in the app, the host and load with Train, going live, and FeltPrep off the host. Also a line in the phase overview, the jump links and **The 1.0 product**, and item 10 in [docs/roadmap.md](docs/roadmap.md). **Checked:** only the files themselves; no code changed. Moved the oldest entry to [docs/build-history.md](docs/build-history.md). **Next:** unchanged, P5D.1.
+
 ## Moved from BUILD.md on 2026-11-27: P5D.1, and a handoff entry
 
 - [x] **P5D.1 · The app's design and skeleton** · Depends on: none

@@ -7,10 +7,9 @@
 // Each person is a browser of their own (e2e/voice.ts). Chromium cannot
 // capture on macOS, so there its person is refused the microphone and listens
 // to a Firefox speaker; on Linux both speak.
-import { expect, test as base, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { canCapture, canTransform } from '../voice/check/browsers.ts';
 import { nameOf, newTableForm, seated, sitDown } from './fixtures.ts';
-import { withLook } from './look.ts';
 import {
 	card,
 	closePanel,
@@ -22,9 +21,6 @@ import {
 	type Engine,
 	type Person
 } from './voice.ts';
-
-// Its own pages are in the look the run asked for (E2E_LOOK, Phase 5C).
-const test = base.extend({ context: async ({ context }, use) => use(await withLook(context)) });
 
 test.describe.configure({ timeout: 300_000 });
 

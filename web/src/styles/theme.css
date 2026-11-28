@@ -1,0 +1,182 @@
+/*
+ * The site's tokens (D-18): a dark card room. Charcoal and slate surfaces, a
+ * deep muted felt, one gold accent for the viewer's seat and the turn, the
+ * system's own fonts, soft shadows and smooth motion. Tailwind's theme holds
+ * the palette, the fonts, the spacing step, the text sizes, the text shadows
+ * and the animations, and nothing of Tailwind's own, so the utilities offer
+ * only these; `static` writes every variable into the page's CSS, so the kit's
+ * own stylesheets can use any of them. Every palette name has its role (gold is
+ * the accent, felt the table, red-light a loss, green-light a win), and
+ * theme.spec.ts measures the contrast of every pair of text and background the
+ * pages use. scripts/art/ reads its colours from here. docs/design.md has the
+ * language.
+ */
+@theme static {
+	/* Nothing of Tailwind's default theme. */
+	--*: initial;
+
+	/* The palette: bg-felt, text-gold, border-ink and so on. */
+	--color-ink: #0a0c11;
+	--color-night: #11141b;
+	--color-deep-slate: #181c25;
+	--color-slate: #232935;
+	--color-dusk: #687186;
+	--color-haze: #a1a9ba;
+	--color-mist: #b3bbca;
+	--color-felt-deep: #0d2721;
+	--color-felt-dark: #12352d;
+	--color-felt: #174237;
+	--color-felt-light: #1f5646;
+	--color-felt-glow: #2b6e59;
+	--color-wood-deep: #0e0f13;
+	--color-wood-dark: #1a1c22;
+	--color-wood: #262931;
+	--color-wood-light: #353943;
+	--color-brass: #a88d5c;
+	--color-paper-deep: #9aa2b1;
+	--color-paper-shade: #cdd3de;
+	--color-paper: #eceff4;
+	--color-white: #ffffff;
+	--color-red-deep: #35161a;
+	--color-red-dark: #bd3a44;
+	--color-red: #d9474f;
+	--color-red-light: #ff8f86;
+	--color-blue-deep: #12213f;
+	--color-blue-dark: #2d67cc;
+	--color-blue: #3b7be0;
+	--color-blue-light: #8fbcff;
+	--color-green-deep: #0f2d1f;
+	--color-green-dark: #1f7a4c;
+	--color-green: #2fa065;
+	--color-green-light: #7fd9a2;
+	--color-amber-deep: #3e2710;
+	--color-amber-dark: #a8601f;
+	--color-amber: #e8923a;
+	--color-gold: #f0bd4f;
+	--color-gold-light: #ffdc8a;
+	--color-violet-deep: #211b3d;
+	--color-violet: #4b3c96;
+	--color-violet-light: #b0a1f5;
+	--color-skin-deep: #6b3d2f;
+	--color-skin: #b47657;
+	--color-skin-light: #e8b896;
+
+	/* A role of its own: the turn clock and the voice meter's middle. */
+	--color-warn: #e8923a;
+
+	/* The deck (P5C.3, FeltPrep's colours): warm white with a thin edge, and one
+	   colour per suit, so a card never depends on telling red from black. */
+	--color-card: #fffdf7;
+	--color-card-edge: #bdb7a6;
+	--color-card-back-burgundy: #7a2f3a;
+	--color-card-back-navy: #243a63;
+	--color-card-back-green: #1f5240;
+	--color-card-back-mark: #e8c9a0;
+	--color-suit-clubs: #19703a;
+	--color-suit-diamonds: #1a58ad;
+	--color-suit-hearts: #b4231b;
+	--color-suit-spades: #1a1d22;
+
+	/* The system's own fonts: no font file and no third-party origin. */
+	--font-sans:
+		system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', Arial, sans-serif;
+	--font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+	--default-font-family: var(--font-sans);
+	--default-mono-font-family: var(--font-mono);
+
+	/* The spacing step: p-3 is 6px. The kit's sizes count in it. */
+	--spacing: 2px;
+
+	/* Text sizes: text-xs to text-xl. */
+	--text-xs: 11px;
+	--text-s: 13px;
+	--text-m: 16px;
+	--text-l: 22px;
+	--text-xl: 28px;
+
+	/* Soft shadows under text on art, and under the site's name. */
+	--text-shadow-ink: 0 1px 2px rgb(0 0 0 / 0.45);
+	--text-shadow-title: 0 1px 3px rgb(0 0 0 / 0.5);
+
+	/* A lamp or a line of text that is waiting. */
+	--animate-blink: blink 1.2s var(--ease-in-out) infinite;
+	--animate-wait: wait 1.4s var(--ease-in-out) infinite;
+	/* A notice rising into place, the action panel sliding up, a bet landing. */
+	--animate-drop: drop 0.24s var(--ease-out);
+	--animate-slide: slide 0.18s var(--ease-out);
+	--animate-pop: pop 0.2s var(--ease-out);
+	/* A reaction appearing, and winnings rising from the seat. */
+	--animate-fade: fade 0.24s var(--ease-out);
+	--animate-rise: rise 0.6s var(--ease-out);
+	/* The seat to act breathes in place: its ring brightens and fades, and nothing moves,
+	   so a name or a menu under a finger stays where it is (P5C.6). */
+	--animate-nudge: turn 1.6s var(--ease-in-out) infinite;
+	/* A seat whose person is speaking in table voice (P4C.6): the ring stays, still, for reduced motion. */
+	--animate-speak: speak 1s var(--ease-in-out) infinite;
+
+	@keyframes blink {
+		50% {
+			opacity: 0.35;
+		}
+	}
+	@keyframes wait {
+		50% {
+			opacity: 0.5;
+		}
+	}
+	@keyframes drop {
+		from {
+			transform: translateY(12px);
+			opacity: 0;
+		}
+	}
+	@keyframes slide {
+		from {
+			transform: translateY(8px);
+			opacity: 0;
+		}
+	}
+	@keyframes pop {
+		from {
+			transform: scale(0.6);
+			opacity: 0;
+		}
+	}
+	@keyframes fade {
+		from {
+			opacity: 0;
+		}
+	}
+	@keyframes rise {
+		from {
+			transform: translateY(60%);
+			opacity: 0;
+		}
+	}
+	@keyframes turn {
+		50% {
+			box-shadow:
+				0 0 0 2px var(--color-gold-light),
+				0 0 0 7px rgb(240 189 79 / 0.4),
+				var(--elevation-2);
+		}
+	}
+	@keyframes speak {
+		50% {
+			outline-color: var(--color-green);
+		}
+	}
+}
+
+/* What the kit draws with besides the theme: corners, one soft shadow scale, motion and a faint edge. */
+:root {
+	--radius-s: 6px;
+	--radius-m: 10px;
+	--radius-l: 16px;
+	--elevation-1: 0 1px 2px rgb(0 0 0 / 0.35);
+	--elevation-2: 0 4px 14px rgb(0 0 0 / 0.35);
+	--elevation-3: 0 14px 36px rgb(0 0 0 / 0.45);
+	--ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+	--ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+	--edge: rgb(255 255 255 / 0.07);
+}

@@ -101,7 +101,7 @@
 
 {#if toast}
 	<div
-		class="toast px-danger fixed bottom-[calc(20px+env(safe-area-inset-bottom))] left-1/2 z-20 max-w-[calc(100vw-32px)] -translate-x-1/2 animate-drop px-6 py-3 text-shadow-ink"
+		class="toast ui-danger fixed bottom-[calc(20px+env(safe-area-inset-bottom))] left-1/2 z-20 max-w-[calc(100vw-32px)] -translate-x-1/2 animate-drop px-6 py-3 text-shadow-ink"
 		role="alert"
 	>
 		{toast}

@@ -84,7 +84,7 @@
 		{#if voice.mode === 'talk' && voice.settings.pushToTalk}
 			<button
 				type="button"
-				class={['px-btn small talk phone:px-1', voice.talking && 'green']}
+				class={['ui-btn small talk phone:px-1', voice.talking && 'green']}
 				aria-pressed={voice.talking}
 				disabled={voice.deafened}
 				onpointerdown={(e) => {
@@ -106,7 +106,7 @@
 		{:else if voice.mode === 'talk'}
 			<button
 				type="button"
-				class={['px-btn small mute phone:px-1', voice.selfMuted && 'red']}
+				class={['ui-btn small mute phone:px-1', voice.selfMuted && 'red']}
 				aria-pressed={voice.selfMuted}
 				aria-keyshortcuts="M"
 				disabled={voice.deafened}
@@ -119,7 +119,7 @@
 		{/if}
 		<button
 			type="button"
-			class={['px-btn small deafen phone:px-1 pocket:hidden', voice.deafened && 'red']}
+			class={['ui-btn small deafen phone:px-1 pocket:hidden', voice.deafened && 'red']}
 			aria-pressed={voice.deafened}
 			aria-keyshortcuts="D"
 			title="Hear nobody (D)"
@@ -138,7 +138,7 @@
 				aria-label="Microphone live"
 				title="Your microphone is live"
 			>
-				<span class="size-4 bg-red-light [box-shadow:0_0_0_2px_var(--color-ink)] clean:rounded-full"
+				<span class="size-4 bg-red-light [box-shadow:0_0_0_2px_var(--color-ink)] rounded-full"
 				></span>
 				<span class="pocket:hidden" aria-hidden="true">Live</span>
 			</span>
@@ -146,7 +146,7 @@
 	{/if}
 	<button
 		type="button"
-		class={['px-btn small voice-open phone:px-1', voice.phase === 'reconnecting' && 'animate-wait']}
+		class={['ui-btn small voice-open phone:px-1', voice.phase === 'reconnecting' && 'animate-wait']}
 		aria-expanded={open}
 		aria-controls="voice-popover"
 		disabled={voice.phase === 'joining'}
@@ -169,7 +169,7 @@
 		</span>
 		{#if voice.quality}<span
 				class={[
-					'size-3 clean:rounded-full',
+					'size-3 rounded-full',
 					voice.quality === 'good'
 						? 'bg-green-light'
 						: voice.quality === 'fair'
@@ -185,18 +185,18 @@
 <span class="sr-only" role="status" aria-live="polite">{voice.announcement}</span>
 {#if voice.live && !barShown}
 	<span
-		class="mic-live-pinned px-inset fixed top-2 right-2 z-8 flex items-center gap-2 px-3 py-1 text-s text-red-light"
+		class="mic-live-pinned ui-inset fixed top-2 right-2 z-8 flex items-center gap-2 px-3 py-1 text-s text-red-light"
 		role="img"
 		aria-label="Microphone live"
 	>
-		<span class="size-4 bg-red-light clean:rounded-full"></span><span aria-hidden="true">Live</span>
+		<span class="size-4 rounded-full bg-red-light"></span><span aria-hidden="true">Live</span>
 	</span>
 {/if}
 
 {#if open}
 	<div
 		id="voice-popover"
-		class="voice-panel px-inset absolute top-[calc(100%+4px)] left-0 z-7 grid max-h-[calc(100svh-120px)] phone:max-h-[calc(100svh_-_var(--above)_-_var(--zone)_-_8px)] w-[min(100%,460px)] gap-4 overflow-auto p-4 text-mist phone:inset-x-0 phone:w-auto"
+		class="voice-panel ui-inset absolute top-[calc(100%+4px)] left-0 z-7 grid max-h-[calc(100svh-120px)] phone:max-h-[calc(100svh_-_var(--above)_-_var(--zone)_-_8px)] w-[min(100%,460px)] gap-4 overflow-auto p-4 text-mist phone:inset-x-0 phone:w-auto"
 		role="dialog"
 		aria-label="Table voice"
 		tabindex="-1"
@@ -204,7 +204,7 @@
 	>
 		<div class="flex items-center justify-between gap-4">
 			<h2 class="text-m text-gold text-shadow-ink">Table voice</h2>
-			<button type="button" class="px-btn small" onclick={close}>Close</button>
+			<button type="button" class="ui-btn small" onclick={close}>Close</button>
 		</div>
 
 		{#if !voice.inVoice}
@@ -214,13 +214,13 @@
 				listen, and nothing is recorded. Voice is for adults (18+).
 			</p>
 			<div class="flex flex-wrap gap-4" role="group" aria-label="Join table voice">
-				<button type="button" class="px-btn amber" onclick={() => voice.choose('join')}>
+				<button type="button" class="ui-btn amber" onclick={() => voice.choose('join')}>
 					Join voice
 				</button>
-				<button type="button" class="px-btn" onclick={() => voice.choose('listen')}>
+				<button type="button" class="ui-btn" onclick={() => voice.choose('listen')}>
 					Listen only
 				</button>
-				<button type="button" class="px-btn small" onclick={() => voice.choose('not-now')}>
+				<button type="button" class="ui-btn small" onclick={() => voice.choose('not-now')}>
 					Not now
 				</button>
 			</div>
@@ -240,7 +240,7 @@
 				<p class="text-s" role="status">{QUALITY_TEXT[voice.quality]}</p>
 			{/if}
 			{#if voice.silencedUntil !== null}
-				<p class="px-danger p-3 text-s text-paper" role="alert" data-voice="silenced">
+				<p class="ui-danger p-3 text-s text-paper" role="alert" data-voice="silenced">
 					Other players reported what was said in voice, so nobody hears your microphone until
 					{new Date(voice.silencedUntil).toLocaleString([], {
 						weekday: 'short',
@@ -250,7 +250,7 @@
 				</p>
 			{/if}
 			{#if voice.strangers}
-				<p class="px-danger p-3 text-s text-paper" role="alert">
+				<p class="ui-danger p-3 text-s text-paper" role="alert">
 					Someone who is not seated at this table is in the voice group. Your microphone is off
 					until they are gone.
 				</p>
@@ -258,7 +258,7 @@
 			{#if voice.needsGesture}
 				<div class="flex flex-wrap items-center gap-4" role="alert">
 					<span class="text-s text-gold">Your browser is holding the sound back.</span>
-					<button type="button" class="px-btn small amber" onclick={() => voice.resumeSound()}>
+					<button type="button" class="ui-btn small amber" onclick={() => voice.resumeSound()}>
 						Turn on sound
 					</button>
 				</div>
@@ -286,7 +286,7 @@
 				{#if voice.mode === 'talk'}
 					<button
 						type="button"
-						class={['px-btn small', voice.selfMuted && 'red']}
+						class={['ui-btn small', voice.selfMuted && 'red']}
 						aria-pressed={voice.selfMuted}
 						aria-keyshortcuts="M"
 						disabled={voice.deafened}
@@ -297,7 +297,7 @@
 				{/if}
 				<button
 					type="button"
-					class={['px-btn small', voice.deafened && 'red']}
+					class={['ui-btn small', voice.deafened && 'red']}
 					aria-pressed={voice.deafened}
 					aria-keyshortcuts="D"
 					onclick={() => voice.toggleDeafen()}
@@ -305,15 +305,15 @@
 					Deafen (D)
 				</button>
 				{#if voice.mode === 'talk'}
-					<button type="button" class="px-btn small" onclick={() => voice.listenOnly()}>
+					<button type="button" class="ui-btn small" onclick={() => voice.listenOnly()}>
 						Listen only
 					</button>
 				{:else}
-					<button type="button" class="px-btn small amber" onclick={() => voice.speak()}>
+					<button type="button" class="ui-btn small amber" onclick={() => voice.speak()}>
 						Use my microphone
 					</button>
 				{/if}
-				<button type="button" class="px-btn small red" onclick={() => voice.leave()}>
+				<button type="button" class="ui-btn small red" onclick={() => voice.leave()}>
 					Leave voice
 				</button>
 			</div>
@@ -321,18 +321,17 @@
 			{#if voice.mode === 'talk'}
 				<div class="flex items-center gap-4 text-s">
 					<span>Input</span>
-					<!-- The clean look keeps the lamps, drawn smooth and without the ink frame. -->
+					<!-- Twelve lamps, drawn smooth. -->
 					<svg
-						class="block h-6 w-73 clean:[shape-rendering:geometricPrecision]"
+						class="block h-6 w-73"
 						viewBox="0 0 {SEGMENTS * 6 + 1} 6"
 						role="meter"
 						aria-label="Microphone level"
 						aria-valuemin="0"
 						aria-valuemax={SEGMENTS}
 						aria-valuenow={lit}
-						shape-rendering="crispEdges"
+						shape-rendering="geometricPrecision"
 					>
-						<rect class="fill-ink clean:hidden" x="0" y="0" width={SEGMENTS * 6 + 1} height="6" />
 						{#each segments as i (i)}
 							<rect
 								class={i < lit
@@ -368,7 +367,7 @@
 						<label class="grid gap-1">
 							Microphone
 							<select
-								class="px-field"
+								class="ui-field"
 								value={voice.settings.input ?? ''}
 								onchange={(e) => voice.set('input', select(e))}
 							>
@@ -383,7 +382,7 @@
 						<label class="grid gap-1">
 							Speakers
 							<select
-								class="px-field"
+								class="ui-field"
 								value={voice.settings.output ?? ''}
 								onchange={(e) => voice.set('output', select(e))}
 							>
@@ -439,7 +438,7 @@
 					<label class="grid gap-1">
 						Quality
 						<select
-							class="px-field"
+							class="ui-field"
 							value={voice.settings.bitrate}
 							onchange={(e) => voice.set('bitrate', Number(e.currentTarget.value) as Bitrate)}
 						>

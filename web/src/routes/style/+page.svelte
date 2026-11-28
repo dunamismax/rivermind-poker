@@ -1,17 +1,14 @@
 <script lang="ts">
 	// The design reference: every color, text size, spacing step, frame, button,
-	// field, card and sprite in the kit of the look it is viewed in (Phase 5C), as
-	// the site draws them, with the Tailwind utilities that name them. The header's
-	// look switch shows the other look's. See docs/design.md.
-	import { CARD_BACKS, CARD_RANKS, CLEAN_CARD_BACKS } from '#lib/card-assets.ts';
-	import themeCss from '#lib/art/theme.css?raw';
-	import cleanCss from '../../styles/clean.css?raw';
+	// field, card and sprite in the kit, as the site draws them, with the Tailwind
+	// utilities that name them. See docs/design.md.
+	import { CARD_BACKS, CARD_RANKS } from '#lib/card-assets.ts';
+	import themeCss from '../../styles/theme.css?raw';
 	import PlayingCard from '#lib/components/PlayingCard.svelte';
 	import SiteHeader from '#lib/components/SiteHeader.svelte';
-	import { look } from '#lib/look.svelte.ts';
 	import type { Suit } from '#lib/protocol.ts';
 
-	/** A look's colors and text sizes, read from the stylesheet that defines them. */
+	/** The colors and text sizes, read from the stylesheet that defines them. */
 	function tokens(css: string) {
 		return {
 			palette: [...css.matchAll(/--color-([a-z-]+): (#[0-9a-f]{6});/g)].map(([, name, hex]) => ({
@@ -23,19 +20,17 @@
 			)
 		};
 	}
-	const KITS = { pixel: tokens(themeCss), clean: tokens(cleanCss) };
-	const kit = $derived(KITS[look.current]);
-	const pixel = $derived(look.current === 'pixel');
+	const kit = tokens(themeCss);
 	const suits: Suit[] = ['spades', 'hearts', 'diamonds', 'clubs'];
 	const buttons = ['', 'red', 'blue', 'amber', 'green', 'gold'];
 	const frames = [
-		'px-panel',
-		'px-raised',
-		'px-inset',
-		'px-gold',
-		'px-glow',
-		'px-danger',
-		'px-paper'
+		'ui-panel',
+		'ui-raised',
+		'ui-inset',
+		'ui-gold',
+		'ui-glow',
+		'ui-danger',
+		'ui-paper'
 	];
 	const chips = ['white', 'red', 'blue', 'green', 'black', 'violet', 'gold'];
 	// Table voice's glyphs (P4C.6): talking, muted, listening only, deafened, not in voice.
@@ -83,24 +78,16 @@
 
 <main class="mx-auto grid max-w-[1180px] gap-16 px-8 pt-12 pb-32">
 	<h2 class="text-xl text-gold text-shadow-ink">Design reference</h2>
-	{#if pixel}
-		<p class="lead max-w-[60ch] text-mist">
-			Every piece of the pixel kit as the site draws it. Art pixels are drawn at 2x for the
-			interface; cards at a whole number of screen pixels per art pixel, the size <code
-				class="text-gold-light"
-			>
-				--k
-			</code>
-			asks for. Sources live in <code class="text-gold-light">web/art/</code>; run
-			<code class="text-gold-light">pnpm art</code> after changing them.
-		</p>
-	{:else}
-		<p class="lead max-w-[60ch] text-mist">
-			Every piece of the clean kit as the site draws it: the same classes and sizes as the pixel
-			kit, drawn in CSS with the system's fonts. Its tokens and kit are in
-			<code class="text-gold-light">web/src/styles/clean.css</code>.
-		</p>
-	{/if}
+	<p class="lead max-w-[60ch] text-mist">
+		Every piece of the kit as the site draws it, in CSS with the system's fonts. Its tokens are in <code
+			class="text-gold-light"
+		>
+			web/src/styles/theme.css
+		</code>
+		and its kit in
+		<code class="text-gold-light">kit.css</code>; the cards and sprites are drawn by
+		<code class="text-gold-light">pnpm art</code>.
+	</p>
 
 	<section>
 		<h3 class={heading}>Palette</h3>
@@ -128,14 +115,14 @@
 	</section>
 
 	<section>
-		<h3 class={heading}>Type: {pixel ? 'RiverMind Pixel' : 'the system’s fonts'}</h3>
+		<h3 class={heading}>Type: the system’s fonts</h3>
 		<p class="text-xl text-gold text-shadow-ink">{kit.sizes.xl} · text-xl · No-limit hold’em</p>
 		<p class="text-l">{kit.sizes.l} · text-l · Pot 12,450 · A♠ K♥</p>
 		<p class="text-m">
 			{kit.sizes.m} · text-m · The quick brown fox jumps over the lazy dog. 0123456789
 		</p>
 		<p class="text-s text-mist">
-			{kit.sizes.s} · text-s · secondary text, hand log, tags{pixel ? ' (crisp on 2x screens)' : ''}
+			{kit.sizes.s} · text-s · secondary text, hand log, tags
 		</p>
 		<p class="text-xs text-mist">{kit.sizes.xs} · text-xs · bets and tags on a phone’s table</p>
 	</section>
@@ -143,7 +130,7 @@
 	<section>
 		<h3 class={heading}>Spacing</h3>
 		<p class={note}>
-			Lengths count art pixels, 2px each: <code class="text-gold-light">p-3</code> is 6px of
+			Lengths count spacing steps, 2px each: <code class="text-gold-light">p-3</code> is 6px of
 			padding, <code class="text-gold-light">gap-4</code> an 8px gap,
 			<code class="text-gold-light">size-7</code> a 14px square.
 		</p>
@@ -160,11 +147,11 @@
 		<h3 class={heading}>Buttons</h3>
 		<div class={row}>
 			{#each buttons as color (color)}
-				<button type="button" class="px-btn {color}">{color || 'slate'}</button>
+				<button type="button" class="ui-btn {color}">{color || 'slate'}</button>
 			{/each}
-			<button type="button" class="px-btn amber" disabled>disabled</button>
-			<button type="button" class="px-btn small">small</button>
-			<button type="button" class="px-btn" aria-pressed="true">pressed</button>
+			<button type="button" class="ui-btn amber" disabled>disabled</button>
+			<button type="button" class="ui-btn small">small</button>
+			<button type="button" class="ui-btn" aria-pressed="true">pressed</button>
 		</div>
 	</section>
 
@@ -182,15 +169,15 @@
 		<div class="{row} fields">
 			<label class="grid gap-3">
 				<span>Select</span>
-				<select class="px-field"><option>50/100</option><option>100/200</option></select>
+				<select class="ui-field"><option>50/100</option><option>100/200</option></select>
 			</label>
 			<label class="grid gap-3">
 				<span>Number</span>
-				<input class="px-field" type="number" value="2400" />
+				<input class="ui-field" type="number" value="2400" />
 			</label>
 			<label class="grid min-w-[220px] flex-1 gap-3">
 				<span>Slider: {range}</span>
-				<input class="px-range" type="range" min="0" max="100" bind:value={range} />
+				<input class="ui-range" type="range" min="0" max="100" bind:value={range} />
 			</label>
 		</div>
 	</section>
@@ -204,7 +191,7 @@
 				</div>
 			{/each}
 			<div class="suit flex flex-wrap gap-3">
-				{#each pixel ? CARD_BACKS : CLEAN_CARD_BACKS as back (back)}
+				{#each CARD_BACKS as back (back)}
 					<figure class="back grid w-60 justify-items-center gap-2 text-s text-mist">
 						<PlayingCard card={null} {back} />
 						<figcaption>{back}</figcaption>

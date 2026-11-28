@@ -23,12 +23,8 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 # Playwright
 test-results
-test-results-clean
-test-results-pixel
 test-results-visual
 playwright-report
-playwright-report-clean
-playwright-report-pixel
 test-results-voice
 test-results-voice-check
 test-results-voice-measure

@@ -88,11 +88,11 @@
 </svelte:head>
 
 <SiteHeader>
-	<a class="px-btn small" href={resolve('/')}>Play</a>
+	<a class="ui-btn small" href={resolve('/')}>Play</a>
 </SiteHeader>
 
 <main class="page mx-auto max-w-[860px] p-8">
-	<article class="px-panel px-10 pt-8 pb-10 text-mist">
+	<article class="ui-panel px-10 pt-8 pb-10 text-mist">
 		<h2 class="mb-5 text-l text-gold text-shadow-ink">The bots</h2>
 		<p class="lead text-paper">
 			Every bot at a RiverMind table is labelled as a bot and never poses as a person. Anything this
@@ -172,7 +172,7 @@
 								: 'The strategy as it will be served'}
 					</h4>
 					<div class="overflow-x-auto">
-						<table class="px-inset w-full border-collapse text-s">
+						<table class="ui-inset w-full border-collapse text-s">
 							<caption class="sr-only">
 								Results of {champion.name}, {evaluation.candidate === 'bundle'
 									? 'as served'
@@ -275,7 +275,7 @@
 						against RiverMind Hard itself:
 					</p>
 					<div class="mt-5 overflow-x-auto">
-						<table class="px-inset w-full border-collapse text-s">
+						<table class="ui-inset w-full border-collapse text-s">
 							<caption class="sr-only">
 								Results of RiverMind Medium made from {champion.name}
 							</caption>

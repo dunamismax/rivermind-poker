@@ -1,20 +1,15 @@
 /*
- * RiverMind's two looks (Phase 5C, D-18), chosen by data-look on <html>. The
- * pixel look: hand-drawn pixel art on a night-blue room, a felt table, one pixel
- * font. The clean look: a dark card room drawn in CSS, with the system's fonts.
- * Tailwind CSS 4 styles the pages, on a theme generated from web/art/
- * (lib/art/theme.css: the palette, the font, the spacing step and the text
- * sizes, and nothing of Tailwind's own), which clean.css gives its own values.
- * The kit's sizes are shared (kit.css); the frames and buttons in pixel.css are
- * nine-slice images drawn from the palette, and clean.css draws the same classes
- * without images. See docs/design.md.
+ * RiverMind's look (D-18): a dark card room drawn in CSS and SVG, with the
+ * system's fonts. Tailwind CSS 4 styles the pages, on the theme in
+ * styles/theme.css (the palette, the fonts, the spacing step, the text sizes and
+ * the animations, and nothing of Tailwind's own). The kit's frames, buttons,
+ * fields and table are in kit.css and its sprites in sprites.css. See
+ * docs/design.md.
  */
 @import 'tailwindcss' source(none);
-@import './lib/art/theme.css';
+@import './styles/theme.css';
 @import './styles/kit.css' layer(components);
-@import './styles/pixel.css' layer(components);
-@import './styles/clean.css' layer(components);
-@import './styles/clean-sprites.css' layer(components);
+@import './styles/sprites.css' layer(components);
 
 /*
  * Only the pages and their components carry utilities: the server code and the
@@ -24,7 +19,7 @@
  */
 @source './routes';
 @source './lib/nl';
-@source './lib/components/{ConnectionStatus,LookSwitch,PlayingCard,SiteHeader}.svelte';
+@source './lib/components/{ConnectionStatus,PlayingCard,SiteHeader}.svelte';
 @source not inline('{container,contents,filter,inline,outline,ring,static,table,transform,transition,visible}');
 
 /*
@@ -53,112 +48,8 @@
 @custom-variant tab (@media (min-width: 640px) and (max-width: 1099px) and (orientation: portrait));
 @custom-variant pocket (@media (max-width: 639px));
 
-/* What the generated theme leaves to the pages: role colours, title lettering and the stepped animations. */
-@theme {
-	/* A role that a palette name plays besides its own (Phase 5C): the turn clock and the
-	   voice meter's middle. It is gold in the pixel look, as before; clean.css sets its own. */
-	--color-warn: var(--color-gold);
-
-	/* Gold lettering on an amber and ink drop: the site's name and the lobby's title. */
-	--text-shadow-title:
-		0 var(--spacing) 0 var(--color-amber-deep), 0 calc(var(--spacing) * 2) 0 var(--color-ink);
-
-	/* A lamp or a line of text that is waiting. */
-	--animate-blink: blink 0.8s steps(2, end) infinite;
-	--animate-wait: wait 1s steps(2, end) infinite;
-	/* A notice rising into place, the action panel sliding up, a bet landing. */
-	--animate-drop: drop 0.2s steps(3, end);
-	--animate-slide: slide 0.18s steps(3, end);
-	--animate-pop: pop 0.2s steps(3, end);
-	/* A reaction appearing, and winnings rising from the seat. */
-	--animate-fade: fade 0.3s steps(3, end);
-	--animate-rise: rise 0.6s steps(6, end);
-	/* The seat whose turn it is. */
-	--animate-nudge: nudge 1.2s steps(2, end) infinite;
-	/* A seat whose person is speaking in table voice (P4C.6): the ring stays, still, for reduced motion. */
-	--animate-speak: speak 0.5s steps(2, end) infinite;
-
-	@keyframes blink {
-		50% {
-			opacity: 0.35;
-		}
-	}
-	@keyframes wait {
-		50% {
-			opacity: 0.5;
-		}
-	}
-	@keyframes drop {
-		from {
-			transform: translateY(12px);
-			opacity: 0;
-		}
-	}
-	@keyframes slide {
-		from {
-			transform: translateY(8px);
-			opacity: 0;
-		}
-	}
-	@keyframes pop {
-		from {
-			transform: scale(0.6);
-			opacity: 0;
-		}
-	}
-	@keyframes fade {
-		from {
-			opacity: 0;
-		}
-	}
-	@keyframes rise {
-		from {
-			transform: translateY(60%);
-			opacity: 0;
-		}
-	}
-	@keyframes nudge {
-		50% {
-			transform: translateY(calc(-1 * var(--spacing)));
-		}
-	}
-	@keyframes speak {
-		50% {
-			outline-color: var(--color-green);
-		}
-	}
-}
-
-/*
- * Tailwind writes a text shadow's value into its utility rather than reading the
- * theme's variable, so the clean look reads the variable itself. Later in the same
- * layer and as specific, these win over the generated utilities.
- */
-@layer utilities {
-	:where([data-look='clean']) .text-shadow-ink {
-		text-shadow: var(--text-shadow-ink);
-	}
-	:where([data-look='clean']) .text-shadow-title {
-		text-shadow: var(--text-shadow-title);
-	}
-}
-
-/*
- * A utility for one look alone (Phase 5C): `clean:rounded-full`. `:where` adds no
- * specificity, and a variant sorts after the plain utilities, so it wins over them
- * in its look and does nothing in the other.
- */
-@custom-variant clean (&:where([data-look='clean'] *));
-@custom-variant pixel (&:where([data-look='pixel'] *));
-
 /* Hover on every device, as the kit's own buttons do; Tailwind's default skips touch screens. */
 @custom-variant hover (&:hover);
-
-@font-face {
-	font-family: 'RiverMind Pixel';
-	src: url('./lib/art/fonts/rivermind-pixel.woff') format('woff');
-	font-display: swap;
-}
 
 /*
  * The page itself, under the kit and the utilities and over Tailwind's preflight,
@@ -166,8 +57,6 @@
  */
 @layer base {
 	:root {
-		/* One art pixel on screen. Frames, buttons and icons draw at 2x. */
-		--px: var(--spacing);
 		/* Device pixels per CSS pixel, so cards can snap to whole device pixels. */
 		--dpr: 1;
 		color-scheme: dark;
@@ -241,7 +130,7 @@
 	body {
 		background: var(--color-night);
 		color: var(--color-paper);
-		font-family: var(--font-pixel);
+		font-family: var(--font-sans);
 		font-size: var(--text-m);
 		line-height: 1.4;
 		min-height: 100vh;
@@ -249,29 +138,14 @@
 		padding-bottom: env(safe-area-inset-bottom);
 		font-synthesis: none;
 		font-variant-numeric: tabular-nums;
-	}
-
-	/* The pixel look (Phase 5C): the wallpaper, and every pixel left hard-edged.
-	   `:where` adds no specificity, so this cascades as it did before there were two looks. */
-	:where([data-look='pixel']) body {
-		background-image: url('./lib/art/ui/wallpaper.png');
-		background-repeat: repeat;
-		background-size: calc(32 * var(--px)) calc(32 * var(--px));
-		image-rendering: pixelated;
-		-webkit-font-smoothing: none;
-		-moz-osx-font-smoothing: unset;
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
 	}
 
 	h1,
 	h2,
 	h3 {
 		line-height: 1.2;
-	}
-
-	/* The pixel font has one weight. */
-	:where([data-look='pixel']) b,
-	:where([data-look='pixel']) strong {
-		font-weight: inherit;
 	}
 
 	button {
@@ -295,8 +169,8 @@
 	}
 
 	:focus-visible {
-		outline: var(--px) solid var(--color-gold);
-		outline-offset: var(--px);
+		outline: var(--spacing) solid var(--color-gold);
+		outline-offset: var(--spacing);
 	}
 
 	::selection {

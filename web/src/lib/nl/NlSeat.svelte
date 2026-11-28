@@ -40,11 +40,9 @@
 	} = $props();
 
 	const SEGMENTS = 12;
-	const segments = Array.from({ length: SEGMENTS }, (_, i) => i);
 	const acting = $derived(turn !== null && turn.seat === info.seat);
 	const clock = $derived(acting && turn ? clockLeft(turn, now) : null);
-	const lit = $derived(clock ? Math.ceil(clock.fraction * SEGMENTS) : 0);
-	/** The clean look's bar: the time left, never shorter than its own rounded ends. */
+	/** The bar: the time left, never shorter than its own rounded ends. */
 	const barWidth = $derived(clock ? Math.max(1.5, clock.fraction * SEGMENTS * 3) : 0);
 	const status = $derived(
 		info.leaving
@@ -62,7 +60,7 @@
 	const label = $derived(
 		`${me ? 'Your seat' : `Seat ${info.seat + 1}`}: ${info.name}${info.kind === 'bot' ? ' (bot)' : ''}`
 	);
-	const frame = $derived(acting ? 'px-glow' : me ? 'px-gold' : 'px-panel');
+	const frame = $derived(acting ? 'ui-glow' : me ? 'ui-gold' : 'ui-panel');
 	const dim = $derived(info.folded || info.sitting_out);
 
 	// On phones (`phone:`, which is also a tablet held upright, where `tab:` then
@@ -113,7 +111,7 @@
 	// whole name stays in the seat's label and title, and on every wider seat.
 	const parts = $derived(!me && info.kind === 'bot' ? podName(info.name) : null);
 	const tag =
-		'mt-1 bg-ink px-3 text-s leading-10 whitespace-nowrap clean:rounded-[4px] phone:px-2 phone:text-xs phone:leading-7 tab:text-s tab:leading-10';
+		'mt-1 bg-ink px-3 text-s leading-10 whitespace-nowrap rounded-[4px] phone:px-2 phone:text-xs phone:leading-7 tab:text-s tab:leading-10';
 	/** The glyph and the words for this person's place in table voice. */
 	const VOICE: Record<SeatVoice['state'], { glyph: string; text: string }> = {
 		talking: { glyph: 'voice-mic', text: 'In voice' },
@@ -230,7 +228,7 @@
 			</div>
 		</div>
 		{#if reaction}<div
-				class="bubble px-paper pointer-events-none absolute bottom-[calc(100%-6px)] left-1/2 z-4 -translate-x-1/2 animate-fade px-4 py-1 text-s leading-10 whitespace-nowrap text-ink"
+				class="bubble ui-paper pointer-events-none absolute bottom-[calc(100%-6px)] left-1/2 z-4 -translate-x-1/2 animate-fade px-4 py-1 text-s leading-10 whitespace-nowrap text-ink"
 				role="status"
 			>
 				<span class="sr-only">{info.name}: </span>{reaction}
@@ -281,26 +279,15 @@
 							: 'text-green-light'
 				]}
 			>
-				<!-- The pixel look lights twelve square lamps; the clean look draws the same time
-				     left as one smooth rounded bar. Both are here, and each look hides the other's. -->
+				<!-- The time left, as one smooth rounded bar. -->
 				<svg
-					class="block h-4 w-37 clean:[shape-rendering:geometricPrecision]"
+					class="block h-4 w-37"
 					viewBox="0 0 {SEGMENTS * 3 + 1} 4"
 					aria-hidden="true"
-					shape-rendering="crispEdges"
+					shape-rendering="geometricPrecision"
 				>
-					<rect class="fill-ink clean:hidden" x="0" y="0" width={SEGMENTS * 3 + 1} height="4" />
-					{#each segments as i (i)}
-						<rect
-							class={['clean:hidden', i < lit ? lamp : 'fill-deep-slate']}
-							x={1 + i * 3}
-							y="1"
-							width="2"
-							height="2"
-						/>
-					{/each}
 					<rect
-						class="clock-track pixel:hidden fill-deep-slate"
+						class="clock-track fill-deep-slate"
 						x="0.5"
 						y="1.25"
 						width={SEGMENTS * 3}
@@ -308,7 +295,7 @@
 						rx="0.75"
 					/>
 					<rect
-						class={['clock-fill pixel:hidden', lamp]}
+						class={['clock-fill', lamp]}
 						x="0.5"
 						y="1.25"
 						width={barWidth}
@@ -323,7 +310,7 @@
 		{/if}
 	</div>
 	{#if won > 0}<div
-			class="won pointer-events-none absolute top-0 left-1/2 z-3 -translate-x-1/2 -translate-y-[60%] animate-rise text-l text-gold [text-shadow:0_2px_0_var(--color-ink),2px_0_0_var(--color-ink),-2px_0_0_var(--color-ink),0_-2px_0_var(--color-ink)] clean:[text-shadow:0_1px_2px_var(--color-ink),0_0_6px_rgb(0_0_0/0.6)] phone:text-m"
+			class="won pointer-events-none absolute top-0 left-1/2 z-3 -translate-x-1/2 -translate-y-[60%] animate-rise text-l text-gold [text-shadow:0_1px_2px_var(--color-ink),0_0_6px_rgb(0_0_0/0.6)] phone:text-m"
 			role="status"
 		>
 			+{won}
@@ -332,8 +319,8 @@
 
 <style>
 	/*
-	 * The cards' geometry follows the art pixel they are drawn at: --hand-a is one
-	 * art pixel as PlayingCard snaps it, so the fan and the overlap with the plate
+	 * The cards' geometry follows the card unit they are drawn at: --hand-a is one
+	 * card unit as PlayingCard snaps it, so the fan and the overlap with the plate
 	 * keep to whole device pixels. Everything else about the seat is utilities.
 	 */
 	.hand {
@@ -358,7 +345,7 @@
 		transform-origin: bottom right;
 	}
 
-	/* A pod's shown cards: at least 2 device pixels per art pixel so the indices
+	/* A pod's shown cards: at least 2 device pixels per card unit so the indices
 	   read, fanned tight and cut to a 58 × 50 window (the first card's index and
 	   the second card's corner) so the pod stays small. */
 	@media (max-width: 639px), (max-width: 1099px) and (orientation: portrait) {

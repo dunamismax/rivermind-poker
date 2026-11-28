@@ -1,5 +1,5 @@
-// Where seats and their bets sit around the table (P3.6, redrawn for the pixel
-// table). The viewer's seat is always at the bottom centre and the others
+// Where seats and their bets sit around the table (P3.6, redrawn at P6.0).
+// The viewer's seat is always at the bottom centre and the others
 // follow clockwise in seat order, so the action moves around the table the
 // way it does in a card room. Positions are CSS classes (`at-<count>-<place>`
 // and `bet-<count>-<place>`, generated into seat-places.css) rather than inline

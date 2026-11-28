@@ -19,9 +19,9 @@ RiverMind is also a poker AI project. Its bots are trained offline with Monte Ca
 
 The live site has no-limit hold’em at 2 to 9 seats against labelled bots: random, calling station, RiverMind Easy, a tight-aggressive rule-based player, and the trained RiverMind Medium and RiverMind Hard, each with a [published evaluation](https://rivermindpoker.com/bots). Hard plays a heads-up champion at two seats, a six-seat champion at three to six and a nine-seat model built on it at seven to nine. Guests keep a play-chip wallet and find each other in a lobby with quick seat, waitlists and private tables with invite links. They can react with presets, mute, block and report, and step through any hand they played, from “Your hands” or from the table without leaving their seat. A guest at any balance can start a practice hand in one click. People seated together can talk over table voice, end-to-end encrypted so that the site relays sound it cannot hear. Tables, mid-hand included, are stored in PostgreSQL and survive restarts.
 
-**Now:** RiverMind Poker comes to the iPhone as a native app (decision D-19 in [BUILD.md](BUILD.md#settled-decisions)), written in Swift and SwiftUI and sharing every table, invite and voice room with people in browsers. Its design is in [docs/ios.md](docs/ios.md), and its skeleton is built. The site has two looks since Phase 5C: a clean one, the default, and the pixel-art one a click away in the header.
+**Now:** RiverMind Poker comes to the iPhone as a native app (decision D-19 in [BUILD.md](BUILD.md#settled-decisions)), written in Swift and SwiftUI and sharing every table, invite and voice room with people in browsers. Its design is in [docs/ios.md](docs/ios.md), and its skeleton is built. The site has one clean, professional look, drawn in CSS and SVG (D-18).
 
-**Next:** after the app, the full-featured site (Phase 6): replay sharing, friend invites, stats, leaderboards, sit-and-go tournaments, settings, accessibility, content pages and installability, each built in both looks. Then hardening and the 1.0 release (Phase 7).
+**Next:** after the app, the full-featured site (Phase 6): replay sharing, friend invites, stats, leaderboards, sit-and-go tournaments, settings, accessibility, content pages and installability. Then hardening and the 1.0 release (Phase 7).
 
 ## What RiverMind is
 
@@ -54,7 +54,7 @@ The live site has no-limit hold’em at 2 to 9 seats against labelled bots: rand
 | 4C | Table voice, end-to-end encrypted with SFrame under MLS keys | Done |
 | 5A | One-click practice, an evaluated heads-up opponent, replay from the table | Done |
 | 5B | 6-max and 9-max bots, difficulty levels | Done |
-| 5C | Two looks, clean and pixel, with clean the default | Done |
+| 5C | A clean, professional look, now the site's only one | Done |
 | 5D | A native iPhone app on the App Store, with cross-play | In progress |
 | 6 | Full-featured site: replay sharing, stats, leaderboards, sit-and-go tournaments, accessibility | |
 | 7 | Hardening and the 1.0 release: monitoring, backups, load tests, a security review | |
@@ -64,7 +64,7 @@ The live site has no-limit hold’em at 2 to 9 seats against labelled bots: rand
 | Layer | Target (D-14) | Live today |
 | --- | --- | --- |
 | Pages and assets | SvelteKit 3, Svelte 5 and strict TypeScript on Node through `adapter-node` | The same, since P4B.1 |
-| Styling | Tailwind CSS 4 on a generated theme, with two looks on the same markup: clean (CSS and SVG) and pixel art | Tailwind since P4B.2; the clean look is built (Phase 5C) and becomes the default with its deploy |
+| Styling | Tailwind CSS 4 on the site's own theme, one look drawn in CSS and SVG | Tailwind since P4B.2; the look since Phase 5C |
 | Table server and API | TypeScript in the same Node server, with the `/ws` WebSocket on the same port | The same, since the P4B.7 cutover. The Python `serve-nl` was retired at P4B.8 |
 | Game engine | A TypeScript engine kept byte-identical to the Python reference engine by differential tests | The same, since P4B.7 |
 | Bots | Trained and evaluated offline in Python, exported as serving bundles that Node reads | The same: the rule-based bots since P4B.7, the heads-up champion since P5.7a, six seats and nine seats since Phase 5B |
@@ -117,7 +117,6 @@ rivermind-poker/
 │   ├── src/lib/engine/     Browser-safe cards and hand evaluator
 │   ├── src/lib/server/     Server-only code: engine, bots, Drizzle schema and migrator, CSP
 │   ├── server/             The Node server: SvelteKit's handler plus the /ws WebSocket
-│   ├── art/                Pixel art drawn as text, and the owner's card sprites
 │   ├── drizzle/            SQL migrations
 │   └── e2e/                Playwright tests
 ├── rivermind/
@@ -152,7 +151,7 @@ The database tests need a disposable PostgreSQL database whose name contains `te
 | Champions and promotion decisions | [docs/models.md](docs/models.md) |
 | Python table server, protocol v2 and safety controls | [rivermind/server](rivermind/server/) |
 | SvelteKit client, Node server and TypeScript ports | [web](web/) |
-| Pixel art and the design kit | [docs/design.md](docs/design.md) and [web/art](web/art/) |
+| The look and the design kit | [docs/design.md](docs/design.md) and [web/scripts/art](web/scripts/art/) |
 | Live site operations | [deploy](deploy/) and [CONTRIBUTING.md](CONTRIBUTING.md#deploy-rivermindpokercom) |
 | Short-deck prototype, its training and the terminal client | [poker_ai](poker_ai/) |
 
@@ -168,4 +167,4 @@ RiverMind started with a copy of Keith Lee’s Pluribus-inspired repository, whi
 
 On November 18, 2026, RiverMind introduced its own packaging, command-line entry point and training fixes. RiverMind Poker uses the same GNU General Public License, version 3 or later. The original project’s license file added an indemnification section to that license; it is kept, word for word, as a separate notice. The evaluator retains its MIT notice, the SFrame test vectors copied from RFC 9605 carry the IETF Trust’s, the MLS test-vector runners adapted from ts-mls carry its MIT notice, the voice code’s word list, BIP-39’s English one, carries python-mnemonic’s, and table voice’s noise suppression, RNNoise in WebAssembly through web-noise-suppressor, carries the MIT, Apache 2.0 and BSD notices of its three parts. [GPL license](LICENSE) · [Poker AI additional terms](licenses/Poker-AI-additional-terms.txt) · [Deuces notice](licenses/Deuces.txt) · [RFC 9605 notice](licenses/RFC9605.txt) · [ts-mls notice](licenses/ts-mls.txt) · [python-mnemonic notice](licenses/python-mnemonic.txt) · [noise suppression notices](licenses/web-noise-suppressor.txt)
 
-The site’s pixel art is original to this project. The source and license terms of the pixel playing-card sprites are still to be recorded in [licenses/](licenses/) before 1.0. The clean look’s deck is drawn after the code-drawn cards of the owner’s FeltPrep project, whose artwork is otherwise reserved; the owner contributes these card drawings to RiverMind under GPL-3.0-or-later. [Clean deck notice](licenses/FeltPrep-cards.txt)
+The site’s interface art is original to this project. Its deck is drawn after the code-drawn cards of the owner’s FeltPrep project, whose artwork is otherwise reserved; the owner contributes these card drawings to RiverMind under GPL-3.0-or-later. [Deck notice](licenses/FeltPrep-cards.txt)

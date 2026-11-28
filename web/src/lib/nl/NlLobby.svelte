@@ -47,7 +47,7 @@
 	// A choice is a radio button hidden behind the kit button that is its face.
 	const radio = 'absolute size-px opacity-0';
 	const opponent =
-		'px-btn choice w-full cursor-pointer justify-start gap-6 px-4 py-3 text-left whitespace-normal';
+		'ui-btn choice w-full cursor-pointer justify-start gap-6 px-4 py-3 text-left whitespace-normal';
 	const opponentNote = 'note text-s text-mist text-shadow-none group-has-checked:text-amber-deep';
 
 	let practising = $state(false);
@@ -186,7 +186,7 @@
 		<!-- First on the page: someone who followed a friend's link came for this, and on a
 		     phone anything below practice is a screen away. -->
 		{#if invited}
-			<section class="invite px-gold grid gap-5 px-6 pt-5 pb-6" aria-labelledby="invite-title">
+			<section class="invite ui-gold grid gap-5 px-6 pt-5 pb-6" aria-labelledby="invite-title">
 				<h3 id="invite-title" class="text-l text-gold text-shadow-ink">You are invited</h3>
 				<p>
 					{invited.name}: blinds {invited.small_blind}/{invited.big_blind}, {invited.people}
@@ -197,7 +197,7 @@
 				{:else}
 					<button
 						type="button"
-						class="px-btn amber"
+						class="ui-btn amber"
 						disabled={joining || (balance !== null && balance < invited.min_buy_in)}
 						onclick={() => accept(invited!)}
 					>
@@ -211,11 +211,11 @@
 			</section>
 		{/if}
 		{#if inviteError}<p class="error text-red-light" role="alert">{inviteError}</p>{/if}
-		<section class="practice px-panel grid gap-4 px-7 py-6" aria-labelledby="practice-title">
+		<section class="practice ui-panel grid gap-4 px-7 py-6" aria-labelledby="practice-title">
 			<h3 id="practice-title" class="sr-only">Practice</h3>
 			<button
 				type="button"
-				class="px-btn amber practice-start min-h-32 w-full text-l"
+				class="ui-btn amber practice-start min-h-32 w-full text-l"
 				disabled={practising}
 				onclick={() => practice()}
 			>
@@ -228,7 +228,7 @@
 				whenever you run out.
 			</p>
 			{#each trained as bot (bot.kind)}
-				<div class="trained px-inset grid gap-4 px-5 py-4" role="group" aria-label={bot.label}>
+				<div class="trained ui-inset grid gap-4 px-5 py-4" role="group" aria-label={bot.label}>
 					<div class="flex items-start gap-5">
 						<span
 							class="sprite avatar {avatarClass({ kind: 'bot', bot: bot.kind, name: '' })}"
@@ -245,7 +245,7 @@
 					     "Practice vs RiverMind Medium" is wider than a 375px phone leaves it. -->
 					<button
 						type="button"
-						class="px-btn blue practice-trained w-full whitespace-normal text-center"
+						class="ui-btn blue practice-trained w-full whitespace-normal text-center"
 						disabled={practising}
 						onclick={() => practice(bot.kind)}
 					>
@@ -256,7 +256,7 @@
 			{#if practiceError}<p class="error text-red-light" role="alert">{practiceError}</p>{/if}
 		</section>
 		{#if balance !== null}
-			<p class="wallet px-inset grid gap-1 px-6 py-4" role="status" aria-live="polite">
+			<p class="wallet ui-inset grid gap-1 px-6 py-4" role="status" aria-live="polite">
 				<span class="label text-mist">Your play chips</span>
 				<span class="amount flex items-center gap-5 text-l text-gold text-shadow-ink">
 					<span class="sprite chip chip-gold" aria-hidden="true"></span>
@@ -268,17 +268,17 @@
 			</p>
 		{/if}
 		<nav class="links flex flex-wrap gap-4" aria-label="More">
-			<a class="px-btn small" href={resolve('/hands')}>Your hands</a>
-			<a class="px-btn small" href={resolve('/fairness')}>Rules and fair dealing</a>
-			<a class="px-btn small" href={resolve('/bots')}>The bots</a>
+			<a class="ui-btn small" href={resolve('/hands')}>Your hands</a>
+			<a class="ui-btn small" href={resolve('/fairness')}>Rules and fair dealing</a>
+			<a class="ui-btn small" href={resolve('/bots')}>The bots</a>
 		</nav>
-		{#if message}<p class="closed px-panel px-5 py-3 text-mist" role="status">{message}</p>{/if}
+		{#if message}<p class="closed ui-panel px-5 py-3 text-mist" role="status">{message}</p>{/if}
 	</section>
 
 	<div class="side grid min-w-0 gap-8">
 		<LobbyTables {connection} {config} {balance} />
 
-		<section class="setup px-panel px-7 pt-6 pb-7" aria-labelledby="setup-title">
+		<section class="setup ui-panel px-7 pt-6 pb-7" aria-labelledby="setup-title">
 			<h2 id="setup-title" class="setup-title mb-6 text-l text-gold text-shadow-ink">
 				Start a table
 			</h2>
@@ -291,7 +291,7 @@
 						{#each config?.seat_counts ?? [2, 3, 4, 5, 6, 7, 8, 9] as count (count)}
 							<label class="pick relative block">
 								<input type="radio" class={radio} name="seats" value={count} bind:group={seats} />
-								<span class="px-btn choice w-full cursor-pointer">{count}</span>
+								<span class="ui-btn choice w-full cursor-pointer">{count}</span>
 							</label>
 						{/each}
 					</div>
@@ -344,7 +344,7 @@
 				<div class="stakes grid grid-cols-[1fr_1.6fr] gap-6 lt-460:grid-cols-[1fr]">
 					<label>
 						<span class={fieldLabel}>Blinds</span>
-						<select class="px-field w-full" bind:value={bigBlind}>
+						<select class="ui-field w-full" bind:value={bigBlind}>
 							{#each config?.stakes ?? [] as stakes (stakes.big_blind)}
 								<option value={stakes.big_blind}>{stakes.small_blind}/{stakes.big_blind}</option>
 							{/each}
@@ -352,7 +352,7 @@
 					</label>
 					<label>
 						<span class={fieldLabel}>Buy-in</span>
-						<select class="px-field w-full" bind:value={buyInBlinds}>
+						<select class="ui-field w-full" bind:value={buyInBlinds}>
 							{#each BUY_INS as blinds (blinds)}
 								<option value={blinds} disabled={!affordable.includes(blinds)}>
 									{blinds * bigBlind} ({blinds} big blinds)
@@ -369,7 +369,7 @@
 				{/if}
 				<button
 					type="submit"
-					class="px-btn amber start min-h-32 text-l"
+					class="ui-btn amber start min-h-32 text-l"
 					disabled={starting || !config || !affordable.length}
 				>
 					{starting ? 'Dealing…' : 'Sit down'}

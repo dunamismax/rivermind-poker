@@ -16,7 +16,7 @@ import { dirname, resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
 
 // The art tools are plain JavaScript, loaded by URL so svelte-check does not type-check them.
-const { encodePng } = (await import(new URL('./pixel-art/png.js', import.meta.url).href)) as {
+const { encodePng } = (await import(new URL('./art/png.js', import.meta.url).href)) as {
 	encodePng: (image: Image) => Uint8Array;
 };
 

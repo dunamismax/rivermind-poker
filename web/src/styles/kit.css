@@ -1,9 +1,20 @@
 /*
- * The kit's geometry, shared by both looks (Phase 5C): how big each sprite is and
- * how a compact hand is cut. Layouts depend on these sizes, so a look draws into
- * them and never changes them. Each look's art is in its own sheet: pixel.css
- * under data-look="pixel", clean.css under data-look="clean".
+ * The interface kit (docs/design.md): frames, buttons, fields, the bet slider
+ * and the table, drawn in CSS, and the sizes of the sprites and of a compact
+ * hand, which layouts depend on. The sprites' art is in sprites.css. Class names:
+ *
+ *   .ui-panel .ui-raised .ui-inset .ui-paper .ui-gold .ui-glow .ui-danger
+ *   .ui-btn with .red .blue .amber .green .gold (slate by default)
+ *   .ui-field  text and number inputs, selects
+ *   .ui-range  the bet slider
+ *   .ui-table  the felt and its rail
+ *   .chip-* .avatar-* .dealer-button .pot-pile  sprites
+ *   .voice-glyph .voice-*                        table voice's glyphs (P4C.6)
+ *
+ * A utility always overrides a kit class: the kit is in the components layer.
  */
+
+/* --- Sprites' sizes. ----------------------------------------------------------- */
 
 .sprite {
 	display: inline-block;
@@ -11,30 +22,30 @@
 	background: no-repeat center / 100% 100%;
 }
 .chip {
-	width: calc(11 * var(--px));
-	height: calc(11 * var(--px));
+	width: calc(11 * var(--spacing));
+	height: calc(11 * var(--spacing));
 }
 .pot-pile {
-	width: calc(29 * var(--px));
-	height: calc(16 * var(--px));
+	width: calc(29 * var(--spacing));
+	height: calc(16 * var(--spacing));
 }
 .dealer-button {
-	width: calc(11 * var(--px));
-	height: calc(11 * var(--px));
+	width: calc(11 * var(--spacing));
+	height: calc(11 * var(--spacing));
 }
 /* Table voice's glyphs (P4C.6), 11 × 11. */
 .voice-glyph {
-	width: calc(11 * var(--px));
-	height: calc(11 * var(--px));
+	width: calc(11 * var(--spacing));
+	height: calc(11 * var(--spacing));
 }
 .mini-cards {
-	width: calc(14 * var(--px));
-	height: calc(13 * var(--px));
+	width: calc(14 * var(--spacing));
+	height: calc(13 * var(--spacing));
 }
-/* A compact hand: cards fanned tight and cut to a 58 × 50 art-pixel window
+/* A compact hand: cards fanned tight and cut to a 58 × 50 card-unit window
    (the first card's index and the second card's corner), at 2 device pixels
-   per art pixel or more where the screen has them, so the ranks read in a
-   list or a small seat. --peek-a is one art pixel, snapped as PlayingCard's. */
+   per card unit or more where the screen has them, so the ranks read in a
+   list or a small seat. --peek-a is one card unit, snapped as PlayingCard's. */
 .card-peek {
 	--k: 0.75;
 	--card-min: 2;
@@ -59,10 +70,281 @@
 	margin-left: calc(-53 * var(--peek-a));
 }
 .emblem {
-	width: calc(15 * var(--px));
-	height: calc(17 * var(--px));
+	width: calc(15 * var(--spacing));
+	height: calc(17 * var(--spacing));
 }
 .avatar {
-	width: calc(16 * var(--px));
-	height: calc(16 * var(--px));
+	width: calc(16 * var(--spacing));
+	height: calc(16 * var(--spacing));
+}
+
+/* --- Frames. ---------------------------------------------------------------------
+   A transparent border of three steps under the surface holds the content
+   in from the edge, and the edge is a ring just outside it. */
+
+.ui-panel,
+.ui-raised,
+.ui-inset,
+.ui-paper,
+.ui-gold,
+.ui-glow,
+.ui-danger {
+	border: calc(3 * var(--spacing)) solid transparent;
+	border-radius: var(--radius-m);
+	background-color: var(--color-deep-slate);
+	box-shadow:
+		0 0 0 1px var(--edge),
+		var(--elevation-2);
+}
+.ui-raised {
+	background-color: var(--color-slate);
+	box-shadow:
+		0 0 0 1px rgb(255 255 255 / 0.09),
+		var(--elevation-1);
+}
+.ui-inset {
+	background-color: var(--color-ink);
+	box-shadow:
+		0 0 0 1px var(--edge),
+		inset 0 1px 3px rgb(0 0 0 / 0.5);
+}
+.ui-paper {
+	background-color: var(--color-paper);
+	color: var(--color-ink);
+	box-shadow: var(--elevation-2);
+}
+/* The viewer's seat, and the seat to act: the accent. */
+.ui-gold {
+	box-shadow:
+		0 0 0 2px var(--color-gold),
+		var(--elevation-2);
+}
+.ui-glow {
+	box-shadow:
+		0 0 0 2px var(--color-gold-light),
+		0 0 0 6px rgb(240 189 79 / 0.22),
+		var(--elevation-2);
+}
+.ui-danger {
+	background-color: var(--color-red-deep);
+	box-shadow:
+		0 0 0 2px var(--color-red),
+		var(--elevation-2);
+}
+
+/* The table: a dark rail around a deep felt, lit from above. It draws behind
+   the seats and holds no content, so only its own border is its own. */
+.ui-table {
+	border: calc(8 * var(--table-unit, 3px)) solid var(--color-wood-dark);
+	border-radius: calc(48 * var(--table-unit, 3px));
+	background: radial-gradient(
+		ellipse at 50% 40%,
+		var(--color-felt-light),
+		var(--color-felt) 55%,
+		var(--color-felt-dark)
+	);
+	box-shadow:
+		inset 0 0 0 1px rgb(255 255 255 / 0.06),
+		inset 0 10px 48px rgb(0 0 0 / 0.4),
+		0 0 0 1px rgb(255 255 255 / 0.06),
+		var(--elevation-3);
+}
+
+/* --- Buttons. ----------------------------------------------------------------------
+   The label is centred; pressing darkens the face and never moves the label. */
+
+.ui-btn {
+	--btn-bg: var(--color-slate);
+	--btn-down: #1b2029;
+	--btn-fg: var(--color-paper);
+	--btn-edge: var(--color-dusk);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: calc(3 * var(--spacing));
+	min-height: 48px;
+	padding: 0 calc(3 * var(--spacing));
+	border: transparent solid;
+	border-width: calc(4 * var(--spacing)) calc(3 * var(--spacing));
+	border-radius: var(--radius-s);
+	background: var(--btn-bg);
+	color: var(--btn-fg);
+	font-weight: 600;
+	line-height: 1;
+	white-space: nowrap;
+	/* A link drawn as a button is a button: no underline. */
+	text-decoration: none;
+	box-shadow:
+		0 0 0 1px var(--btn-edge),
+		var(--elevation-1);
+	transition:
+		background-color 0.12s var(--ease-out),
+		box-shadow 0.12s var(--ease-out),
+		filter 0.12s var(--ease-out);
+	user-select: none;
+	-webkit-user-select: none;
+	-webkit-tap-highlight-color: transparent;
+	touch-action: manipulation;
+}
+.ui-btn:hover:not(:disabled) {
+	filter: brightness(1.12);
+}
+.ui-btn:active:not(:disabled),
+.ui-btn[aria-pressed='true'],
+.ui-btn.down {
+	background: var(--btn-down);
+	box-shadow:
+		0 0 0 1px var(--btn-edge),
+		inset 0 2px 4px rgb(0 0 0 / 0.4);
+}
+.ui-btn.red {
+	--btn-bg: var(--color-red-dark);
+	--btn-down: #9c2f38;
+	--btn-fg: var(--color-white);
+	--btn-edge: rgb(255 255 255 / 0.14);
+}
+.ui-btn.blue {
+	--btn-bg: var(--color-blue-dark);
+	--btn-down: #2556ab;
+	--btn-fg: var(--color-white);
+	--btn-edge: rgb(255 255 255 / 0.14);
+}
+.ui-btn.amber {
+	--btn-bg: var(--color-amber);
+	--btn-down: #c9772a;
+	--btn-fg: var(--color-ink);
+	--btn-edge: rgb(255 255 255 / 0.18);
+}
+.ui-btn.green {
+	--btn-bg: var(--color-green-dark);
+	--btn-down: #18633d;
+	--btn-fg: var(--color-white);
+	--btn-edge: rgb(255 255 255 / 0.14);
+}
+.ui-btn.gold {
+	--btn-bg: var(--color-gold);
+	--btn-down: #d6a53f;
+	--btn-fg: var(--color-ink);
+	--btn-edge: rgb(255 255 255 / 0.2);
+}
+.ui-btn:disabled,
+.ui-btn.gold:disabled,
+.ui-btn.red:disabled,
+.ui-btn.blue:disabled,
+.ui-btn.amber:disabled,
+.ui-btn.green:disabled {
+	--btn-bg: var(--color-deep-slate);
+	--btn-down: var(--color-deep-slate);
+	--btn-fg: var(--color-haze);
+	--btn-edge: rgb(255 255 255 / 0.08);
+	box-shadow: 0 0 0 1px var(--btn-edge);
+}
+.ui-btn.small {
+	min-height: 40px;
+	font-size: var(--text-s);
+}
+
+/* A choice that turns gold when it is the one chosen. */
+.ui-btn.choice[aria-pressed='true'],
+input:checked + .ui-btn.choice {
+	--btn-bg: var(--color-gold);
+	--btn-down: var(--color-gold);
+	--btn-fg: var(--color-ink);
+	--btn-edge: rgb(255 255 255 / 0.2);
+	background: var(--btn-bg);
+	box-shadow:
+		0 0 0 1px var(--btn-edge),
+		var(--elevation-1);
+}
+input:focus-visible + .ui-btn.choice {
+	outline: var(--spacing) solid var(--color-gold-light);
+	outline-offset: var(--spacing);
+}
+
+/* --- Fields. ----------------------------------------------------------------------- */
+
+.ui-field {
+	border: calc(3 * var(--spacing)) solid transparent;
+	border-radius: var(--radius-s);
+	background-color: var(--color-ink);
+	color: var(--color-paper);
+	min-height: 44px;
+	padding: 0 calc(2 * var(--spacing));
+	box-shadow: 0 0 0 1px var(--color-dusk);
+}
+.ui-field:focus-visible {
+	outline-offset: 0;
+}
+/* The caret is two gradients, a chevron in the field's right end. */
+select.ui-field {
+	appearance: none;
+	-webkit-appearance: none;
+	padding-right: calc(12 * var(--spacing));
+	background-image:
+		linear-gradient(45deg, transparent 50%, var(--color-mist) 50%),
+		linear-gradient(135deg, var(--color-mist) 50%, transparent 50%);
+	background-position:
+		right 11px center,
+		right 6px center;
+	background-size: 5px 5px;
+	background-repeat: no-repeat;
+	cursor: pointer;
+}
+select.ui-field option {
+	background: var(--color-deep-slate);
+	color: var(--color-paper);
+}
+input.ui-field[type='number'] {
+	-moz-appearance: textfield;
+	appearance: textfield;
+}
+input.ui-field[type='number']::-webkit-inner-spin-button,
+input.ui-field[type='number']::-webkit-outer-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+
+/* The bet slider: a slim groove and a round gold thumb, as large as a chip. */
+input.ui-range {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 100%;
+	height: 44px;
+	background: none;
+	margin: 0;
+	cursor: pointer;
+}
+input.ui-range::-webkit-slider-runnable-track {
+	height: 6px;
+	border-radius: 3px;
+	background: var(--color-ink);
+	box-shadow: 0 0 0 1px var(--color-dusk);
+}
+input.ui-range::-moz-range-track {
+	height: 6px;
+	border-radius: 3px;
+	background: var(--color-ink);
+	box-shadow: 0 0 0 1px var(--color-dusk);
+}
+input.ui-range::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	width: calc(11 * var(--spacing));
+	height: calc(11 * var(--spacing));
+	margin-top: -8px;
+	border: 2px solid var(--color-ink);
+	border-radius: 50%;
+	background: var(--color-gold);
+	box-shadow: var(--elevation-1);
+}
+input.ui-range::-moz-range-thumb {
+	width: calc(11 * var(--spacing));
+	height: calc(11 * var(--spacing));
+	box-sizing: border-box;
+	border: 2px solid var(--color-ink);
+	border-radius: 50%;
+	background: var(--color-gold);
+	box-shadow: var(--elevation-1);
+}
+input.ui-range:disabled {
+	opacity: 0.5;
 }

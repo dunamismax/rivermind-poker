@@ -85,11 +85,11 @@
 </svelte:head>
 
 <SiteHeader>
-	<a class="px-btn small" href={resolve('/')}>Play</a>
+	<a class="ui-btn small" href={resolve('/')}>Play</a>
 </SiteHeader>
 
 <main class="page mx-auto grid max-w-[900px] gap-8 p-8 text-mist lt-600:p-4">
-	<section class="px-panel intro {panel}">
+	<section class="ui-panel intro {panel}">
 		<h2 class="mb-4 text-l text-gold text-shadow-ink">Your hands</h2>
 		<p>
 			Every hand you were dealt into, newest first. Open one to step through it: your cards, the
@@ -100,14 +100,14 @@
 
 	{#if open}
 		<section
-			class="px-panel detail {panel}"
+			class="ui-panel detail {panel}"
 			aria-label="Hand {open.hand.hand_no} at {open.hand.table_name}"
 		>
 			<div class="detail-top flex items-center justify-between gap-6">
 				<h3 class="mb-4 text-m text-gold text-shadow-ink">
 					{open.hand.table_name} · hand #{open.hand.hand_no}
 				</h3>
-				<button type="button" class="px-btn small" onclick={close}>Close</button>
+				<button type="button" class="ui-btn small" onclick={close}>Close</button>
 			</div>
 			<p class="meta text-s text-paper-shade">
 				{open.hand.practice ? 'Practice chips · ' : ''}{when(open.hand.at)} · Blinds {open.hand
@@ -118,11 +118,11 @@
 			</div>
 			<h4 class="mt-8 mb-4 text-m text-gold-light text-shadow-ink">Hand history</h4>
 			<pre
-				class="px-inset max-h-[420px] overflow-auto p-5 text-s leading-[1.5] wrap-anywhere whitespace-pre-wrap text-paper">{open.text}</pre>
+				class="ui-inset max-h-[420px] overflow-auto p-5 text-s leading-[1.5] wrap-anywhere whitespace-pre-wrap text-paper">{open.text}</pre>
 		</section>
 	{/if}
 
-	<section class="px-panel list {panel}" aria-label="Hands">
+	<section class="ui-panel list {panel}" aria-label="Hands">
 		{#if error}<p class="error mb-4 text-red-light" role="alert">{error}</p>{/if}
 		{#if hands.length === 0 && !loading && !error}
 			<p>
@@ -132,7 +132,7 @@
 		{:else}
 			<ol class="mb-6 grid gap-3">
 				{#each hands as hand (hand.hand_id)}
-					<li class="row px-inset">
+					<li class="row ui-inset">
 						<button
 							type="button"
 							class="open group grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_90px] items-center gap-x-6 px-4 py-3 text-left"
@@ -163,7 +163,7 @@
 			{#if more}
 				<button
 					type="button"
-					class="px-btn"
+					class="ui-btn"
 					disabled={loading}
 					onclick={() => load(hands.at(-1)?.hand_id ?? null)}
 				>

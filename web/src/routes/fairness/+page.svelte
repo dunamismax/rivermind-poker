@@ -17,11 +17,11 @@
 </svelte:head>
 
 <SiteHeader>
-	<a class="px-btn small" href={resolve('/')}>Play</a>
+	<a class="ui-btn small" href={resolve('/')}>Play</a>
 </SiteHeader>
 
 <main class="page mx-auto max-w-[860px] p-8">
-	<article class="px-panel px-10 pt-8 pb-10 text-mist">
+	<article class="ui-panel px-10 pt-8 pb-10 text-mist">
 		<h2 class="mb-5 text-l text-gold text-shadow-ink">Rules and fair dealing</h2>
 		<p class="lead text-paper">
 			RiverMind Poker deals no-limit Texas hold’em for play chips only: chips can never be bought,

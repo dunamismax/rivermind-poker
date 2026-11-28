@@ -12,7 +12,6 @@
 import { expect, test as base } from '@playwright/test';
 import { canCapture, canTransform } from '../voice/check/browsers.ts';
 import { nameOf, seated, sitDown, tableIdOf } from './fixtures.ts';
-import { newContext, switchLook, withLook } from './look.ts';
 import { TableServer } from './server.ts';
 import { ghostTable, takeSeat, watch, type GhostTable } from './stranger.ts';
 import {
@@ -29,7 +28,6 @@ import {
 } from './voice.ts';
 
 const test = base.extend<object, { voiceServer: TableServer }>({
-	context: async ({ context }, use) => use(await withLook(context)),
 	voiceServer: [
 		// eslint-disable-next-line no-empty-pattern
 		async ({}, use, workerInfo) => {
@@ -128,21 +126,6 @@ test.describe('table voice', () => {
 			await expect(voiceOf(bob.page, aliceSeat)).toHaveAttribute('data-speaking', 'true', {
 				timeout: 30_000
 			});
-
-			// Bob switches look mid-call (P5C.6), from the header or, on a phone, the table bar's
-			// menu: only the drawing changes, and he stays in the same group, hearing Alice.
-			const before = await diagnostics(bob.page);
-			await switchLook(bob.page);
-			const after = await diagnostics(bob.page);
-			expect(after.phase).toBe('in');
-			expect(after.code).toEqual(before.code);
-			await expect(voiceOf(bob.page, aliceSeat)).toHaveAttribute('data-speaking', 'true', {
-				timeout: 30_000
-			});
-			await expect(voiceOf(alice.page, bobSeat)).toHaveAttribute(
-				'data-voice',
-				listenerMic ? 'talking' : 'listening'
-			);
 
 			// Each voice goes through Bob's graph where the engine has one, from its seat's side
 			// of the table: at three seats Alice sits to one side of Bob, never in the middle.
@@ -383,7 +366,7 @@ test.describe('table voice', () => {
 		await expect(page.getByText('Looking for tables…')).toHaveCount(0);
 		await page.getByRole('button', { name: 'Practice vs bots' }).click();
 		await expect(seated(page)).toBeVisible();
-		const other = await (await newContext(browser)).newPage();
+		const other = await (await browser.newContext()).newPage();
 		await sitDown(other, 3);
 		await page.waitForTimeout(1500);
 		for (const one of [page, other]) {

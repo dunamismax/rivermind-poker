@@ -66,10 +66,10 @@ export default defineConfig({
 		})
 	],
 	build: {
-		// The CSP allows data: images but not data: fonts or scripts, so the font,
-		// and voice's noise suppression worklet and its WebAssembly, are always
-		// their own hashed files.
-		assetsInlineLimit: (file) => (/\.(woff|js|wasm|svg)$/.test(file) ? false : undefined)
+		// The CSP allows data: images but not data: scripts, so voice's noise
+		// suppression worklet and its WebAssembly are always their own hashed
+		// files; so is every SVG of the art, which then caches as immutable.
+		assetsInlineLimit: (file) => (/\.(js|wasm|svg)$/.test(file) ? false : undefined)
 	},
 	server: { proxy },
 	preview: { proxy },
