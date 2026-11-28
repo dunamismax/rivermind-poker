@@ -174,8 +174,11 @@ function inSquare(size, radius, x, y) {
 
 const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 
-/** The icon as RGBA, from the same shapes as its SVG. */
-export function rasterise(icon, c, samples = 8) {
+/**
+ * Which shape each of a pixel's samples falls in, topmost first: for every pixel, how
+ * many of its `samples` × `samples` land in the river, the spade and the square.
+ */
+export function coverage(icon, samples = 8) {
 	const { size, radius, scale } = icon;
 	const { x, y } = placement(icon);
 	const group = compose(translate(x, y), scaling(scale));
@@ -184,40 +187,65 @@ export function rasterise(icon, c, samples = 8) {
 	const half = (MARK.river.width * scale) / 2;
 	const spadeBox = bounds(spade);
 	const riverBox = bounds(river, half);
-	const night = rgb(c('night'));
-	const gold = rgb(c('gold'));
 	const within = ([x0, y0, x1, y1], px, py) => px >= x0 && px <= x1 && py >= y0 && py <= y1;
-	const data = new Uint8Array(size * size * 4);
+	const counts = new Uint16Array(size * size * 3);
 	for (let py = 0; py < size; py++) {
 		for (let px = 0; px < size; px++) {
-			let r = 0;
-			let g = 0;
-			let b = 0;
-			let a = 0;
+			const at = (py * size + px) * 3;
 			for (let j = 0; j < samples; j++) {
 				for (let i = 0; i < samples; i++) {
 					const sx = px + (i + 0.5) / samples;
 					const sy = py + (j + 0.5) / samples;
-					// Topmost first: the river, the spade, the square.
-					let colour = null;
-					if (within(riverBox, sx, sy) && stroked(river, half, sx, sy)) colour = night;
-					else if (within(spadeBox, sx, sy) && filled(spade, sx, sy)) colour = gold;
-					else if (inSquare(size, radius, sx, sy)) colour = night;
-					if (!colour) continue;
-					r += colour[0];
-					g += colour[1];
-					b += colour[2];
-					a += 1;
+					if (within(riverBox, sx, sy) && stroked(river, half, sx, sy)) counts[at]++;
+					else if (within(spadeBox, sx, sy) && filled(spade, sx, sy)) counts[at + 1]++;
+					else if (inSquare(size, radius, sx, sy)) counts[at + 2]++;
 				}
 			}
-			const at = (py * size + px) * 4;
-			if (a) {
-				data[at] = Math.round(r / a);
-				data[at + 1] = Math.round(g / a);
-				data[at + 2] = Math.round(b / a);
-			}
-			data[at + 3] = Math.round((a * 255) / (samples * samples));
 		}
+	}
+	return { size, samples, counts };
+}
+
+/**
+ * The icon as RGBA, from the same shapes as its SVG: each pixel the mean of its samples'
+ * colours. `style` is for the iPhone app's icons (swift.js): without a background the
+ * river cuts through the spade to nothing, and the spade may take another colour.
+ */
+export function rasterise(
+	icon,
+	c,
+	samples = 8,
+	style = { background: true, spade: 'gold' },
+	covered = coverage(icon, samples)
+) {
+	const { size, counts } = covered;
+	const night = rgb(c('night'));
+	const colours = [
+		style.background ? night : null,
+		rgb(c(style.spade)),
+		style.background ? night : null
+	];
+	const data = new Uint8Array(size * size * 4);
+	for (let p = 0; p < size * size; p++) {
+		let r = 0;
+		let g = 0;
+		let b = 0;
+		let a = 0;
+		for (let k = 0; k < 3; k++) {
+			const n = counts[p * 3 + k];
+			if (!n || !colours[k]) continue;
+			r += n * colours[k][0];
+			g += n * colours[k][1];
+			b += n * colours[k][2];
+			a += n;
+		}
+		const at = p * 4;
+		if (a) {
+			data[at] = Math.round(r / a);
+			data[at + 1] = Math.round(g / a);
+			data[at + 2] = Math.round(b / a);
+		}
+		data[at + 3] = Math.round((a * 255) / (samples * samples));
 	}
 	return { width: size, height: size, data };
 }

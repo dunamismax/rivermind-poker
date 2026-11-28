@@ -11,8 +11,8 @@ struct RiverMindApp: App {
 
     var body: some Scene {
         WindowGroup {
-            LobbyView(model: lobby, table: table)
-                .preferredColorScheme(.dark)  // Q-12: dark whatever the phone's appearance
+            root
+                .kitPage()  // the site's night and gold, dark whatever the phone's appearance (Q-12)
                 .task {
                     table.watchNetwork()
                     table.start()
@@ -26,6 +26,19 @@ struct RiverMindApp: App {
             default: table.phase(.inactive)
             }
         }
+    }
+
+    @ViewBuilder private var root: some View {
+        #if DEBUG
+            // `-gallery` opens the kit's gallery (P5D.5), for screenshots and its UI test.
+            if ProcessInfo.processInfo.arguments.contains("-gallery") {
+                NavigationStack { GalleryView() }
+            } else {
+                LobbyView(model: lobby, table: table)
+            }
+        #else
+            LobbyView(model: lobby, table: table)
+        #endif
     }
 
     /// This build's number, or in a debug build the older one `RIVERMIND_PRETEND_BUILD`

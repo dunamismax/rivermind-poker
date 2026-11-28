@@ -1,5 +1,6 @@
 // Writes the site's art: the deck and the interface sprites (scripts/art/deck.js
-// and ui.js, P5C.3 and P5C.4) and the site's icons (scripts/art/icons.js), and
+// and ui.js, P5C.3 and P5C.4), the site's icons (scripts/art/icons.js) and the
+// iPhone app's tokens, art and icons (scripts/art/swift.js, P5D.5), and
 // removes any card or sprite it no longer makes. With --preview DIR it also
 // writes a page there for review (art.html), the deck and the sprites at the
 // sizes the site draws them, to open in a browser at each density.
@@ -8,17 +9,24 @@ import { dirname, relative, resolve } from 'node:path';
 import { renderDeck } from './art/deck.js';
 import { renderIcons } from './art/icons.js';
 import { encodePng } from './art/png.js';
+import { renderAssets, renderSwift } from './art/swift.js';
 import { renderUi } from './art/ui.js';
 
 const WEB = resolve(import.meta.dirname, '..');
 const deck = renderDeck();
 const ui = renderUi();
 const icons = renderIcons();
+// The iPhone app's look (P5D.5): its tokens and art in Swift, and its asset catalog.
+const swift = renderSwift();
+const assets = renderAssets();
 const files = new Map([
 	...deck,
 	...ui,
 	...icons.svgs,
-	...[...icons.images].map(([path, image]) => [path, encodePng(image)])
+	...[...icons.images].map(([path, image]) => [path, encodePng(image)]),
+	...swift,
+	...assets.text,
+	...[...assets.images].map(([path, image]) => [path, encodePng(image)])
 ]);
 for (const [path, bytes] of files) {
 	const target = resolve(WEB, path);

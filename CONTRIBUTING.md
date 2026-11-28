@@ -495,6 +495,13 @@ pnpm protocol:swift
 pnpm ios:fixtures
 ```
 
+**The look (P5D.5).** The app's tokens, cards, sprites, icon and launch colour are written by `pnpm art` from the site's own sources, never by hand ([docs/ios.md](docs/ios.md#the-look-p5d5)). After changing the palette, the kit's colours or the art, run `pnpm art` and then `pnpm ios:fixtures`, which draws the reference sheets the Swift tests compare the app's cards and sprites with in Chromium. The kit's components are snapshot-tested in the package; after a deliberate change to how one looks, record them again on this Mac and look at the new images before committing them. A debug build has the gallery, the app's `/style`, under the lobby's toolbar or at launch with `-gallery`.
+
+```sh
+cd ios/RiverMindKit
+RIVERMIND_RECORD_SNAPSHOTS=1 swift test --filter KitSnapshotTests
+```
+
 **Old builds (P5D.11).** An app build stays on phones for weeks, so the server must keep serving every build from the oldest it names (`OLDEST_APP_BUILD` in `web/src/lib/server/api/site.ts`, sent in `GET /api/config` as `oldest_app_build`; an older build shows “Update RiverMind Poker”). Each build's session is recorded in `web/src/lib/server/api/app-sessions/build-<n>.json`: `AppSessionRecordingTests.swift` plays a fixed script through the app's own API client and table connection (every route it uses, a practice table played to two hands, a reaction, sitting out and in, a refill, its hands, a private table and its invite, and deleting the guest) and records each request with its answer and each socket frame, ids put by name. `app-sessions.spec.ts` replays every supported build's recording against the server in Vitest, so a server change that would break one fails before a deploy; normally the Swift test checks that the committed recording still matches what the build sends. A build that changes what it sends gets a new number (`AppBuild.number`, which `ios/test.sh` holds equal to `CURRENT_PROJECT_VERSION`) and its own recording:
 
 ```sh

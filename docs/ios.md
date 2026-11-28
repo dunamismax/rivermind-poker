@@ -2,7 +2,7 @@
 
 RiverMind Poker as a native iPhone app (D-19, Phase 5D in [BUILD.md](../BUILD.md#phase-5d--native-ios-app)). It is one more client of the same server: people in the app and in any browser share tables, invites and end-to-end encrypted table voice. This file is the design (P5D.1), kept as the app is built. CONTRIBUTING.md says how to build and test it, and AGENTS.md holds its conventions.
 
-**Where it stands** (2026-11-27): the skeleton (P5D.1), the protocol (P5D.2) and the server's part (P5D.11: old builds, deleting the guest, counts by client). The app builds, launches in the iOS Simulator, makes or renews its guest with `POST /api/session`, keeps the session in the Keychain, and shows a placeholder lobby with the guest and what `GET /api/config` offers. RiverMindKit has every protocol v2 and voice signalling type, generated from the TypeScript, an API client for every route below, and the page's display logic (P5D.4): hand names and the evaluator, bet sizes and labels, the hand log's and the pots' lines, seat words, faces, replay steps and card names, each matching the page on a fixture the TypeScript writes, and the table connection (P5D.3), which follows a table, acts on its views and rejoins by itself after a drop, a restart of the server, a move between networks and a return from the background. The lobby (P5D.6) and the look (P5D.5) are next; a debug build launched with `-practice` joins a practice table and shows how its connection stands until the table screen (P5D.7).
+**Where it stands** (2026-11-28): the skeleton (P5D.1), the protocol (P5D.2), the server's part (P5D.11: old builds, deleting the guest, counts by client) and the look (P5D.5: the site's tokens, deck, sprites and icon, drawn natively from what `pnpm art` writes, and a debug gallery). The app builds, launches in the iOS Simulator, makes or renews its guest with `POST /api/session`, keeps the session in the Keychain, and shows a placeholder lobby with the guest and what `GET /api/config` offers. RiverMindKit has every protocol v2 and voice signalling type, generated from the TypeScript, an API client for every route below, and the page's display logic (P5D.4): hand names and the evaluator, bet sizes and labels, the hand log's and the pots' lines, seat words, faces, replay steps and card names, each matching the page on a fixture the TypeScript writes, and the table connection (P5D.3), which follows a table, acts on its views and rejoins by itself after a drop, a restart of the server, a move between networks and a return from the background. The lobby (P5D.6) is next; a debug build launched with `-practice` joins a practice table and shows how its connection stands until the table screen (P5D.7).
 
 ## What the app is made of
 
@@ -10,15 +10,21 @@ RiverMind Poker as a native iPhone app (D-19, Phase 5D in [BUILD.md](../BUILD.md
 ios/
   RiverMind.xcodeproj/      the app and its UI tests, with folder-synchronized groups
   RiverMind/                the app target: screens only (SwiftUI)
+    Assets.xcassets/        the icon, the launch screen's colour and the accent, written by `pnpm art`
   RiverMindUITests/         XCUITest, against a local Node server
   RiverMindKit/             a Swift package: everything that is not a screen
-    Sources/RiverMindKit/   protocol and API types, the API client, models, ported display logic
+    Sources/RiverMindKit/   protocol and API types, the API client, models, ported display logic,
+                            and in Look/ the kit: its tokens and art (written by `pnpm art`) and components
     Tests/RiverMindKitTests/  Swift Testing, run by `swift test` on a Mac
-  Config/Debug-Info.plist   what debug builds add to the generated Info.plist
+    Fixtures/               what the TypeScript writes for the tests, the art's reference sheets,
+                            and the kit's snapshots
+  Config/Info.plist         what every build adds to the generated Info.plist (the launch screen)
+  Config/Debug-Info.plist   the same for debug builds, with plain HTTP to a local server
   test.sh                   the app's checks, as CI runs them
 ```
 
 - **The package holds the logic.** Protocol and API types, the API client, the table connection, the models behind each screen, voice and everything ported from the page live in `RiverMindKit`. `swift test` runs them on this Mac without a simulator, in a second or two. The app target holds SwiftUI views and nothing a test needs to reach.
+- **The kit is in the package too.** The site's look as SwiftUI components (`Look/`: cards, buttons, frames, fields, the felt) is in `RiverMindKit` rather than the app, so its snapshot and parity tests reach it; the app's screens are built from it.
 - **The app target holds the screens.** Its folders are synchronized groups (`PBXFileSystemSynchronizedRootGroup`), so adding, moving or deleting a Swift file changes no line of `project.pbxproj`. The project was made once with XcodeGen 2.48 and is now edited as Xcode edits it; no generator is needed to build it.
 - **Swift 6 throughout,** with strict concurrency. The app target isolates to the main actor by default (`SWIFT_DEFAULT_ACTOR_ISOLATION`); the package states its isolation explicitly. Warnings are errors in both, and `ios/test.sh` also fails on a warning in the app's sources that the compiler keeps a warning whatever the flag (a concurrency diagnostic about an API imported with `@preconcurrency`, such as XCTest's).
 - **Dependencies.** None yet. Each one added is pinned to an exact version through Swift Package Manager, with `Package.resolved` committed, and its license recorded in `licenses/` (Q-14). No analytics, crash-reporting, advertising or attribution SDK, ever (Q-6).
@@ -121,16 +127,27 @@ The server is authoritative (D-2): the app decides nothing about cards, turns or
 | `hand-name.ts` and the browser-safe evaluator in `src/lib/engine` (`HandName`, `Evaluator`) | the table layout at 2 to 9 seats, from the same rules as `layout.ts` (P5D.7) |
 | `bet.ts`: bet and raise sizes, presets, button labels, the hand log's lines and the pots' lines (`Bet`) | the action panel, slider and haptics |
 | `replay.ts`'s steps (`Replay`) | the replayer's controls |
-| `faces.ts`: bot labels, pod names, avatars, chip colours, a seat's status word and spoken label, and the evaluation lines (`Faces`) | the cards themselves, from `scripts/art/deck.js`'s geometry (P5D.5) |
+| `faces.ts`: bot labels, pod names, avatars, chip colours, a seat's status word and spoken label, and the evaluation lines (`Faces`) | the cards and sprites, from the shapes `scripts/art/` draws (P5D.5; below) |
 | `wording.ts`'s card names, `replay.ts`'s short cards and `safety.ts`'s reactions and report reasons (`Wording`, `Safety`) | animations, with Reduce Motion |
 | what `connection.svelte.ts` does: hello, `seq`, errors, rejoining (`TableConnection`, P5D.3; above) | the voice panel (P5D.10) |
-| the site's tokens, written into Swift by `pnpm art` from `theme.css` (P5D.5) | |
+| the site's tokens, written into Swift by `pnpm art` from `theme.css` and `kit.css` (P5D.5; below) | the kit's components, from `kit.css` (P5D.5) |
 
 **The display fixture** (P5D.4). `pnpm ios:fixtures` also writes `ios/RiverMindKit/Fixtures/display.json` (`web/src/lib/server/api/ios-display.spec.ts`), and `DisplayParityTests.swift` expects every Swift port to give exactly what the TypeScript gave. Its cases are seeded: random sets of two to seven cards until every class of hand is there at every size, a fixed list of rare hands and words with a rule of their own (the wheel, a royal flush, sixes, an eight-high), the hand log's line for every event the recorded sessions sent and for every kind of event, and fifty hands the engine plays from random stacks, read back as the `HandDetail` a viewer gets and kept so that between them they hold every kind of replay step and every kind of pot (side pots, splits, an uncalled bet, a stack nobody covered, all-in hands tabled before the board, antes). The bet cases are the legal actions at those hands' decisions. Where the page would print `undefined` (a field a newer server leaves out, an action this build does not know), the app says something plain instead; everywhere else the two say the same. Each `toFixed` and `toLocaleString` the page calls is ported to its rule: `Faces.toFixed` rounds the double's exact value, the larger on a tie, as JavaScript does, where `String(format:)` would round 0.25 to 0.2.
 
 The wording the table's components wrote inline (the pots' lines under the table, a seat's status word and its label for assistive technology) moved into `bet.ts` and `faces.ts` at P5D.4, so the page and the app read it from one place.
 
 Small formatting rules that the page writes inline are ported where they are first needed and tested against the page's own output: P5D.1's `ConfigResponse.chips` matches `toLocaleString('en-US')`, and `ConfigResponse.blinds` the lobby's `small/big`.
+
+## The look (P5D.5)
+
+The app has the site's look (D-18), drawn natively from the site's own sources, so the two cannot drift. `pnpm art` writes all of it with `web/scripts/art/swift.js`, and `art.spec.ts` fails while a written file is stale:
+
+- **Tokens** (`Look/Tokens.swift`): every palette colour of `theme.css` by its name (`Palette.gold`), the text sizes, radii and spacing step, the shadows, the edge, and each animation's length and curve (`Motion.drop`); and from `kit.css` the buttons' face, pressed face, label and edge (`ButtonPalette`) and the frames' surface, rings and shadows (`FramePalette`). The pairs of colours `theme.spec.ts` measures moved to `web/src/styles/contrast.ts`, which both read: `TokenTests` measures them on the Swift values (4.5:1 for text, 3:1 for controls), and the buttons' labels on their faces pressed or not. The system font is the site's font on Apple devices, so no font is written. The app is dark whatever the phone's appearance (Q-12): `kitPage()` puts the night behind every screen and the gold on the system's controls.
+- **Art** (`Look/ArtLibrary.swift`): every card (52 faces, three backs and the slot) and every sprite (chips, the pot, the dealer button, the avatars, the mark, the mini cards and voice's glyphs). Rather than shipping SVG files, `swift.js` reads back each SVG the generators draw into its shapes, each a path, rect, circle or ellipse with its transform, fill and stroke as SVG works them out, and writes them as Swift data. `ArtView` draws them with a SwiftUI `Canvas`, `SVGPath` reads the path data (every SVG command, arcs included), and a rect or circle starts its outline where SVG starts it, so a dashed stroke falls in the same place. `CardView` shows a card at `k` points per card unit, as the site's `--k`; a card this build does not know shows face down.
+- **Parity with the site.** `pnpm ios:fixtures` draws every card and sprite in Chromium from the site's SVG at 2 and 3 pixels a point (`web/src/lib/art/ios-art.spec.ts`, into `Fixtures/art@2x.png`, `art@3x.png` and their index `art.json`, which records each SVG's hash, so Vitest fails while the sheets are stale). `ArtParityTests` draws each piece with `ArtView` at the same scale and compares: a face's mean difference per channel must stay under 1.5 of 255 and under 1% of its pixels may differ by more than a quarter, a sprite's under 3 and 1.5%, since a sprite is small and its edges, where Skia and Core Graphics smooth differently, are more of it. On 2026-11-28 the faces came within 0.39 and the sprites within 2.62. The same test checks that the limits fail a face drawn for the next rank or suit, a back for the next back, a chip for the next chip and an avatar for the next.
+- **The icon and the launch screen.** `Assets.xcassets/AppIcon.appiconset` holds the mark at 1024 in iOS's three styles, from `icons.js`'s rasteriser at 4 × 4 samples a pixel: gold on night, the mark alone on nothing for the dark style, and the mark in white on nothing for the tinted one, which the system tints by lightness. The launch screen is the colour `Night` (`Config/Info.plist`), the lobby without its content, as Apple asks, and `AccentColor` is the gold.
+- **The kit** (`Look/Kit.swift`): the kit's buttons (`KitButtonFace`, `.buttonStyle(.kit(.gold))`, slate, red, blue, amber, green and gold, a chosen choice, small and wide, pressed and disabled; pressing darkens the face and never moves the label), its frames (`kitFrame(.panel)` and raised, inset, paper, gold, glow and danger), its field (`KitFieldStyle`) and the felt with its rail (`TableFelt`). Native controls take the gold where they fit the card room: the slider, toggles, segmented pickers and iOS 26's glass buttons.
+- **The gallery** (`Look/Gallery.swift` and the app's `GalleryView`, debug builds only): every component in its states, the app's `/style`, under the lobby's toolbar or at launch with `-gallery`, with a live section of the controls. `KitSnapshotTests` draws each of its 29 items at 2 pixels a point and compares it with `Fixtures/snapshots/`; SwiftUI draws text a little differently from one macOS to the next, so the comparison runs on the macOS the snapshots were recorded on (`recorded-on.txt`, macOS 27 on 2026-11-28), and elsewhere, as in CI, each item must still draw at its size. `RIVERMIND_RECORD_SNAPSHOTS=1` records them again. The drawing tests run one at a time (`LookRendering`): together they held the main actor long enough to starve the table connection's two-second waits. `GalleryUITests` walks the gallery in the Simulator and keeps a screenshot of each screenful; it was reviewed on the iPhone SE (375 × 667), the iPhone 16e, the iPhone 17, the iPhone Air and the iPhone 17 Pro Max (440 × 956).
 
 ## The screens
 
@@ -144,7 +161,7 @@ Small formatting rules that the page writes inline are ported where they are fir
 | Fairness | how dealing works (D-8) | P5D.8 |
 | Settings | card backs, voice settings, haptics, sounds | P5D.13 |
 | How to play, privacy, terms, support | content pages, native or in an in-app Safari view | P5D.8, P5D.15 |
-| Gallery (debug builds only) | every component in its states, the app's `/style` | P5D.5 |
+| Gallery (debug builds only) | every component in its states, the app's `/style`, from the lobby's toolbar or `-gallery` | P5D.5 |
 
 ## The App Store's requirements
 

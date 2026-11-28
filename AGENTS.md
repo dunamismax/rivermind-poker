@@ -174,8 +174,9 @@ ios/                             the iPhone app (Phase 5D, docs/ios.md): RiverMi
                                  folder-synchronized groups; RiverMind/ (the screens, SwiftUI),
                                  RiverMindUITests/ (XCUITest), RiverMindKit/ (a Swift package with
                                  everything that is not a screen, and its Swift Testing tests;
-                                 Sources/RiverMindKit/Protocol/ holds the generated protocol types
-                                 and Fixtures/ what the TypeScript writes for the tests),
+                                 Sources/RiverMindKit/Protocol/ holds the generated protocol types,
+                                 Look/ the site's look as SwiftUI (P5D.5), and Fixtures/ what the
+                                 TypeScript writes for the tests and the kit's snapshots),
                                  Config/Debug-Info.plist, and test.sh, the app's checks
 poker_ai/                        short-deck prototype, terminal client, legacy serve (until P7.6)
 test/                            engine/, server/ (table model and parity fixture), unit/, functional/, fixtures/
@@ -293,9 +294,9 @@ ios/test.sh app        # xcodebuild test alone, in the simulator "RiverMind Test
 | --- | --- |
 | Generate a Drizzle migration from `schema.ts` | `pnpm db:generate` |
 | Apply migrations (what production will run) | `pnpm db:migrate` |
-| Draw the deck, sprites and icons | `pnpm art`, or `pnpm art --preview <dir outside the repo>` for a page to review them on |
+| Draw the deck, sprites and icons, and the iPhone app's tokens, art and icons (P5D.5) | `pnpm art`, or `pnpm art --preview <dir outside the repo>` for a page to review them on |
 | Regenerate the short-deck `protocol.ts` | `pnpm protocol` |
-| Write the iPhone app's protocol types (P5D.2), and the fixtures its tests read: the protocol's and the display logic's (P5D.4) | `pnpm protocol:swift`, `pnpm ios:fixtures` |
+| Write the iPhone app's protocol types (P5D.2), and the fixtures its tests read: the protocol's, the display logic's (P5D.4) and the art's reference sheets, drawn in Chromium (P5D.5) | `pnpm protocol:swift`, `pnpm ios:fixtures` |
 | Review reports and collusion signals, give a player a new handle, or list and lift speaking suspensions | `DATABASE_URL=… pnpm moderation reports`, `signals`, `rename PLAYER_ID`, `suspensions` or `lift PLAYER_ID`; `build/moderation.js` in a release |
 | Rewrite the table parity fixture (from the root) | `uv run --locked python -m test.server.table_differential --fixture` |
 | Check the TypeScript table against the Python one | `pnpm table:parity`, or `-- --sequences 400 --ops 300` for the long run |
@@ -445,7 +446,7 @@ Pages and components are styled with Tailwind utilities on the theme in `web/src
 
 The site has one look (D-18), drawn in CSS and SVG. Its tokens are in `web/src/styles/theme.css`, whose contrast `theme.spec.ts` measures; the kit is `kit.css` and `sprites.css`. The deck, the sprites and the site's icons are drawn by `web/scripts/art/` (`deck.js`, `ui.js`, `icons.js`) from the palette in `theme.css`, and `pnpm art` writes them into `src/lib/art/` and `static/`. [The design notes](docs/design.md) and the `/style` page describe the kit.
 
-- Never edit a generated file by hand. Change the generator, run `pnpm art --preview <dir outside the repo>`, open `art.html` at each device-pixel ratio, and commit both; `art.spec.ts` fails on a file that drifts.
+- Never edit a generated file by hand. Change the generator, run `pnpm art --preview <dir outside the repo>`, open `art.html` at each device-pixel ratio, and commit both; `art.spec.ts` fails on a file that drifts. `pnpm art` writes the iPhone app's look too (`scripts/art/swift.js`), so a change to the art or the palette changes the app in the same commit.
 - Draw only with palette colours. The icons' PNGs come from `icons.js`'s own rasteriser, not a browser, so they are the same on every machine.
 - Size cards with `--k`; they snap to whole device pixels per card unit, so check them at DPR 1, 2 and 3.
 - Nothing loops in place by moving: an infinite animation changes colour, opacity or a shadow, never `transform` or a box's position. Playwright waits for an element to stand still before it clicks, so a smooth bob on the seat to act never let it click that seat's name (`pnpm visual` stalled there), and a finger met the same moving target. `--animate-nudge` is a glow (`turn` in `theme.css`), and `theme.spec.ts` holds it to that.
@@ -458,6 +459,7 @@ The site has one look (D-18), drawn in CSS and SVG. Its tokens are in `web/src/s
 - **One server, one game.** The app speaks protocol v2 on `/ws`, the HTTP API and voice signalling v1 on `/voice`, as a page does, and decides nothing about cards, turns or chips (D-2). Every settled decision holds in it: no purchase and no ads (D-1), bots labelled with their evaluations (D-7), guests (D-12), voice end-to-end encrypted with no unencrypted path (D-15), no free text (Q-4), no third-party SDK (Q-6).
 - **A newer server must never break an older build.** Decode every server message so that unknown fields are ignored and an unknown kind or code decodes as itself (every string union in `ProtocolV2.swift` is an open type with `known` and `isKnown`, and `ServerMessage` and `VoiceNotice` have an `unknown` case), never as a closed `enum` that fails.
 - **The protocol types are generated.** `ios/RiverMindKit/Sources/RiverMindKit/Protocol/ProtocolV2.swift` and `VoiceSignalling.swift` are written by `pnpm protocol:swift` (`web/scripts/protocol-swift.ts`) from `protocol-v2.ts` and `signalling.ts`; never edit them, and run it after changing either source (Vitest fails while they are stale). A new `number` field is an `Int` unless the generator's `FRACTIONAL` lists it. An optional field that may be null (`x?: T | null`) is written as null only when its struct's `nulls` names it: the server reads a missing `bots` as the default bot and a null one as no bots. `ios/RiverMindKit/Fixtures/protocol.json` is every message and body of the two recorded sessions, written by `pnpm ios:fixtures` (Vitest fails while it is stale), and the Swift tests decode each and encode it back to the same JSON.
+- **The look is generated** (P5D.5, [docs/ios.md](docs/ios.md#the-look-p5d5)). `Look/Tokens.swift`, `Look/ArtLibrary.swift` and `RiverMind/Assets.xcassets` are written by `pnpm art` from `theme.css`, `kit.css` and `scripts/art/`; never edit them, and colour and size everything in the app from them, never from a hex or a number typed in a view. After a change to the art, run `pnpm ios:fixtures` too, so `ArtParityTests` compares with the new reference. The kit's snapshots are compared only on the macOS they were recorded on: after a deliberate change, record them with `RIVERMIND_RECORD_SNAPSHOTS=1 swift test --filter KitSnapshotTests` and look at every image that changed before committing it. A new test that draws goes under `LookRendering`, which runs them one at a time: drawing holds the main actor, and run together they starved the table connection's two-second waits until those tests crashed.
 - **Logic in the package.** Anything a test needs goes in `RiverMindKit`; the app target holds SwiftUI views. The package must build with Swift 6.2 (CI's Xcode 26.6) as well as this Mac's: its `swift-tools-version` stays 6.2 until CI's Xcode moves.
 - **Warnings fail.** Both targets and `ios/test.sh` treat warnings as errors; the script also fails on a `@preconcurrency` warning the compiler will not promote. Mark an `XCTestCase` `@MainActor`.
 - **Files, not project churn.** The app's folders are synchronized groups: add a file to the folder, never to `project.pbxproj`. A new target or build setting is an edit Xcode makes; keep the project free of absolute paths and of a development team until Q-13.

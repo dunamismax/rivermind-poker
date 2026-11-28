@@ -2,7 +2,8 @@ import RiverMindKit
 import SwiftUI
 
 /// P5D.1's placeholder lobby: the guest this app is (`POST /api/session`, P5D.2) and what
-/// the server offers (`GET /api/config`). P5D.5 brings the clean look and P5D.6 the lobby.
+/// the server offers (`GET /api/config`), on the site's night with its gold (P5D.5). P5D.6
+/// brings the lobby.
 struct LobbyView: View {
     let model: LobbyModel
     let table: TableConnection
@@ -12,6 +13,20 @@ struct LobbyView: View {
             content
                 .navigationTitle("RiverMind Poker")
                 .toolbarTitleDisplayMode(.inlineLarge)
+                .scrollContentBackground(.hidden)
+                .kitPage()
+                #if DEBUG
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            NavigationLink {
+                                GalleryView()
+                            } label: {
+                                Label("Gallery", systemImage: "swatchpalette")
+                            }
+                            .accessibilityIdentifier("lobby.gallery")
+                        }
+                    }
+                #endif
         }
         .task { await model.load() }
     }

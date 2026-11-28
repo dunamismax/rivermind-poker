@@ -277,3 +277,47 @@ test('the icons are the mark, drawn as their generator draws them, and the page 
 	);
 	expect(head).toContain(`<meta name="theme-color" content="${night}" />`);
 });
+
+// The iPhone app's look (P5D.5): its tokens and art in Swift and its asset catalog are
+// what scripts/art/swift.js writes from the same sources, and the catalog holds nothing else.
+const swift = (await import(
+	/* @vite-ignore */ new URL('../../../scripts/art/swift.js', import.meta.url).href
+)) as {
+	ASSETS: string;
+	renderSwift: () => Map<string, string>;
+	renderAssets: () => { text: Map<string, string>; images: Map<string, Raster> };
+	artPieces: () => { name: string; svg: string }[];
+};
+
+test("the iPhone app's tokens, art and icons are what pnpm art writes", () => {
+	for (const [path, text] of swift.renderSwift())
+		expect(read(path), `${path} is stale: run pnpm art`).toBe(text);
+	const { text, images } = swift.renderAssets();
+	for (const [path, json] of text) expect(read(path), `${path} is stale: run pnpm art`).toBe(json);
+	for (const [path, image] of images) {
+		const committed = decodePng(new Uint8Array(readFileSync(new URL(path, WEB))));
+		expect(committed, `${path} is stale: run pnpm art`).toEqual(image);
+		expect([image.width, image.height]).toEqual([1024, 1024]);
+	}
+	const catalog = new URL(`${swift.ASSETS}/`, WEB);
+	const committed = readdirSync(catalog, { recursive: true, withFileTypes: true })
+		.filter((entry) => entry.isFile())
+		.map((entry) => relative(WEB.pathname, `${entry.parentPath}/${entry.name}`));
+	expect(committed.sort()).toEqual([...text.keys(), ...images.keys()].sort());
+	// Every card and every sprite, once each.
+	const names = swift.artPieces().map((piece) => piece.name);
+	expect(new Set(names).size).toBe(files.size + sprites.size);
+	// The default icon is the mark on night, edge to edge; the dark and tinted ones are the
+	// mark alone, on nothing.
+	const icon = (name: string) => images.get(`${swift.ASSETS}/AppIcon.appiconset/${name}`)!;
+	const pixel = (image: Raster, x: number, y: number) => [
+		...image.data.subarray((y * 1024 + x) * 4, (y * 1024 + x) * 4 + 4)
+	];
+	const rgba = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).concat(255);
+	expect(pixel(icon('icon.png'), 0, 0)).toEqual(rgba(palette.get('night')!));
+	expect(pixel(icon('icon-dark.png'), 0, 0)).toEqual([0, 0, 0, 0]);
+	expect(pixel(icon('icon-tinted.png'), 0, 0)).toEqual([0, 0, 0, 0]);
+	expect(pixel(icon('icon.png'), 348, 676)).toEqual(rgba(palette.get('gold')!));
+	expect(pixel(icon('icon-dark.png'), 348, 676)).toEqual(rgba(palette.get('gold')!));
+	expect(pixel(icon('icon-tinted.png'), 348, 676)).toEqual(rgba(palette.get('white')!));
+}, 30_000);
