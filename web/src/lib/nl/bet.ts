@@ -2,7 +2,7 @@
 // totals, as the protocol's `min_to` and `max_to` are: "raise to 600" means
 // the seat's bet on this street becomes 600.
 
-import type { ActionKind, HandInfo, Legal, TableEvent } from '../protocol-v2.ts';
+import type { ActionKind, HandInfo, HandResult, Legal, TableEvent } from '../protocol-v2.ts';
 
 export interface Preset {
 	label: string;
@@ -100,4 +100,15 @@ export function describeEvent(event: TableEvent, nameOf: (seat: number) => strin
 		default:
 			return null;
 	}
+}
+
+/**
+ * One line for each pot of a settled hand, under the table: "Ann wins 300",
+ * "Ann and Bob split 600 (main pot)", "Cy wins 200 (side pot)".
+ */
+export function potLines(result: HandResult, nameOf: (seat: number) => string): string[] {
+	return result.pots.map(
+		(pot, i) =>
+			`${pot.winners.map(nameOf).join(' and ')} ${pot.winners.length > 1 ? 'split' : 'wins'} ${pot.amount}${result.pots.length > 1 ? (i === 0 ? ' (main pot)' : ' (side pot)') : ''}`
+	);
 }

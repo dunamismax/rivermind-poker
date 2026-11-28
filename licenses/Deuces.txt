@@ -1,3 +1,9 @@
+The hand evaluators are adapted from Deuces by Will Drevo (https://github.com/worldveil/deuces):
+rivermind/engine/evaluator.py, its TypeScript port web/src/lib/engine/evaluator.ts (which
+the site's engine uses), and its Swift port in the iPhone app,
+ios/RiverMindKit/Sources/RiverMindKit/Display/Evaluator.swift. Deuces is distributed under
+this license:
+
 Copyright (c) 2013 Will Drevo
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

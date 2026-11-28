@@ -12,7 +12,7 @@
 	} from '../protocol-v2.ts';
 	import ActionPanel from './ActionPanel.svelte';
 	import { fetchConfig, fetchHand, findHand } from './api.ts';
-	import { describeEvent } from './bet.ts';
+	import { describeEvent, potLines } from './bet.ts';
 	import type { NlConnection } from './connection.svelte.ts';
 	import { chipFor } from './faces.ts';
 	import HandReplay from './HandReplay.svelte';
@@ -66,12 +66,7 @@
 			.reverse()
 	);
 	const winners = $derived(
-		result
-			? result.pots.map((pot, i) => ({
-					key: i,
-					text: `${pot.winners.map(nameOf).join(' and ')} ${pot.winners.length > 1 ? 'split' : 'wins'} ${pot.amount}${result.pots.length > 1 ? (i === 0 ? ' (main pot)' : ' (side pot)') : ''}`
-				}))
-			: []
+		result ? potLines(result, nameOf).map((text, i) => ({ key: i, text })) : []
 	);
 	const waitingFor = $derived(view.turn && view.turn.seat !== mine ? nameOf(view.turn.seat) : null);
 	const myTurn = $derived(Boolean(view.you.legal && hand && view.turn));

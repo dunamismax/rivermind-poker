@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { HandInfo, Legal, TableEvent } from '../protocol-v2.ts';
-import { callLabel, clampAmount, describeEvent, potFraction, presets, raiseLabel } from './bet.ts';
+import type { HandInfo, HandResult, Legal, TableEvent } from '../protocol-v2.ts';
+import {
+	callLabel,
+	clampAmount,
+	describeEvent,
+	potFraction,
+	potLines,
+	presets,
+	raiseLabel
+} from './bet.ts';
 
 function hand(pot: number, current_bet: number): HandInfo {
 	return {
@@ -110,5 +118,31 @@ describe('describeEvent', () => {
 			'S1’s rebuy of 900 no longer fits and goes back to the wallet'
 		);
 		expect(describeEvent(event({ kind: 'turn', seat: 1 }), names)).toBeNull();
+	});
+});
+
+describe('potLines', () => {
+	const result = (pots: { amount: number; winners: number[] }[]): HandResult => ({
+		pots: pots.map((pot) => ({ ...pot, eligible: [0, 1, 2], shares: pot.winners.map(() => 0) })),
+		uncalled: null,
+		showdown: true,
+		shown: [],
+		mucked: [],
+		winnings: [],
+		net: []
+	});
+	const names = (seat: number) => ['Ann', 'Bob', 'Cy'][seat];
+
+	it('names one pot plainly and marks the main and side pots', () => {
+		expect(potLines(result([{ amount: 300, winners: [0] }]), names)).toEqual(['Ann wins 300']);
+		expect(
+			potLines(
+				result([
+					{ amount: 600, winners: [0, 1] },
+					{ amount: 200, winners: [2] }
+				]),
+				names
+			)
+		).toEqual(['Ann and Bob split 600 (main pot)', 'Cy wins 200 (side pot)']);
 	});
 });

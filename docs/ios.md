@@ -2,7 +2,7 @@
 
 RiverMind Poker as a native iPhone app (D-19, Phase 5D in [BUILD.md](../BUILD.md#phase-5d--native-ios-app)). It is one more client of the same server: people in the app and in any browser share tables, invites and end-to-end encrypted table voice. This file is the design (P5D.1), kept as the app is built. CONTRIBUTING.md says how to build and test it, and AGENTS.md holds its conventions.
 
-**Where it stands** (2026-11-27): the skeleton (P5D.1) and the protocol (P5D.2). The app builds, launches in the iOS Simulator, makes or renews its guest with `POST /api/session`, keeps the session in the Keychain, and shows a placeholder lobby with the guest and what `GET /api/config` offers. RiverMindKit has every protocol v2 and voice signalling type, generated from the TypeScript, and an API client for every route below. The table connection is next (P5D.3).
+**Where it stands** (2026-11-27): the skeleton (P5D.1) and the protocol (P5D.2). The app builds, launches in the iOS Simulator, makes or renews its guest with `POST /api/session`, keeps the session in the Keychain, and shows a placeholder lobby with the guest and what `GET /api/config` offers. RiverMindKit has every protocol v2 and voice signalling type, generated from the TypeScript, an API client for every route below, and the page's display logic (P5D.4): hand names and the evaluator, bet sizes and labels, the hand log's and the pots' lines, seat words, faces, replay steps and card names, each matching the page on a fixture the TypeScript writes. The table connection is next (P5D.3).
 
 ## What the app is made of
 
@@ -92,13 +92,17 @@ The server is authoritative (D-2): the app decides nothing about cards, turns or
 | Ported to Swift, with fixtures from the TypeScript | Drawn natively in SwiftUI |
 | --- | --- |
 | protocol v2, the API bodies and voice signalling: generated types (P5D.2) | every screen and control |
-| `hand-name.ts` and the browser-safe evaluator in `src/lib/engine` | the table layout at 2 to 9 seats, from the same rules as `layout.ts` (P5D.7) |
-| `bet.ts`: bet and raise sizes and presets | the action panel, slider and haptics |
-| `replay.ts`'s steps | the replayer's controls |
-| `faces.ts`: card faces and suits | the cards themselves, from `scripts/art/deck.js`'s geometry (P5D.5) |
-| `wording.ts` and the table's own wording of events, errors and results | animations, with Reduce Motion |
+| `hand-name.ts` and the browser-safe evaluator in `src/lib/engine` (`HandName`, `Evaluator`) | the table layout at 2 to 9 seats, from the same rules as `layout.ts` (P5D.7) |
+| `bet.ts`: bet and raise sizes, presets, button labels, the hand log's lines and the pots' lines (`Bet`) | the action panel, slider and haptics |
+| `replay.ts`'s steps (`Replay`) | the replayer's controls |
+| `faces.ts`: bot labels, pod names, avatars, chip colours, a seat's status word and spoken label, and the evaluation lines (`Faces`) | the cards themselves, from `scripts/art/deck.js`'s geometry (P5D.5) |
+| `wording.ts`'s card names, `replay.ts`'s short cards and `safety.ts`'s reactions and report reasons (`Wording`, `Safety`) | animations, with Reduce Motion |
 | what `connection.svelte.ts` does: hello, `seq`, errors, rejoining (P5D.3) | the voice panel (P5D.10) |
 | the site's tokens, written into Swift by `pnpm art` from `theme.css` (P5D.5) | |
+
+**The display fixture** (P5D.4). `pnpm ios:fixtures` also writes `ios/RiverMindKit/Fixtures/display.json` (`web/src/lib/server/api/ios-display.spec.ts`), and `DisplayParityTests.swift` expects every Swift port to give exactly what the TypeScript gave. Its cases are seeded: random sets of two to seven cards until every class of hand is there at every size, a fixed list of rare hands and words with a rule of their own (the wheel, a royal flush, sixes, an eight-high), the hand log's line for every event the recorded sessions sent and for every kind of event, and fifty hands the engine plays from random stacks, read back as the `HandDetail` a viewer gets and kept so that between them they hold every kind of replay step and every kind of pot (side pots, splits, an uncalled bet, a stack nobody covered, all-in hands tabled before the board, antes). The bet cases are the legal actions at those hands' decisions. Where the page would print `undefined` (a field a newer server leaves out, an action this build does not know), the app says something plain instead; everywhere else the two say the same. Each `toFixed` and `toLocaleString` the page calls is ported to its rule: `Faces.toFixed` rounds the double's exact value, the larger on a tie, as JavaScript does, where `String(format:)` would round 0.25 to 0.2.
+
+The wording the table's components wrote inline (the pots' lines under the table, a seat's status word and its label for assistive technology) moved into `bet.ts` and `faces.ts` at P5D.4, so the page and the app read it from one place.
 
 Small formatting rules that the page writes inline are ported where they are first needed and tested against the page's own output: P5D.1's `ConfigResponse.chips` matches `toLocaleString('en-US')`, and `ConfigResponse.blinds` the lobby's `small/big`.
 

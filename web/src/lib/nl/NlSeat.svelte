@@ -1,7 +1,7 @@
 <script lang="ts">
 	import PlayingCard from '../components/PlayingCard.svelte';
 	import type { SeatInfo, Turn } from '../protocol-v2.ts';
-	import { avatarClass, botLabel, podName } from './faces.ts';
+	import { avatarClass, botLabel, podName, seatLabel, seatStatus } from './faces.ts';
 	import { clockLeft } from './layout.ts';
 	import type { SeatVoice } from './voice.svelte.ts';
 
@@ -44,22 +44,8 @@
 	const clock = $derived(acting && turn ? clockLeft(turn, now) : null);
 	/** The bar: the time left, never shorter than its own rounded ends. */
 	const barWidth = $derived(clock ? Math.max(1.5, clock.fraction * SEGMENTS * 3) : 0);
-	const status = $derived(
-		info.leaving
-			? 'Leaving'
-			: info.sitting_out
-				? 'Sitting out'
-				: info.folded
-					? 'Folded'
-					: info.all_in
-						? 'All-in'
-						: !info.connected && info.kind === 'human'
-							? 'Away'
-							: ''
-	);
-	const label = $derived(
-		`${me ? 'Your seat' : `Seat ${info.seat + 1}`}: ${info.name}${info.kind === 'bot' ? ' (bot)' : ''}`
-	);
+	const status = $derived(seatStatus(info));
+	const label = $derived(seatLabel(info, me));
 	const frame = $derived(acting ? 'ui-glow' : me ? 'ui-gold' : 'ui-panel');
 	const dim = $derived(info.folded || info.sitting_out);
 

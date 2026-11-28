@@ -33,7 +33,7 @@
 		"voice:proto": "playwright test --config playwright.voice.config.ts",
 		"protocol": "cd .. && uv run --locked rivermind-poker protocol-schema --typescript web/src/lib/protocol.ts",
 		"protocol:swift": "node scripts/protocol-swift.ts",
-		"ios:fixtures": "IOS_FIXTURES=write vitest --run src/lib/server/api/ios-fixtures.spec.ts",
+		"ios:fixtures": "IOS_FIXTURES=write vitest --run src/lib/server/api/ios-fixtures.spec.ts src/lib/server/api/ios-display.spec.ts",
 		"art": "node scripts/generate-art.js",
 		"engine:parity": "node scripts/engine-parity.ts",
 		"engine:bench": "node scripts/engine-bench.ts",

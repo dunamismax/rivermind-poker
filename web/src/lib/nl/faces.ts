@@ -1,6 +1,6 @@
 // Who sits where: each seat's avatar and the label every bot wears (D-7).
 
-import type { BotChampion } from '../protocol-v2.ts';
+import type { BotChampion, SeatInfo } from '../protocol-v2.ts';
 
 const BOT_LABELS: Record<string, string> = {
 	heuristic: 'RiverMind Easy',
@@ -89,4 +89,19 @@ export function chipFor(amount: number, bigBlind: number): string {
 	if (blinds < 25) return 'chip-green';
 	if (blinds < 60) return 'chip-black';
 	return 'chip-violet';
+}
+
+/** The word under a seat's name for how it stands in the hand, or '' for none. */
+export function seatStatus(info: SeatInfo): string {
+	if (info.leaving) return 'Leaving';
+	if (info.sitting_out) return 'Sitting out';
+	if (info.folded) return 'Folded';
+	if (info.all_in) return 'All-in';
+	if (!info.connected && info.kind === 'human') return 'Away';
+	return '';
+}
+
+/** A seat's name for assistive technology: "Your seat: Ann", "Seat 3: Easy 2 (bot)". */
+export function seatLabel(info: SeatInfo, me: boolean): string {
+	return `${me ? 'Your seat' : `Seat ${info.seat + 1}`}: ${info.name}${info.kind === 'bot' ? ' (bot)' : ''}`;
 }

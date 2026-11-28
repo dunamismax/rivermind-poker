@@ -483,7 +483,7 @@ PORT=4380 ORIGIN=http://127.0.0.1:4380 RIVERMIND_API=1 pnpm start
 
 Add a Swift file by putting it in its folder: the app's folders are synchronized groups, so the project file does not change.
 
-The app's protocol types are generated from the TypeScript (P5D.2). After changing `web/src/lib/protocol-v2.ts` or `web/src/lib/voice/signalling.ts`, write them again, and after a change to what the server sends in the recorded sessions, write the fixture the Swift tests read; Vitest fails while either is stale.
+The app's protocol types are generated from the TypeScript (P5D.2). After changing `web/src/lib/protocol-v2.ts` or `web/src/lib/voice/signalling.ts`, write them again, and after a change to what the server sends in the recorded sessions, or to the page's display code that the app ports (`hand-name.ts`, `bet.ts`, `faces.ts`, `replay.ts`, `safety.ts`, `wording.ts`'s card names, P5D.4), write the fixtures the Swift tests read; Vitest fails while any of them is stale, and the Swift tests fail until the port says the same.
 
 ```sh
 cd web
